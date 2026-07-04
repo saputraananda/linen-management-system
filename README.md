@@ -1,6 +1,16 @@
-# Monorepo React + Express Starter
+# Linen Management System
 
-Proyek ini adalah **starter template** untuk aplikasi full-stack dengan **React (Vite)** di frontend dan **Express.js** di backend, dijalankan bersamaan dengan `concurrently`.
+Aplikasi monitoring pengelolaan linen untuk **Rumah Sakit**, **Valet** (pengantar/penjemput linen), dan **Admin**.
+
+## Role & Alur
+
+| Role      | Tugas                                                    |
+| --------- | -------------------------------------------------------- |
+| **Valet** | Pagi hari menjemput linen kotor & mengantar linen bersih, mengisi form serah terima |
+| **Admin** | Memverifikasi form serah terima yang diisi valet         |
+| **RS**    | Memantau status pengiriman dan riwayat linen             |
+
+**Alur:** Valet jemput linen → isi form serah terima → Admin verifikasi → RS pantau.
 
 ## Struktur
 
@@ -16,14 +26,9 @@ Proyek ini adalah **starter template** untuk aplikasi full-stack dengan **React 
 ## Cara Pakai
 
 ```bash
-# Clone repository
 git clone <repo-url>
 cd <project-folder>
-
-# Install dependencies
 npm install
-
-# Jalankan development (server + client concurrently)
 npm run dev
 ```
 
@@ -32,21 +37,11 @@ npm run dev
 
 ## Scripts
 
-| Script          | Deskripsi                              |
-| --------------- | -------------------------------------- |
-| `npm run dev`   | Jalankan server & client bersamaan     |
-| `npm run dev:server` | Backend saja (nodemon)           |
-| `npm run dev:client` | Frontend saja (Vite)             |
-| `npm run build` | Build frontend untuk production        |
-| `npm start`     | Jalankan server production             |
-| `npm run preview` | Preview build Vite                  |
-
-## Ganti Nama Project
-
-Ubah field `"name"` di `package.json` sesuai nama project Anda:
-
-```json
-{
-  "name": "nama-project-anda"
-}
-```
+| Script              | Deskripsi                              |
+| ------------------- | -------------------------------------- |
+| `npm run dev`       | Jalankan server & client bersamaan     |
+| `npm run dev:server`| Backend saja (nodemon)                 |
+| `npm run dev:client`| Frontend saja (Vite)                   |
+| `npm run build`     | Build frontend untuk production        |
+| `npm start`         | Jalankan server production             |
+| `npm run preview`   | Preview build Vite                     |
