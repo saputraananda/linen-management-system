@@ -3,7 +3,9 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import infoRoutes from './api/routes/info.routes.js';
+import authRoutes from './api/routes/auth/auth.routes.js';
+import ikmDashboardRoutes from './api/routes/ikm/dashboard.routes.js';
+import ikmSerahTerimaRoutes from './api/routes/ikm/serahTerima.routes.js';
 
 // Resolve directory paths in ES module
 const __filename = fileURLToPath(import.meta.url);
@@ -20,7 +22,9 @@ app.use(cors());
 app.use(express.json());
 
 // API Routes
-app.use('/api/info', infoRoutes);
+app.use('/api/auth', authRoutes);
+app.use('/api/ikm', ikmDashboardRoutes);
+app.use('/api/ikm', ikmSerahTerimaRoutes);
 
 // Serve static assets in production
 if (process.env.NODE_ENV === 'production') {
@@ -32,14 +36,14 @@ if (process.env.NODE_ENV === 'production') {
   });
 } else {
   app.get('/', (req, res) => {
-    res.send('Waschen Linen Monitoring API Server is running. Frontend dev server is active on port 5173.');
+    res.send('IKM Linen Monitoring API Server is running. Frontend dev server is active on port 5173.');
   });
 }
 
 // Start Server
 app.listen(PORT, () => {
   console.log(`=========================================`);
-  console.log(`  Waschen Linen Monitoring System Server  `);
+  console.log(`  IKM Linen Monitoring System Server  `);
   console.log(`  Status: Running                        `);
   console.log(`  Port:   http://localhost:${PORT}        `);
   console.log(`=========================================`);

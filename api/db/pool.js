@@ -1,0 +1,32 @@
+import mysql from 'mysql2/promise';
+import dotenv from 'dotenv';
+
+// Ensure env variables are loaded if this file is imported directly in tests/scripts
+dotenv.config();
+
+export const mainPool = mysql.createPool({
+  host: process.env.DB_HOST,
+  port: parseInt(process.env.DB_PORT || '3306'),
+  user: process.env.DB_USER,
+  password: process.env.DB_PASS,
+  database: process.env.DB_NAME,
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0
+});
+
+export const ikmPool = mysql.createPool({
+  host: process.env.DB_HOST_IKM,
+  port: parseInt(process.env.DB_PORT_IKM || '3306'),
+  user: process.env.DB_USER_IKM,
+  password: process.env.DB_PASS_IKM,
+  database: process.env.DB_NAME_IKM,
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0
+});
+
+export default {
+  mainPool,
+  ikmPool
+};
