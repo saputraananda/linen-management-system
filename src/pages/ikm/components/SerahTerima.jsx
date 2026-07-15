@@ -55,6 +55,10 @@ export default function SerahTerima() {
   const [editSearchEmployeeQuery, setEditSearchEmployeeQuery] = useState('');
   const [isEditEmployeeDropdownOpen, setIsEditEmployeeDropdownOpen] = useState(false);
 
+  // Linen table search states
+  const [linenSearch, setLinenSearch] = useState('');
+  const [editLinenSearch, setEditLinenSearch] = useState('');
+
   const employeeSelectRef = useRef(null);
   const editEmployeeSelectRef = useRef(null);
 
@@ -384,6 +388,21 @@ export default function SerahTerima() {
   const filteredEditEmployees = employees.filter(emp =>
     (emp.employee_name || '').toLowerCase().includes(editSearchEmployeeQuery.toLowerCase())
   );
+
+  // Filtered linen lists for table search
+  const filteredLinensList = linenSearch.trim() === ''
+    ? linensList
+    : linensList.filter(item =>
+        getLinenDisplayName(item).toLowerCase().includes(linenSearch.toLowerCase())
+      );
+
+  const filteredEditDetails = editingTransaction
+    ? (editLinenSearch.trim() === ''
+        ? editingTransaction.details
+        : editingTransaction.details.filter(item =>
+            getLinenDisplayName(item).toLowerCase().includes(editLinenSearch.toLowerCase())
+          ))
+    : [];
 
   return (
     <div className="min-h-full py-6 bg-slate-50/50">
@@ -729,6 +748,28 @@ export default function SerahTerima() {
 
               {/* Table of items */}
               <div className="border border-slate-150 rounded-2xl overflow-hidden shadow-sm">
+
+                {/* Search bar above linen table */}
+                <div className="p-3 border-b border-slate-100 bg-slate-50/70">
+                  <div className="relative">
+                    <Search className="absolute inset-y-0 left-3 my-auto h-3.5 w-3.5 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Cari nama linen..."
+                      value={linenSearch}
+                      onChange={e => setLinenSearch(e.target.value)}
+                      className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] transition"
+                    />
+                    {linenSearch && (
+                      <button
+                        type="button"
+                        onClick={() => setLinenSearch('')}
+                        className="absolute inset-y-0 right-3 my-auto text-slate-400 hover:text-slate-600 text-base leading-none cursor-pointer"
+                      >✕</button>
+                    )}
+                  </div>
+                </div>
+
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-sm border-collapse min-w-[500px]">
                     <thead>
@@ -747,14 +788,14 @@ export default function SerahTerima() {
                             Memuat data linen...
                           </td>
                         </tr>
-                      ) : linensList.length === 0 ? (
+                      ) : filteredLinensList.length === 0 ? (
                         <tr>
                           <td colSpan="4" className="py-16 text-center text-slate-400 font-semibold">
-                            Belum ada master linen terdaftar untuk rumah sakit ini.
+                            {linenSearch ? `Tidak ada linen yang cocok dengan "${linenSearch}"` : 'Belum ada master linen terdaftar untuk rumah sakit ini.'}
                           </td>
                         </tr>
                       ) : (
-                        linensList.map((item, index) => {
+                        filteredLinensList.map((item, index) => {
                           const isFilled = (kotorQuantities[item.id] || 0) > 0;
                           return (
                             <tr
@@ -1012,6 +1053,28 @@ export default function SerahTerima() {
 
               {/* Table of detail quantities */}
               <div className="border border-slate-150 rounded-2xl overflow-hidden shadow-sm">
+
+                {/* Search bar above bersih linen table */}
+                <div className="p-3 border-b border-slate-100 bg-slate-50/70">
+                  <div className="relative">
+                    <Search className="absolute inset-y-0 left-3 my-auto h-3.5 w-3.5 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Cari nama linen..."
+                      value={editLinenSearch}
+                      onChange={e => setEditLinenSearch(e.target.value)}
+                      className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] transition"
+                    />
+                    {editLinenSearch && (
+                      <button
+                        type="button"
+                        onClick={() => setEditLinenSearch('')}
+                        className="absolute inset-y-0 right-3 my-auto text-slate-400 hover:text-slate-600 text-base leading-none cursor-pointer"
+                      >✕</button>
+                    )}
+                  </div>
+                </div>
+
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-sm border-collapse min-w-[650px]">
                     <thead>
@@ -1024,7 +1087,13 @@ export default function SerahTerima() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-slate-700">
-                      {editingTransaction.details.map((item, index) => {
+                      {filteredEditDetails.length === 0 ? (
+                        <tr>
+                          <td colSpan="5" className="py-12 text-center text-slate-400 font-semibold text-xs">
+                            {editLinenSearch ? `Tidak ada linen yang cocok dengan "${editLinenSearch}"` : 'Tidak ada data linen.'}
+                          </td>
+                        </tr>
+                      ) : filteredEditDetails.map((item, index) => {
                         const isClosed = editingTransaction.transaction.status === 'SELESAI';
                         const kotor = item.qty_kotor;
                         const bersih = isClosed ? item.qty_bersih : (bersihQuantities[item.id] || 0);
