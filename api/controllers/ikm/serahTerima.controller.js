@@ -120,13 +120,38 @@ export const getTransactionDetail = async (req, res) => {
     const transaction = transactions[0];
     if (transaction) {
       transaction.recorder_name = toTitleCase(transaction.recorder_name);
+
+      // Calculate is_editable
+      let isEditable = false;
+      if (transaction.status === 'PROSES') {
+        isEditable = true;
+      } else if (transaction.status === 'SELESAI') {
+        const completedTimeSource = transaction.completed_at || transaction.updated_at;
+        if (completedTimeSource) {
+          const completedTime = new Date(completedTimeSource).getTime();
+          const currentTime = new Date().getTime();
+          const diffHours = (currentTime - completedTime) / (1000 * 60 * 60);
+          if (diffHours <= 24) {
+            isEditable = true;
+          }
+        }
+      }
+      transaction.is_editable = isEditable;
     }
+
+    const [audits] = await ikmPool.query(
+      `SELECT * FROM tr_linen_transaction_audit 
+       WHERE transaction_id = ? 
+       ORDER BY created_at ASC`,
+      [id]
+    );
 
     return res.status(200).json({
       success: true,
       data: {
         transaction,
-        details
+        details,
+        audits
       }
     });
   } catch (error) {
@@ -198,6 +223,43 @@ export const createTransaction = async (req, res) => {
       );
     }
 
+    // Capture created state for audit logging
+    const [newHeaderRows] = await connection.query(
+      `SELECT * FROM tr_linen_transaction WHERE id = ?`,
+      [transactionId]
+    );
+    const newHeader = newHeaderRows[0];
+
+    const [newDetails] = await connection.query(
+      `SELECT * FROM tr_linen_transaction_detail WHERE transaction_id = ?`,
+      [transactionId]
+    );
+
+    const newSnapshot = {
+      transaction: newHeader,
+      details: newDetails
+    };
+
+    // User details from token middleware (req.user)
+    const userId = req.user?.id || null;
+    const username = req.user?.username || 'system';
+    const fullName = req.user?.fullName || null;
+    const role = req.user?.role || null;
+
+    await connection.query(
+      `INSERT INTO tr_linen_transaction_audit 
+       (transaction_id, action, user_id, username, full_name, role, old_values, new_values)
+       VALUES (?, 'CREATE', ?, ?, ?, ?, NULL, ?)`,
+      [
+        transactionId,
+        userId,
+        username,
+        fullName,
+        role,
+        JSON.stringify(newSnapshot)
+      ]
+    );
+
     await connection.commit();
 
     return res.status(201).json({
@@ -230,36 +292,143 @@ export const updateTransactionDelivery = async (req, res) => {
     const { deliveryDate, recorderName, notes, details } = req.body;
 
     if (!deliveryDate || !details || details.length === 0) {
+      await connection.rollback();
       return res.status(400).json({
         success: false,
         message: "Tanggal pengiriman dan rincian bersih wajib diisi"
       });
     }
 
+    // Get old state
+    const [oldHeaderRows] = await connection.query(
+      `SELECT * FROM tr_linen_transaction WHERE id = ?`,
+      [id]
+    );
+
+    if (oldHeaderRows.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({
+        success: false,
+        message: "Transaksi tidak ditemukan"
+      });
+    }
+
+    const oldHeader = oldHeaderRows[0];
+
+    // Enforce 24-hour edit limit if status is 'SELESAI'
+    if (oldHeader.status === 'SELESAI') {
+      const completedTimeSource = oldHeader.completed_at || oldHeader.updated_at;
+      if (!completedTimeSource) {
+        await connection.rollback();
+        return res.status(400).json({
+          success: false,
+          message: "Batas waktu edit untuk transaksi ini telah berakhir (data lama)."
+        });
+      }
+
+      const completedTime = new Date(completedTimeSource).getTime();
+      const currentTime = new Date().getTime();
+      const diffHours = (currentTime - completedTime) / (1000 * 60 * 60);
+
+      if (diffHours > 24) {
+        await connection.rollback();
+        return res.status(400).json({
+          success: false,
+          message: "Batas waktu edit 24 jam setelah transaksi selesai telah berakhir."
+        });
+      }
+    }
+
+    // Get old details for audit snapshot
+    const [oldDetails] = await connection.query(
+      `SELECT * FROM tr_linen_transaction_detail WHERE transaction_id = ?`,
+      [id]
+    );
+
+    // Determine completed_at (set to now if transitioning from PROSES to SELESAI)
+    let completedAt = oldHeader.completed_at;
+    if (oldHeader.status === 'PROSES') {
+      completedAt = new Date();
+    }
+
     // Update Header
     const formattedRecorderName = recorderName ? toTitleCase(recorderName) : null;
     await connection.query(
       `UPDATE tr_linen_transaction 
-       SET delivery_date = ?, recorder_name = COALESCE(?, recorder_name), notes = COALESCE(?, notes), status = 'SELESAI'
+       SET delivery_date = ?, 
+           completed_at = ?,
+           recorder_name = COALESCE(?, recorder_name), 
+           notes = COALESCE(?, notes), 
+           status = 'SELESAI'
        WHERE id = ?`,
-      [deliveryDate, formattedRecorderName, notes || null, id]
+      [deliveryDate, completedAt, formattedRecorderName, notes || null, id]
     );
 
-    // Update Details
+    // Update Details (support updating both qty_kotor and qty_bersih)
     for (const item of details) {
       await connection.query(
         `UPDATE tr_linen_transaction_detail 
-         SET qty_bersih = ?, notes = COALESCE(?, notes)
+         SET qty_kotor = ?, 
+             qty_bersih = ?, 
+             notes = ?
          WHERE id = ? AND transaction_id = ?`,
-        [parseInt(item.qtyBersih || 0), item.notes || null, item.id, id]
+        [
+          parseInt(item.qtyKotor !== undefined ? item.qtyKotor : 0),
+          item.qtyBersih !== null && item.qtyBersih !== undefined ? parseInt(item.qtyBersih) : null,
+          item.notes || null,
+          item.id,
+          id
+        ]
       );
     }
+
+    // Fetch new values for the audit log
+    const [newHeaderRows] = await connection.query(
+      `SELECT * FROM tr_linen_transaction WHERE id = ?`,
+      [id]
+    );
+    const newHeader = newHeaderRows[0];
+
+    const [newDetails] = await connection.query(
+      `SELECT * FROM tr_linen_transaction_detail WHERE transaction_id = ?`,
+      [id]
+    );
+
+    const oldSnapshot = {
+      transaction: oldHeader,
+      details: oldDetails
+    };
+    const newSnapshot = {
+      transaction: newHeader,
+      details: newDetails
+    };
+
+    // User details from token middleware (req.user)
+    const userId = req.user?.id || null;
+    const username = req.user?.username || 'system';
+    const fullName = req.user?.fullName || null;
+    const role = req.user?.role || null;
+
+    await connection.query(
+      `INSERT INTO tr_linen_transaction_audit 
+       (transaction_id, action, user_id, username, full_name, role, old_values, new_values)
+       VALUES (?, 'UPDATE', ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        userId,
+        username,
+        fullName,
+        role,
+        JSON.stringify(oldSnapshot),
+        JSON.stringify(newSnapshot)
+      ]
+    );
 
     await connection.commit();
 
     return res.status(200).json({
       success: true,
-      message: "Transaksi serah terima linen (Bersih) berhasil diperbarui dan diselesaikan"
+      message: "Transaksi serah terima linen berhasil diperbarui"
     });
   } catch (error) {
     await connection.rollback();

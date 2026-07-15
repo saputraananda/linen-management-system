@@ -41,10 +41,12 @@ export default function SerahTerima() {
     new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)
   );
   const [editNotes, setEditNotes] = useState('');
+  const [editKotorQuantities, setEditKotorQuantities] = useState({}); // { detailId: qty }
   const [bersihQuantities, setBersihQuantities] = useState({}); // { detailId: qty }
   const [editItemNotes, setEditItemNotes] = useState({}); // { detailId: noteText }
   const [submittingEdit, setSubmittingEdit] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [showAuditLogs, setShowAuditLogs] = useState(false);
 
   // Employees searchable dropdown states
   const [employees, setEmployees] = useState([]);
@@ -328,13 +330,23 @@ export default function SerahTerima() {
         setEditRecorderName(fullTx.transaction.recorder_name);
         setEditNotes(fullTx.transaction.notes || '');
 
-        // Initialize bersih quantities (do not autofill from kotor)
+        if (fullTx.transaction.delivery_date) {
+          const dDate = new Date(fullTx.transaction.delivery_date);
+          setDeliveryDate(new Date(dDate.getTime() - dDate.getTimezoneOffset() * 60000).toISOString().slice(0, 16));
+        } else {
+          setDeliveryDate(new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16));
+        }
+
+        // Initialize kotor and bersih quantities
+        const initialKotor = {};
         const initialBersih = {};
         const initialNotes = {};
         fullTx.details.forEach(item => {
+          initialKotor[item.id] = item.qty_kotor !== null ? item.qty_kotor : '';
           initialBersih[item.id] = item.qty_bersih !== null ? item.qty_bersih : '';
           initialNotes[item.id] = item.notes || '';
         });
+        setEditKotorQuantities(initialKotor);
         setBersihQuantities(initialBersih);
         setEditItemNotes(initialNotes);
         setErrorMsg('');
@@ -352,6 +364,7 @@ export default function SerahTerima() {
 
     const activeDetails = editingTransaction.details.map(item => ({
       id: item.id,
+      qtyKotor: parseInt(editKotorQuantities[item.id] !== undefined ? editKotorQuantities[item.id] : item.qty_kotor || 0),
       qtyBersih: parseInt(bersihQuantities[item.id] || 0),
       notes: editItemNotes[item.id] || ''
     }));
@@ -426,6 +439,77 @@ export default function SerahTerima() {
         getLinenDisplayName(item).toLowerCase().includes(editLinenSearch.toLowerCase())
       ))
     : [];
+
+  const isEditable = editingTransaction
+    ? (editingTransaction.transaction.status === 'PROSES' || editingTransaction.transaction.is_editable)
+    : false;
+
+  const getLinenNameById = (hospitalLinenId) => {
+    const detail = editingTransaction?.details?.find(d => d.hospital_linen_id === hospitalLinenId);
+    return detail ? getLinenDisplayName(detail) : `Linen #${hospitalLinenId}`;
+  };
+
+  const formatAuditTime = (dateStr) => {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    return `${hours}:${minutes} WIB`;
+  };
+
+  const generateAuditLogDescriptions = (audit) => {
+    const descriptions = [];
+    if (!audit.old_values || !audit.new_values) {
+      if (audit.action === 'CREATE') {
+        descriptions.push("Membuat transaksi kotor");
+      }
+      return descriptions;
+    }
+
+    let oldSnap, newSnap;
+    try {
+      oldSnap = typeof audit.old_values === 'string' ? JSON.parse(audit.old_values) : audit.old_values;
+      newSnap = typeof audit.new_values === 'string' ? JSON.parse(audit.new_values) : audit.new_values;
+    } catch (e) {
+      return ["Gagal memuat detail log"];
+    }
+
+    const oldTx = oldSnap.transaction || {};
+    const newTx = newSnap.transaction || {};
+
+    if (oldTx.notes !== newTx.notes) {
+      descriptions.push(`Catatan umum: "${oldTx.notes || '—'}" menjadi "${newTx.notes || '—'}"`);
+    }
+    if (oldTx.recorder_name !== newTx.recorder_name) {
+      descriptions.push(`Petugas: "${oldTx.recorder_name || '—'}" menjadi "${newTx.recorder_name || '—'}"`);
+    }
+
+    const oldDetails = oldSnap.details || [];
+    const newDetails = newSnap.details || [];
+
+    newDetails.forEach(newItem => {
+      const oldItem = oldDetails.find(o => o.id === newItem.id);
+      if (oldItem) {
+        const name = getLinenNameById(newItem.hospital_linen_id);
+        
+        if (parseInt(oldItem.qty_kotor || 0) !== parseInt(newItem.qty_kotor || 0)) {
+          descriptions.push(`Linen Kotor ${name} ${oldItem.qty_kotor || 0} menjadi ${newItem.qty_kotor || 0}`);
+        }
+        
+        const oldBersih = oldItem.qty_bersih;
+        const newBersih = newItem.qty_bersih;
+        if (oldBersih !== newBersih) {
+          descriptions.push(`Linen Bersih ${name} ${oldBersih === null ? '—' : oldBersih} menjadi ${newBersih === null ? '—' : newBersih}`);
+        }
+
+        if (oldItem.notes !== newItem.notes) {
+          descriptions.push(`Catatan ${name}: "${oldItem.notes || '—'}" menjadi "${newItem.notes || '—'}"`);
+        }
+      }
+    });
+
+    return descriptions;
+  };
 
   return (
     <div className="min-h-full py-6 bg-slate-50/50">
@@ -578,17 +662,17 @@ export default function SerahTerima() {
                     >
                       {/* Left accent bar */}
                       <div className={`absolute left-0 top-0 bottom-0 w-1 rounded-r-full ${tx.status === 'PROSES' ? 'bg-[#126776]'
-                          : isKurang ? 'bg-amber-400'
-                            : 'bg-[#1ea59e]'
+                        : isKurang ? 'bg-amber-400'
+                          : 'bg-[#1ea59e]'
                         }`} />
 
                       {/* Status badge */}
                       <div className="shrink-0 pl-2">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border whitespace-nowrap ${tx.status === 'PROSES'
-                            ? 'bg-[#1ea59e]/10 text-[#126776] border-[#1ea59e]/30'
-                            : isKurang
-                              ? 'bg-amber-50 text-amber-700 border-amber-200'
-                              : 'bg-teal-50 text-teal-700 border-teal-200'
+                          ? 'bg-[#1ea59e]/10 text-[#126776] border-[#1ea59e]/30'
+                          : isKurang
+                            ? 'bg-amber-50 text-amber-700 border-amber-200'
+                            : 'bg-teal-50 text-teal-700 border-teal-200'
                           }`}>
                           {tx.status === 'PROSES' ? 'Dalam Proses' : isKurang ? 'Selesai – Kurang' : 'Selesai'}
                         </span>
@@ -993,7 +1077,7 @@ export default function SerahTerima() {
                     Petugas Pengirim
                   </label>
                   <div className="relative">
-                    {editingTransaction.transaction.status === 'SELESAI' ? (
+                    {!isEditable ? (
                       <div className="w-full pl-10 pr-4 py-2.5 bg-slate-100 border border-slate-200 text-slate-400 rounded-xl text-xs font-semibold flex items-center gap-2 cursor-not-allowed">
                         <User className="h-4 w-4 text-slate-400" />
                         <span>{toTitleCase(editRecorderName)}</span>
@@ -1072,7 +1156,7 @@ export default function SerahTerima() {
                       required
                       value={deliveryDate}
                       onChange={e => setDeliveryDate(e.target.value)}
-                      disabled={editingTransaction.transaction.status === 'SELESAI'}
+                      disabled={!isEditable}
                       className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] transition disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                     />
                   </div>
@@ -1085,6 +1169,14 @@ export default function SerahTerima() {
                 <div className="p-4 bg-rose-50 border border-rose-100 text-rose-700 text-xs font-medium rounded-xl flex items-start gap-2.5 animate-shake">
                   <AlertCircle className="h-4 w-4 text-rose-500 shrink-0 mt-0.5" />
                   <span>{errorMsg}</span>
+                </div>
+              )}
+
+              {/* 24-Hour Expiration Alert */}
+              {editingTransaction.transaction.status === 'SELESAI' && !isEditable && (
+                <div className="p-4 bg-amber-50 border border-amber-100 text-amber-800 text-xs font-semibold rounded-xl flex items-start gap-2.5">
+                  <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                  <span>Data Sudah Lebih Dari 24 Jam, Mohon Hubungi Admin Jika Ada Perubahan</span>
                 </div>
               )}
 
@@ -1131,15 +1223,14 @@ export default function SerahTerima() {
                           </td>
                         </tr>
                       ) : filteredEditDetails.map((item, index) => {
-                        const isClosed = editingTransaction.transaction.status === 'SELESAI';
-                        const kotor = item.qty_kotor;
-                        const bersih = isClosed ? item.qty_bersih : (bersihQuantities[item.id] || 0);
-                        const isDiff = kotor !== bersih;
+                        const kotor = editKotorQuantities[item.id] !== undefined ? editKotorQuantities[item.id] : item.qty_kotor;
+                        const bersih = bersihQuantities[item.id] !== undefined ? bersihQuantities[item.id] : (item.qty_bersih !== null ? item.qty_bersih : '');
+                        const isDiff = parseInt(kotor || 0) !== parseInt(bersih || 0);
 
                         return (
                           <tr
                             key={item.id}
-                            className={`transition-colors duration-150 ${isDiff && !isClosed
+                            className={`transition-colors duration-150 ${isDiff && isEditable
                               ? 'bg-amber-500/[0.03] border-l-4 border-l-amber-400'
                               : 'hover:bg-slate-50/40'
                               }`}
@@ -1148,20 +1239,38 @@ export default function SerahTerima() {
                             <td className="py-3 px-4">
                               <p className="font-semibold text-slate-800 text-sm">{getLinenDisplayName(item)}</p>
                             </td>
-                            <td className="py-3 px-4 text-center font-semibold text-slate-700 text-sm">
-                              {formatNumber(kotor)}
-                            </td>
                             <td className="py-3 px-4">
-                              {isClosed ? (
-                                <div className="text-center font-semibold text-teal-700 text-sm">
-                                  {formatNumber(bersih)}
-                                </div>
-                              ) : (
+                              {isEditable ? (
                                 <div className="flex items-center justify-center">
                                   <input
                                     type="number"
                                     min="0"
-                                    value={bersihQuantities[item.id] || ''}
+                                    value={editKotorQuantities[item.id] !== undefined ? editKotorQuantities[item.id] : ''}
+                                    onChange={e => {
+                                      const valStr = e.target.value;
+                                      if (valStr === '') {
+                                        setEditKotorQuantities(prev => ({ ...prev, [item.id]: '' }));
+                                      } else {
+                                        const val = parseInt(valStr);
+                                        setEditKotorQuantities(prev => ({ ...prev, [item.id]: isNaN(val) ? 0 : (val >= 0 ? val : 0) }));
+                                      }
+                                    }}
+                                    className="w-16 text-center py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] focus:bg-white transition"
+                                  />
+                                </div>
+                              ) : (
+                                <div className="text-center font-semibold text-slate-700 text-sm">
+                                  {formatNumber(kotor)}
+                                </div>
+                              )}
+                            </td>
+                            <td className="py-3 px-4">
+                              {isEditable ? (
+                                <div className="flex items-center justify-center">
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={bersihQuantities[item.id] !== undefined ? bersihQuantities[item.id] : ''}
                                     onChange={e => {
                                       const valStr = e.target.value;
                                       if (valStr === '') {
@@ -1174,17 +1283,14 @@ export default function SerahTerima() {
                                     className="w-16 text-center py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] focus:bg-white transition"
                                   />
                                 </div>
+                              ) : (
+                                <div className="text-center font-semibold text-teal-700 text-sm">
+                                  {formatNumber(bersih)}
+                                </div>
                               )}
                             </td>
                             <td className="py-3 px-4">
-                              {isClosed ? (
-                                <div className="flex items-center gap-1.5">
-                                  {isDiff && <AlertTriangle className="h-3.5 w-3.5 text-red-500 shrink-0" />}
-                                  <span className="font-medium text-slate-650 text-xs">
-                                    {item.notes || '—'}
-                                  </span>
-                                </div>
-                              ) : (
+                              {isEditable ? (
                                 <div className="space-y-1.5">
                                   <input
                                     type="text"
@@ -1199,9 +1305,16 @@ export default function SerahTerima() {
                                   {isDiff && (
                                     <p className="text-xs text-amber-600 font-semibold flex items-center gap-1">
                                       <AlertTriangle className="h-3.5 w-3.5" />
-                                      Selisih kuantitas kotor-bersih: {Math.abs(kotor - bersih)} Pcs.
+                                      Selisih kuantitas kotor-bersih: {Math.abs(parseInt(kotor || 0) - parseInt(bersih || 0))} Pcs.
                                     </p>
                                   )}
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-1.5">
+                                  {isDiff && <AlertTriangle className="h-3.5 w-3.5 text-red-500 shrink-0" />}
+                                  <span className="font-medium text-slate-650 text-xs">
+                                    {item.notes || '—'}
+                                  </span>
                                 </div>
                               )}
                             </td>
@@ -1212,6 +1325,59 @@ export default function SerahTerima() {
                   </table>
                 </div>
               </div>
+
+              {/* Log Aktivitas Transaksi Collapsible Panel */}
+              {editingTransaction.audits && editingTransaction.audits.length > 0 && (
+                <div className="bg-slate-50 rounded-2xl border border-slate-150 overflow-hidden shadow-sm transition-all duration-200">
+                  {/* Header / Toggle Button */}
+                  <button
+                    type="button"
+                    onClick={() => setShowAuditLogs(!showAuditLogs)}
+                    className="w-full flex items-center justify-between px-5 py-4 hover:bg-slate-100/60 transition-colors cursor-pointer select-none text-left"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-1.5 bg-[#126776]/5 text-[#126776] rounded-lg">
+                        <Clock className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-[#126776] uppercase tracking-widest">
+                          Log Aktivitas Transaksi
+                        </h4>
+                        <p className="text-[10px] text-slate-400 font-medium mt-0.5">
+                          Klik untuk melihat riwayat perubahan data kotor & bersih.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-slate-400">
+                      {showAuditLogs ? (
+                        <ChevronDown className="w-5 h-5 transform rotate-180 transition-transform duration-200" />
+                      ) : (
+                        <ChevronDown className="w-5 h-5 transition-transform duration-200" />
+                      )}
+                    </div>
+                  </button>
+
+                  {/* Collapsible Content */}
+                  {showAuditLogs && (
+                    <div className="px-5 pb-5 border-t border-slate-150/70 pt-4 bg-white animate-[fadeIn_0.2s_ease-out]">
+                      <div className="space-y-2 max-h-56 overflow-y-auto pr-2 divide-y divide-slate-100">
+                        {editingTransaction.audits.map((audit) => {
+                          const descriptions = generateAuditLogDescriptions(audit);
+                          return descriptions.map((desc, idx) => (
+                            <div key={`${audit.id}-${idx}`} className="py-2.5 text-xs font-semibold text-slate-650 flex items-start gap-1.5 first:pt-0">
+                              <span className="text-slate-400 font-bold shrink-0">{formatAuditTime(audit.created_at)}</span>
+                              <span className="text-slate-400 font-bold shrink-0">•</span>
+                              <span className="text-[#126776] font-bold shrink-0">{audit.full_name || audit.username}</span>
+                              <span className="text-slate-400 font-bold shrink-0">•</span>
+                              <span className="text-slate-700 font-medium">{desc}</span>
+                            </div>
+                          ));
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* General Note */}
               <div className="bg-slate-50 p-5 rounded-2xl border border-slate-150 space-y-2">
@@ -1227,7 +1393,7 @@ export default function SerahTerima() {
                   rows="2.5"
                   placeholder="Keterangan umum serah terima barang bersih..."
                   value={editNotes}
-                  disabled={editingTransaction.transaction.status === 'SELESAI'}
+                  disabled={!isEditable}
                   onChange={e => setEditNotes(e.target.value)}
                   className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] transition resize-none disabled:cursor-not-allowed disabled:bg-slate-100 placeholder-slate-400"
                 />
@@ -1240,10 +1406,10 @@ export default function SerahTerima() {
                   onClick={() => { setEditingTransaction(null); setErrorMsg(''); }}
                   className="px-6 py-2.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition active:scale-95 cursor-pointer"
                 >
-                  {editingTransaction.transaction.status === 'SELESAI' ? 'Tutup' : 'Batal'}
+                  {editingTransaction.transaction.status === 'SELESAI' && !isEditable ? 'Tutup' : 'Batal'}
                 </button>
 
-                {editingTransaction.transaction.status !== 'SELESAI' && (
+                {isEditable && (
                   <button
                     type="submit"
                     disabled={submittingEdit}
@@ -1252,7 +1418,7 @@ export default function SerahTerima() {
                     {submittingEdit ? (
                       <><RefreshCw className="h-4 w-4 animate-spin" /> Menyimpan...</>
                     ) : (
-                      <><Save className="h-4 w-4" /> Simpan & Selesaikan Transaksi</>
+                      <><Save className="h-4 w-4" /> {editingTransaction.transaction.status === 'SELESAI' ? 'Simpan Perubahan' : 'Simpan & Selesaikan Transaksi'}</>
                     )}
                   </button>
                 )}
