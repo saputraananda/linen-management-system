@@ -93,10 +93,18 @@ export const getDashboardData = async (req, res) => {
 
     const hospital = hospitals[0];
 
-    // 2. Fetch Hospital Linen Inventory (from mst_hospital_linen and join mst_linen for naming)
+    // 2. Fetch Hospital Linen Inventory with total_kurang calculated
     const inventoryQuery = `
       SELECT hl.*, l.linen_name, l.linen_code,
-             s.size_name, c.color_name, m.material_name
+             s.size_name, c.color_name, m.material_name,
+             COALESCE((
+               SELECT SUM(td.qty_kotor - td.qty_bersih)
+               FROM tr_linen_transaction_detail td
+               INNER JOIN tr_linen_transaction t ON td.transaction_id = t.id
+               WHERE td.hospital_linen_id = hl.id 
+                 AND t.status = 'SELESAI' 
+                 AND td.qty_bersih < td.qty_kotor
+             ), 0) AS total_kurang
       FROM mst_hospital_linen hl
       INNER JOIN mst_linen l ON hl.linen_id = l.id
       LEFT JOIN mst_size s ON l.size_id = s.id
@@ -119,17 +127,33 @@ export const getDashboardData = async (req, res) => {
     `;
     const [roomLinens] = await ikmPool.query(roomsQuery, [hospitalId]);
 
+    // 4. Fetch detailed history of kurang kirim for this hospital
+    const historyQuery = `
+      SELECT td.hospital_linen_id, t.form_number, t.pickup_date, t.delivery_date, 
+             td.qty_kotor, td.qty_bersih, (td.qty_kotor - td.qty_bersih) AS qty_kurang,
+             td.notes, t.recorder_name
+      FROM tr_linen_transaction_detail td
+      INNER JOIN tr_linen_transaction t ON td.transaction_id = t.id
+      WHERE t.hospital_id = ? 
+        AND t.status = 'SELESAI' 
+        AND td.qty_bersih < td.qty_kotor
+      ORDER BY t.pickup_date DESC
+    `;
+    const [history] = await ikmPool.query(historyQuery, [hospitalId]);
+
     // Calculate Summary Stats
     const totalLinenTypes = linens.length;
     let totalStockIkm = 0;
     let totalStockRs = 0;
     let totalParStock = 0;
     let lowStockCount = 0;
+    let totalKurangKirim = 0;
 
     linens.forEach(hl => {
       totalStockIkm += parseInt(hl.stock_in_ikm || 0);
       totalStockRs += parseInt(hl.stock_in_rs || 0);
       totalParStock += parseInt(hl.par_stock || 0);
+      totalKurangKirim += parseInt(hl.total_kurang || 0);
       
       const currentStock = parseInt(hl.stock_in_ikm || 0) + parseInt(hl.stock_in_rs || 0);
       const minStock = parseInt(hl.min_stock || 0);
@@ -147,10 +171,12 @@ export const getDashboardData = async (req, res) => {
           totalStockIkm,
           totalStockRs,
           totalParStock,
-          lowStockCount
+          lowStockCount,
+          totalKurangKirim
         },
         linens,
-        roomLinens
+        roomLinens,
+        history
       }
     });
   } catch (error) {

@@ -14,7 +14,7 @@ export default function SerahTerima() {
 
   // History tab states
   const [transactions, setTransactions] = useState([]);
-  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(!!sessionStorage.getItem('valet_hospital_id'));
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [startDate, setStartDate] = useState('');
@@ -61,6 +61,10 @@ export default function SerahTerima() {
 
   const employeeSelectRef = useRef(null);
   const editEmployeeSelectRef = useRef(null);
+
+  // Refs to track previous filter and search query values to prevent duplicate mount runs
+  const prevFiltersRef = useRef({ startDate, endDate, filterStatus });
+  const prevSearchQueryRef = useRef(searchQuery);
 
   // Click outside listener for searchable dropdowns
   useEffect(() => {
@@ -151,7 +155,7 @@ export default function SerahTerima() {
     return parts.filter(Boolean).join(' ');
   };
 
-  // Fetch initial data
+  // Fetch initial data — runs once when hospitalId is available
   useEffect(() => {
     fetchEmployees();
     if (hospitalId) {
@@ -161,20 +165,39 @@ export default function SerahTerima() {
     }
   }, [hospitalId]);
 
-  // Auto-fetch on filter changes (date & status trigger immediately)
+  // Auto-fetch on filter changes — skip initial mount by checking for actual changes
   useEffect(() => {
     if (!hospitalId) return;
-    fetchHistory();
-  }, [startDate, endDate, filterStatus]);
 
-  // Auto-fetch on search query with debounce (400ms)
+    const prev = prevFiltersRef.current;
+    const hasChanged = prev.startDate !== startDate ||
+      prev.endDate !== endDate ||
+      prev.filterStatus !== filterStatus;
+
+    prevFiltersRef.current = { startDate, endDate, filterStatus };
+
+    if (hasChanged) {
+      fetchHistory();
+    }
+  }, [startDate, endDate, filterStatus, hospitalId]);
+
+  // Auto-fetch on search query with debounce — skip initial mount by checking for actual changes
   useEffect(() => {
     if (!hospitalId) return;
-    const timer = setTimeout(() => {
-      fetchHistory();
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
+
+    const prev = prevSearchQueryRef.current;
+    const hasChanged = prev !== searchQuery;
+
+    prevSearchQueryRef.current = searchQuery;
+
+    if (hasChanged) {
+      const timer = setTimeout(() => {
+        fetchHistory();
+      }, 400);
+      return () => clearTimeout(timer);
+    }
+  }, [searchQuery, hospitalId]);
+
 
   const fetchHospitalInfo = async () => {
     try {
@@ -393,15 +416,15 @@ export default function SerahTerima() {
   const filteredLinensList = linenSearch.trim() === ''
     ? linensList
     : linensList.filter(item =>
-        getLinenDisplayName(item).toLowerCase().includes(linenSearch.toLowerCase())
-      );
+      getLinenDisplayName(item).toLowerCase().includes(linenSearch.toLowerCase())
+    );
 
   const filteredEditDetails = editingTransaction
     ? (editLinenSearch.trim() === ''
-        ? editingTransaction.details
-        : editingTransaction.details.filter(item =>
-            getLinenDisplayName(item).toLowerCase().includes(editLinenSearch.toLowerCase())
-          ))
+      ? editingTransaction.details
+      : editingTransaction.details.filter(item =>
+        getLinenDisplayName(item).toLowerCase().includes(editLinenSearch.toLowerCase())
+      ))
     : [];
 
   return (
@@ -428,8 +451,8 @@ export default function SerahTerima() {
             <button
               onClick={() => { setActiveTab('history'); setEditingTransaction(null); }}
               className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${activeTab === 'history' && !editingTransaction
-                  ? 'bg-gradient-to-r from-[#126776] to-[#1ea59e] text-white shadow-md shadow-[#126776]/10'
-                  : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/55'
+                ? 'bg-gradient-to-r from-[#126776] to-[#1ea59e] text-white shadow-md shadow-[#126776]/10'
+                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/55'
                 }`}
             >
               <Clock className="h-4 w-4" />
@@ -438,8 +461,8 @@ export default function SerahTerima() {
             <button
               onClick={() => { setActiveTab('form'); setEditingTransaction(null); }}
               className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${activeTab === 'form' && !editingTransaction
-                  ? 'bg-gradient-to-r from-[#126776] to-[#1ea59e] text-white shadow-md shadow-[#126776]/10'
-                  : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/55'
+                ? 'bg-gradient-to-r from-[#126776] to-[#1ea59e] text-white shadow-md shadow-[#126776]/10'
+                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/55'
                 }`}
             >
               <PlusCircle className="h-4 w-4" />
@@ -524,13 +547,9 @@ export default function SerahTerima() {
 
             {/* List View */}
             {loadingHistory ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-                {[...Array(6)].map((_, i) => (
-                  <div key={i} className="bg-white p-5 rounded-2xl border border-slate-150 h-44 animate-pulse space-y-4">
-                    <div className="h-4 bg-slate-100 rounded w-1/2" />
-                    <div className="h-10 bg-slate-50 rounded" />
-                    <div className="h-4 bg-slate-100 rounded w-2/3" />
-                  </div>
+              <div className="space-y-2">
+                {[...Array(5)].map((_, i) => (
+                  <div key={i} className="bg-white h-16 rounded-2xl border border-slate-150 animate-pulse" />
                 ))}
               </div>
             ) : transactions.length === 0 ? (
@@ -544,79 +563,97 @@ export default function SerahTerima() {
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-                {transactions.map((tx) => (
-                  <div
-                    key={tx.id}
-                    onClick={() => handleOpenEdit(tx)}
-                    className="bg-white rounded-2xl border border-slate-150 hover:border-[#1ea59e]/30 shadow-sm hover:shadow-md hover:scale-[1.01] p-5 space-y-4 cursor-pointer transition-all duration-200 relative overflow-hidden group"
-                  >
-                    {/* Status colored accent left border */}
-                    <div className={`absolute top-0 left-0 bottom-0 w-1.5 ${tx.status === 'SELESAI' ? 'bg-[#1ea59e]' : 'bg-[#126776]'
-                      }`} />
+              <div className="bg-white rounded-2xl border border-slate-150 shadow-sm overflow-hidden divide-y divide-slate-100">
+                {transactions.map((tx) => {
+                  const kotor = parseInt(tx.total_qty_kotor || 0);
+                  const bersih = parseInt(tx.total_qty_bersih || 0);
+                  const kurang = tx.status === 'SELESAI' ? Math.max(0, kotor - bersih) : 0;
+                  const isKurang = tx.status === 'SELESAI' && kurang > 0;
 
-                    {/* Card Header info */}
-                    <div className="flex justify-between items-start pl-1.5">
-                      <div>
-                        <p className="text-xs text-slate-400 font-semibold tracking-wider uppercase leading-none">{tx.form_number}</p>
-                        <h4 className="text-sm font-semibold text-slate-800 mt-1.5 flex items-center gap-1.5">
-                          <User className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                          {toTitleCase(tx.recorder_name)}
-                        </h4>
-                      </div>
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-semibold uppercase tracking-wider border ${tx.status === 'SELESAI'
-                          ? 'bg-teal-50 text-[#126776] border-teal-200'
-                          : 'bg-[#1ea59e]/10 text-[#126776] border-[#1ea59e]/30'
-                        }`}>
-                        {tx.status === 'SELESAI' ? 'Selesai' : 'Dalam Proses'}
-                      </span>
-                    </div>
+                  return (
+                    <div
+                      key={tx.id}
+                      onClick={() => handleOpenEdit(tx)}
+                      className="flex items-center gap-4 px-5 py-3.5 hover:bg-slate-50/70 cursor-pointer transition-all duration-150 group relative"
+                    >
+                      {/* Left accent bar */}
+                      <div className={`absolute left-0 top-0 bottom-0 w-1 rounded-r-full ${tx.status === 'PROSES' ? 'bg-[#126776]'
+                          : isKurang ? 'bg-amber-400'
+                            : 'bg-[#1ea59e]'
+                        }`} />
 
-                    {/* Quantity summary row */}
-                    <div className="grid grid-cols-2 gap-2 bg-slate-50 p-3 rounded-xl border border-slate-100 pl-4">
-                      <div className="flex flex-col">
-                        <span className="text-xs text-slate-400 font-semibold uppercase tracking-wide">Linen Kotor</span>
-                        <span className="text-base font-bold text-slate-800 mt-0.5">{formatNumber(tx.total_qty_kotor)} Pcs</span>
-                      </div>
-                      <div className="flex flex-col border-l border-slate-200 pl-4">
-                        <span className="text-xs text-slate-400 font-semibold uppercase tracking-wide">Linen Bersih</span>
-                        <span className={`text-base font-bold mt-0.5 ${tx.status === 'SELESAI' ? 'text-teal-700' : 'text-slate-350'
+                      {/* Status badge */}
+                      <div className="shrink-0 pl-2">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border whitespace-nowrap ${tx.status === 'PROSES'
+                            ? 'bg-[#1ea59e]/10 text-[#126776] border-[#1ea59e]/30'
+                            : isKurang
+                              ? 'bg-amber-50 text-amber-700 border-amber-200'
+                              : 'bg-teal-50 text-teal-700 border-teal-200'
                           }`}>
-                          {tx.status === 'SELESAI' ? `${formatNumber(tx.total_qty_bersih)} Pcs` : '—'}
+                          {tx.status === 'PROSES' ? 'Dalam Proses' : isKurang ? 'Selesai – Kurang' : 'Selesai'}
                         </span>
                       </div>
-                    </div>
 
-                    {/* Date logs */}
-                    <div className="space-y-1.5 text-xs text-slate-500 pl-1.5">
-                      <div className="flex items-center gap-2">
-                        <Clock className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                        <span className="font-medium">Kotor: <span className="font-semibold text-slate-700">{formatDate(tx.pickup_date)}</span></span>
-                      </div>
-                      {tx.delivery_date && (
-                        <div className="flex items-center gap-2">
-                          <CheckCircle2 className="h-3.5 w-3.5 text-[#1ea59e] shrink-0" />
-                          <span className="font-medium">Bersih: <span className="font-semibold text-slate-700">{formatDate(tx.delivery_date)}</span></span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Transaction card action footer */}
-                    {tx.status === 'PROSES' ? (
-                      <div className="pt-3 pl-1.5 border-t border-dashed border-slate-100 flex items-center justify-between text-[#126776] text-xs font-semibold group-hover:text-[#1ea59e] transition-colors">
-                        <span>Update Pengiriman Bersih</span>
-                        <ChevronRight className="h-4 w-4 transform group-hover:translate-x-1 transition-transform" />
-                      </div>
-                    ) : (
-                      tx.notes && (
-                        <p className="text-xs text-slate-400 italic line-clamp-1 border-t border-slate-100 pt-2.5 pl-1.5">
-                          Catatan: {tx.notes}
+                      {/* Form number + recorder */}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[10px] text-slate-400 font-semibold tracking-wider uppercase leading-none truncate">{tx.form_number}</p>
+                        <p className="text-sm font-semibold text-slate-800 mt-0.5 flex items-center gap-1 truncate">
+                          <User className="h-3 w-3 text-slate-400 shrink-0" />
+                          {toTitleCase(tx.recorder_name)}
                         </p>
-                      )
-                    )}
+                      </div>
 
-                  </div>
-                ))}
+                      {/* Stat chips */}
+                      <div className="hidden sm:flex items-center gap-1.5 shrink-0">
+                        <div className="flex flex-col items-center bg-slate-50 border border-slate-100 rounded-xl px-3 py-1.5 min-w-[64px]">
+                          <span className="text-[9px] font-bold uppercase text-slate-400 tracking-wider">Linen Kotor</span>
+                          <span className="text-sm font-bold text-slate-700 leading-tight">{formatNumber(kotor)}</span>
+                        </div>
+                        <div className={`flex flex-col items-center border rounded-xl px-3 py-1.5 min-w-[64px] ${tx.status === 'SELESAI' ? 'bg-teal-50 border-teal-100' : 'bg-slate-50 border-slate-100'
+                          }`}>
+                          <span className="text-[9px] font-bold uppercase text-slate-400 tracking-wider">Linen Bersih</span>
+                          <span className={`text-sm font-bold leading-tight ${tx.status === 'SELESAI' ? 'text-teal-700' : 'text-slate-300'
+                            }`}>
+                            {tx.status === 'SELESAI' ? formatNumber(bersih) : '—'}
+                          </span>
+                        </div>
+                        {isKurang && (
+                          <div className="flex flex-col items-center bg-red-50 border border-red-100 rounded-xl px-3 py-1.5 min-w-[64px]">
+                            <span className="text-[9px] font-bold uppercase text-red-500 tracking-wider">Linen Kurang Kirim</span>
+                            <span className="text-sm font-bold text-red-600 leading-tight">{formatNumber(kurang)}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Dates + action */}
+                      <div className="hidden md:flex flex-col items-end gap-0.5 shrink-0 text-right">
+                        <div className="flex items-center gap-1 text-[10px] text-slate-400">
+                          <Clock className="h-3 w-3" />
+                          <span className="font-medium">{formatDate(tx.pickup_date)}</span>
+                        </div>
+                        {tx.delivery_date && (
+                          <div className="flex items-center gap-1 text-[10px] text-[#1ea59e]">
+                            <CheckCircle2 className="h-3 w-3" />
+                            <span className="font-medium">{formatDate(tx.delivery_date)}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Arrow / action */}
+                      <div className="shrink-0">
+                        {tx.status === 'PROSES' ? (
+                          <div className="flex items-center gap-1 text-[#126776] text-[10px] font-bold group-hover:text-[#1ea59e] transition-colors">
+                            <span className="hidden lg:inline">Update</span>
+                            <ChevronRight className="h-4 w-4 transform group-hover:translate-x-0.5 transition-transform" />
+                          </div>
+                        ) : (
+                          <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-slate-500 transition-colors" />
+                        )}
+                      </div>
+
+                    </div>
+                  );
+                })}
               </div>
             )}
 
@@ -801,8 +838,8 @@ export default function SerahTerima() {
                             <tr
                               key={item.id}
                               className={`transition-all duration-150 ${isFilled
-                                  ? 'bg-[#1ea59e]/5 border-l-4 border-l-[#1ea59e]'
-                                  : 'hover:bg-slate-50/40'
+                                ? 'bg-[#1ea59e]/5 border-l-4 border-l-[#1ea59e]'
+                                : 'hover:bg-slate-50/40'
                                 }`}
                             >
                               <td className="py-3 px-4 text-center font-medium text-slate-400 text-xs">{index + 1}</td>
@@ -925,8 +962,8 @@ export default function SerahTerima() {
                 <div className="space-y-1">
                   <span className="text-slate-400 font-semibold uppercase text-xs tracking-wider block">Status Transaksi</span>
                   <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-extrabold uppercase border ${editingTransaction.transaction.status === 'SELESAI'
-                      ? 'bg-teal-50 text-teal-700 border-teal-200'
-                      : 'bg-[#1ea59e]/10 text-[#126776] border border-[#1ea59e]/30'
+                    ? 'bg-teal-50 text-teal-700 border-teal-200'
+                    : 'bg-[#1ea59e]/10 text-[#126776] border border-[#1ea59e]/30'
                     }`}>
                     {editingTransaction.transaction.status === 'SELESAI' ? 'Selesai' : 'Pengambilan Kotor'}
                   </span>
@@ -1103,8 +1140,8 @@ export default function SerahTerima() {
                           <tr
                             key={item.id}
                             className={`transition-colors duration-150 ${isDiff && !isClosed
-                                ? 'bg-amber-500/[0.03] border-l-4 border-l-amber-400'
-                                : 'hover:bg-slate-50/40'
+                              ? 'bg-amber-500/[0.03] border-l-4 border-l-amber-400'
+                              : 'hover:bg-slate-50/40'
                               }`}
                           >
                             <td className="py-3 px-4 text-center font-medium text-slate-400 text-xs">{index + 1}</td>
@@ -1142,7 +1179,7 @@ export default function SerahTerima() {
                             <td className="py-3 px-4">
                               {isClosed ? (
                                 <div className="flex items-center gap-1.5">
-                                  {isDiff && <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0" />}
+                                  {isDiff && <AlertTriangle className="h-3.5 w-3.5 text-red-500 shrink-0" />}
                                   <span className="font-medium text-slate-650 text-xs">
                                     {item.notes || '—'}
                                   </span>

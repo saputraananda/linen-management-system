@@ -12,7 +12,10 @@ export const mainPool = mysql.createPool({
   database: process.env.DB_NAME,
   waitForConnections: true,
   connectionLimit: 10,
-  queueLimit: 0
+  queueLimit: 0,
+  enableKeepAlive: true,
+  keepAliveInitialDelay: 30000, // 30 detik
+  connectTimeout: 10000         // 10 detik timeout koneksi
 });
 
 export const ikmPool = mysql.createPool({
@@ -23,7 +26,10 @@ export const ikmPool = mysql.createPool({
   database: process.env.DB_NAME_IKM,
   waitForConnections: true,
   connectionLimit: 10,
-  queueLimit: 0
+  queueLimit: 0,
+  enableKeepAlive: true,
+  keepAliveInitialDelay: 30000, // 30 detik
+  connectTimeout: 10000         // 10 detik timeout koneksi
 });
 
 export default {

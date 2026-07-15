@@ -12,6 +12,30 @@ export default function ValetDashboard() {
   const navigate = useNavigate();
   const [confirmLogout, setConfirmLogout] = useState(false);
 
+  // Helper to format/build full default linen name (name + size + color + material)
+  const getLinenDisplayName = (item) => {
+    if (!item) return '';
+    if (item.hospital_linen_name && item.hospital_linen_name.trim() !== '') {
+      return item.hospital_linen_name;
+    }
+    const parts = [item.linen_name || ''];
+    if (item.size_name) parts.push(item.size_name);
+    if (item.color_name) parts.push(item.color_name);
+    if (item.material_name) parts.push(item.material_name);
+    return parts.filter(Boolean).join(' ');
+  };
+
+  // Helper to format date in a readable format
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '-';
+    return new Date(dateStr).toLocaleDateString('id-ID', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric'
+    });
+  };
+
+
   // Hospital Verification States (Using sessionStorage for persistence)
   const [hospitals, setHospitals] = useState([]);
   const [selectedHospitalId, setSelectedHospitalId] = useState(
@@ -36,6 +60,7 @@ export default function ValetDashboard() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRoomFilter, setSelectedRoomFilter] = useState('all');
   const [ownershipFilter, setOwnershipFilter] = useState('all');
+  const [showOnlyShortage, setShowOnlyShortage] = useState(false);
   const [selectedLinenDetail, setSelectedLinenDetail] = useState(null);
 
   // User session details
@@ -156,17 +181,19 @@ export default function ValetDashboard() {
 
   // Filter logic for Inventory
   const filteredLinens = dashboardData?.linens?.filter(item => {
+    const displayName = getLinenDisplayName(item);
     const matchesSearch =
-      item.linen_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (item.linen_code && item.linen_code.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (item.hospital_linen_name && item.hospital_linen_name.toLowerCase().includes(searchTerm.toLowerCase()));
+      displayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (item.linen_code && item.linen_code.toLowerCase().includes(searchTerm.toLowerCase()));
 
     const matchesOwnership =
       ownershipFilter === 'all' ||
       (ownershipFilter === 'MILIK_RS' && item.ownership_type === 'MILIK_RS') ||
       (ownershipFilter === 'SEWA' && item.ownership_type === 'SEWA');
 
-    return matchesSearch && matchesOwnership;
+    const matchesShortage = !showOnlyShortage || parseInt(item.total_kurang || 0) > 0;
+
+    return matchesSearch && matchesOwnership && matchesShortage;
   }) || [];
 
   // Filter logic for Rooms stock
@@ -385,8 +412,8 @@ export default function ValetDashboard() {
 
                 {/* Card 1: TOTAL JENIS LINEN */}
                 <div
-                  onClick={() => setOwnershipFilter('all')}
-                  className={`cursor-pointer transition-all duration-300 relative overflow-hidden p-2.5 sm:p-3 rounded-xl bg-gradient-to-br from-slate-800 to-slate-950 text-white ${ownershipFilter === 'all'
+                  onClick={() => { setOwnershipFilter('all'); setShowOnlyShortage(false); }}
+                  className={`cursor-pointer transition-all duration-300 relative overflow-hidden p-2.5 sm:p-3 rounded-xl bg-gradient-to-br from-slate-800 to-slate-950 text-white ${ownershipFilter === 'all' && !showOnlyShortage
                       ? 'ring-4 ring-offset-2 ring-slate-800 scale-[1.03] shadow-lg border-2 border-slate-700'
                       : 'opacity-85 hover:opacity-100 border border-slate-700/30 hover:scale-[1.01]'
                     }`}
@@ -409,8 +436,8 @@ export default function ValetDashboard() {
 
                 {/* Card 2: MILIK RS */}
                 <div
-                  onClick={() => setOwnershipFilter('MILIK_RS')}
-                  className={`cursor-pointer transition-all duration-300 relative overflow-hidden p-2.5 sm:p-3 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white ${ownershipFilter === 'MILIK_RS'
+                  onClick={() => { setOwnershipFilter('MILIK_RS'); setShowOnlyShortage(false); }}
+                  className={`cursor-pointer transition-all duration-300 relative overflow-hidden p-2.5 sm:p-3 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white ${ownershipFilter === 'MILIK_RS' && !showOnlyShortage
                       ? 'ring-4 ring-offset-2 ring-blue-600 scale-[1.03] shadow-lg border-2 border-blue-400'
                       : 'opacity-85 hover:opacity-100 border border-blue-500/30 hover:scale-[1.01]'
                     }`}
@@ -433,8 +460,8 @@ export default function ValetDashboard() {
 
                 {/* Card 3: SEWA */}
                 <div
-                  onClick={() => setOwnershipFilter('SEWA')}
-                  className={`cursor-pointer transition-all duration-300 relative overflow-hidden p-2.5 sm:p-3 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 text-white ${ownershipFilter === 'SEWA'
+                  onClick={() => { setOwnershipFilter('SEWA'); setShowOnlyShortage(false); }}
+                  className={`cursor-pointer transition-all duration-300 relative overflow-hidden p-2.5 sm:p-3 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 text-white ${ownershipFilter === 'SEWA' && !showOnlyShortage
                       ? 'ring-4 ring-offset-2 ring-amber-500 scale-[1.03] shadow-lg border-2 border-amber-400'
                       : 'opacity-85 hover:opacity-100 border border-amber-500/30 hover:scale-[1.01]'
                     }`}
@@ -455,10 +482,10 @@ export default function ValetDashboard() {
                   <p className="text-xs text-white/60 mt-0.5 font-medium">{pctSewa}% dari total stok</p>
                 </div>
 
-                {/* Card 4: TOTAL STOK */}
+                {/* Card 4: Total Linen Kurang Kirim */}
                 <div
-                  onClick={() => setOwnershipFilter('all')}
-                  className={`cursor-pointer transition-all duration-300 relative overflow-hidden p-2.5 sm:p-3 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white ${ownershipFilter === 'all'
+                  onClick={() => { setOwnershipFilter('all'); setShowOnlyShortage(true); }}
+                  className={`cursor-pointer transition-all duration-300 relative overflow-hidden p-2.5 sm:p-3 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white ${showOnlyShortage
                       ? 'ring-4 ring-offset-2 ring-emerald-500 scale-[1.03] shadow-lg border-2 border-emerald-400'
                       : 'opacity-85 hover:opacity-100 border border-emerald-500/30 hover:scale-[1.01]'
                     }`}
@@ -470,13 +497,13 @@ export default function ValetDashboard() {
                     <div className="p-1 bg-white/10 text-white border border-white/20 rounded-lg">
                       <Layers className="h-3 w-3" />
                     </div>
-                    <span className="text-xs font-semibold tracking-widest text-white/90 uppercase">TOTAL STOK</span>
+                    <span className="text-xs font-semibold tracking-widest text-white/90 uppercase">Total Linen Kurang Kirim</span>
                   </div>
 
                   <h3 className="text-base sm:text-lg md:text-xl font-bold text-white mt-0.5 tracking-tight">
-                    {loadingData ? '...' : formatNumber(totalOverallStock)}
+                    {loadingData ? '...' : formatNumber(dashboardData?.stats?.totalKurangKirim)}
                   </h3>
-                  <p className="text-xs text-white/60 mt-0.5 font-medium">akumulasi semua linen</p>
+                  <p className="text-xs text-white/60 mt-0.5 font-medium">total akumulasi kurang kirim</p>
                 </div>
               </div>
 
@@ -559,52 +586,45 @@ export default function ValetDashboard() {
                       <thead>
                         <tr className="bg-slate-50/50 text-slate-400 font-semibold uppercase tracking-wider text-xs md:text-sm border-b border-slate-100">
                           <th className="py-4 px-6 text-center">No</th>
-                          <th className="py-4 px-6 text-center">Nama Linen</th>
-                          <th className="py-4 px-6 text-center">Nama Di RS</th>
+                          <th className="py-4 px-6">Nama Linen</th>
                           <th className="py-4 px-6 text-center">Kepemilikan</th>
                           <th className="py-4 px-6 text-center">Satuan</th>
-                          <th className="py-4 px-6 text-center">Stock Di Ikm</th>
-                          <th className="py-4 px-6 text-center">Stock Di RS</th>
-                          <th className="py-4 px-6 text-center">Total</th>
+                          <th className="py-4 px-6 text-center">Total Linen Kurang</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
                         {loadingData ? (
                           <tr>
-                            <td colSpan="8" className="py-12 text-center text-slate-400 text-sm font-semibold">
+                            <td colSpan="5" className="py-12 text-center text-slate-400 text-sm font-semibold">
                               <RefreshCw className="h-6 w-6 animate-spin mx-auto text-teal-500 mb-2" />
                               Memuat data inventaris...
                             </td>
                           </tr>
                         ) : filteredLinens.length === 0 ? (
                           <tr>
-                            <td colSpan="8" className="py-12 text-center text-slate-400 text-sm font-semibold">
+                            <td colSpan="5" className="py-12 text-center text-slate-400 text-sm font-semibold">
                               Tidak ada data linen yang cocok dengan pencarian Anda.
                             </td>
                           </tr>
                         ) : (
                           filteredLinens.map((item, index) => {
-                            const totalStock = parseInt(item.stock_in_ikm || 0) + parseInt(item.stock_in_rs || 0);
-                            const minStock = parseInt(item.min_stock || 0);
-                            const isLowStock = totalStock < minStock;
+                            const totalKurang = parseInt(item.total_kurang || 0);
+                            const hasShortage = totalKurang > 0;
 
                             return (
                               <tr
                                 key={item.id}
                                 onClick={() => setSelectedLinenDetail(item)}
                                 className="hover:bg-slate-50/60 transition-colors cursor-pointer"
-                                title="Klik untuk melihat rincian ruangan"
+                                title="Klik untuk melihat rincian kurang kirim"
                               >
-                                <td className="py-4 px-6 font-medium text-slate-400 text-sm md:text-base">
+                                <td className="py-4 px-6 font-medium text-slate-400 text-sm md:text-base text-center">
                                   {index + 1}
                                 </td>
                                 <td className="py-4 px-6 font-semibold text-slate-800 text-sm md:text-base">
-                                  {item.linen_name}
+                                  {getLinenDisplayName(item)}
                                 </td>
-                                <td className="py-4 px-6 font-medium text-slate-600 text-sm md:text-base">
-                                  {item.hospital_linen_name || '-'}
-                                </td>
-                                <td className="py-4 px-6">
+                                <td className="py-4 px-6 text-center">
                                   <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${item.ownership_type === 'SEWA'
                                     ? 'bg-sky-50 text-sky-700 border border-sky-100'
                                     : 'bg-indigo-50 text-indigo-700 border border-indigo-100'
@@ -615,19 +635,13 @@ export default function ValetDashboard() {
                                 <td className="py-4 px-6 text-center text-slate-500 text-sm md:text-base font-medium">
                                   {item.unit || 'Pcs'}
                                 </td>
-                                <td className="py-4 px-6 text-center font-semibold text-slate-700 text-sm md:text-base">
-                                  {formatNumber(item.stock_in_ikm)}
-                                </td>
-                                <td className="py-4 px-6 text-center font-semibold text-slate-700 text-sm md:text-base">
-                                  {formatNumber(item.stock_in_rs)}
-                                </td>
                                 <td className="py-4 px-6 text-center">
-                                  <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm md:text-base font-semibold ${isLowStock
+                                  <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm md:text-base font-bold ${hasShortage
                                     ? 'bg-rose-50 text-rose-700 border border-rose-100'
-                                    : 'bg-teal-50 text-teal-700 border border-teal-100'
+                                    : 'bg-slate-50 text-slate-400 border border-slate-100'
                                     }`}>
-                                    {formatNumber(totalStock)}
-                                    {isLowStock && <AlertTriangle className="h-4 w-4 text-rose-500" />}
+                                    {formatNumber(totalKurang)} Pcs
+                                    {hasShortage && <AlertTriangle className="h-4 w-4 text-rose-500" />}
                                   </span>
                                 </td>
                               </tr>
@@ -695,20 +709,20 @@ export default function ValetDashboard() {
       {/* Details Modal */}
       {selectedLinenDetail && (
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full shadow-2xl overflow-hidden border border-slate-100 flex flex-col max-h-[85vh] animate-[fadeIn_0.2s_ease-out]">
+          <div className="bg-white rounded-3xl max-w-2xl w-full shadow-2xl overflow-hidden border border-slate-100 flex flex-col max-h-[85vh] animate-[fadeIn_0.2s_ease-out]">
 
             {/* Modal Header */}
             <div className="p-6 bg-gradient-to-br from-[#126776] to-[#1ea59e] text-white flex justify-between items-start relative">
               <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-2xl -translate-y-6 translate-x-6 pointer-events-none" />
               <div>
                 <span className="text-xs font-semibold tracking-widest uppercase bg-white/15 px-3 py-1 rounded-full border border-white/10">
-                  Rincian Stok Linen
+                  Rincian Kurang Kirim Linen
                 </span>
                 <h3 className="text-xl font-bold mt-3 tracking-tight">
-                  {selectedLinenDetail.linen_name}
+                  {getLinenDisplayName(selectedLinenDetail)}
                 </h3>
                 <p className="text-sm text-white/80 font-semibold mt-1">
-                  Nama di RS: {selectedLinenDetail.hospital_linen_name || '-'}
+                  Kepemilikan: {selectedLinenDetail.ownership_type === 'SEWA' ? 'Sewa' : 'Milik RS'} ({selectedLinenDetail.unit || 'Pcs'})
                 </p>
               </div>
               <button
@@ -724,60 +738,57 @@ export default function ValetDashboard() {
             {/* Modal Body */}
             <div className="p-6 overflow-y-auto space-y-6">
 
-              {/* Quantities summary cards */}
-              <div className="grid grid-cols-3 gap-4">
-                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex flex-col items-center justify-center text-center">
-                  <Warehouse className="h-6 w-6 text-sky-600 mb-1" />
-                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Stok di IKM</span>
-                  <span className="text-lg font-bold text-slate-800 mt-1">
-                    {selectedLinenDetail.stock_in_ikm} {selectedLinenDetail.unit}
-                  </span>
-                </div>
-
-                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex flex-col items-center justify-center text-center">
-                  <Building className="h-6 w-6 text-indigo-600 mb-1" />
-                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Stok di RS</span>
-                  <span className="text-lg font-bold text-slate-800 mt-1">
-                    {selectedLinenDetail.stock_in_rs} {selectedLinenDetail.unit}
-                  </span>
-                </div>
-
-                <div className="bg-[#1ea59e]/5 p-4 rounded-2xl border border-[#1ea59e]/20 flex flex-col items-center justify-center text-center">
-                  <Shirt className="h-6 w-6 text-[#1ea59e] mb-1" />
-                  <span className="text-xs font-semibold text-[#126776] uppercase tracking-wider">Total</span>
-                  <span className="text-lg font-bold text-[#126776] mt-1">
-                    {parseInt(selectedLinenDetail.stock_in_ikm || 0) + parseInt(selectedLinenDetail.stock_in_rs || 0)} {selectedLinenDetail.unit}
-                  </span>
-                </div>
+              {/* Summary card */}
+              <div className="bg-rose-500/[0.04] p-5 rounded-2xl border border-rose-100 flex flex-col items-center justify-center text-center">
+                <AlertTriangle className="h-7 w-7 text-rose-500 mb-1" />
+                <span className="text-xs font-bold text-rose-700 uppercase tracking-wider">Total Kurang Kirim Saat Ini</span>
+                <span className="text-2xl font-extrabold text-rose-700 mt-1">
+                  {formatNumber(selectedLinenDetail.total_kurang)} {selectedLinenDetail.unit || 'Pcs'}
+                </span>
               </div>
 
-              {/* Rooms Stock Distribution list */}
+              {/* History of kurang kirim list */}
               <div className="space-y-3">
                 <h4 className="text-sm font-semibold text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
                   <Layers className="h-4 w-4 text-slate-400" />
-                  Distribusi per Ruangan RS
+                  Riwayat & Catatan Kurang Kirim
                 </h4>
 
-                {dashboardData?.roomLinens?.filter(rl => rl.hospital_linen_id === selectedLinenDetail.id).length > 0 ? (
+                {dashboardData?.history?.filter(h => h.hospital_linen_id === selectedLinenDetail.id).length > 0 ? (
                   <div className="border border-slate-150 rounded-2xl overflow-hidden shadow-sm">
-                    <table className="w-full text-left text-sm border-collapse">
+                    <table className="w-full text-left text-xs border-collapse">
                       <thead>
-                        <tr className="bg-slate-50 text-slate-400 font-semibold uppercase tracking-wider text-xs border-b border-slate-150">
-                          <th className="py-3 px-4 text-center">Nama Ruangan</th>
-                          <th className="py-3 px-4 text-center">Stok di Ruangan</th>
+                        <tr className="bg-slate-50 text-slate-400 font-semibold uppercase tracking-wider text-[10px] border-b border-slate-150">
+                          <th className="py-2.5 px-3 text-center">Tanggal</th>
+                          <th className="py-2.5 px-3">No. Formulir</th>
+                          <th className="py-2.5 px-3 text-center">Kotor</th>
+                          <th className="py-2.5 px-3 text-center">Bersih</th>
+                          <th className="py-2.5 px-3 text-center">Selisih</th>
+                          <th className="py-2.5 px-3">Keterangan</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 text-slate-700">
-                        {dashboardData.roomLinens
-                          .filter(rl => rl.hospital_linen_id === selectedLinenDetail.id)
-                          .map((rl) => (
-                            <tr key={rl.id} className="hover:bg-slate-50/50 transition-colors">
-                              <td className="py-3 px-4 font-semibold text-slate-800 text-sm md:text-base flex items-center gap-2">
-                                <span className="w-1.5 h-1.5 rounded-full bg-[#1ea59e]" />
-                                {rl.room_name}
+                        {dashboardData.history
+                          .filter(h => h.hospital_linen_id === selectedLinenDetail.id)
+                          .map((h, i) => (
+                            <tr key={i} className="hover:bg-slate-50/50 transition-colors">
+                              <td className="py-2.5 px-3 font-medium text-slate-500 text-center whitespace-nowrap">
+                                {formatDate(h.delivery_date || h.pickup_date)}
                               </td>
-                              <td className="py-3 px-4 text-right font-bold text-slate-800 text-sm md:text-base">
-                                {rl.stock_in_rs} Pcs
+                              <td className="py-2.5 px-3 font-semibold text-slate-800">
+                                {h.form_number}
+                              </td>
+                              <td className="py-2.5 px-3 text-center font-medium text-slate-650">
+                                {formatNumber(h.qty_kotor)}
+                              </td>
+                              <td className="py-2.5 px-3 text-center font-medium text-slate-650">
+                                {formatNumber(h.qty_bersih)}
+                              </td>
+                              <td className="py-2.5 px-3 text-center font-bold text-rose-600">
+                                {formatNumber(h.qty_kurang)}
+                              </td>
+                              <td className="py-2.5 px-3 text-slate-500 italic max-w-[150px] truncate" title={h.notes || ''}>
+                                {h.notes || '—'}
                               </td>
                             </tr>
                           ))
@@ -786,8 +797,8 @@ export default function ValetDashboard() {
                     </table>
                   </div>
                 ) : (
-                  <div className="py-12 text-center text-slate-400 bg-slate-50 border border-dashed border-slate-200 rounded-2xl text-sm font-medium">
-                    Belum ada data distribusi ruangan untuk linen ini di RS.
+                  <div className="py-10 text-center text-slate-400 bg-slate-50 border border-dashed border-slate-200 rounded-2xl text-xs font-semibold">
+                    Tidak ada riwayat kekurangan kirim untuk linen ini.
                   </div>
                 )}
               </div>
