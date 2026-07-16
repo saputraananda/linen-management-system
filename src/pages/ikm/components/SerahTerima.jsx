@@ -23,7 +23,8 @@ export default function SerahTerima() {
   // Form tab states (New transaction - Day 1 Kotor)
   const [linensList, setLinensList] = useState([]);
   const [loadingLinens, setLoadingLinens] = useState(false);
-  const [recorderName, setRecorderName] = useState(
+  const [userPickup, setUserPickup] = useState(localStorage.getItem('employeeId') || '');
+  const [userPickupName, setUserPickupName] = useState(
     localStorage.getItem('fullName') || localStorage.getItem('username') || ''
   );
   const [pickupDate, setPickupDate] = useState(
@@ -36,7 +37,8 @@ export default function SerahTerima() {
 
   // Edit/Completion view state (Day 2 Bersih)
   const [editingTransaction, setEditingTransaction] = useState(null); // transaction detail object
-  const [editRecorderName, setEditRecorderName] = useState('');
+  const [userDelivery, setUserDelivery] = useState('');
+  const [userDeliveryName, setUserDeliveryName] = useState('');
   const [deliveryDate, setDeliveryDate] = useState(
     new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)
   );
@@ -287,7 +289,7 @@ export default function SerahTerima() {
       const token = localStorage.getItem('token');
       const { data } = await axios.post('/api/ikm/transactions', {
         hospitalId: parseInt(hospitalId),
-        recorderName,
+        userPickup: parseInt(userPickup),
         pickupDate: pickupDate.replace('T', ' ') + ':00',
         notes,
         details: activeDetails
@@ -296,6 +298,8 @@ export default function SerahTerima() {
       });
 
       if (data?.success) {
+        setUserPickup(localStorage.getItem('employeeId') || '');
+        setUserPickupName(localStorage.getItem('fullName') || localStorage.getItem('username') || '');
         setNotes('');
         const resetQtys = {};
         const resetNotes = {};
@@ -327,7 +331,8 @@ export default function SerahTerima() {
       if (data?.success) {
         const fullTx = data.data;
         setEditingTransaction(fullTx);
-        setEditRecorderName(fullTx.transaction.recorder_name);
+        setUserDelivery(fullTx.transaction.user_delivery || '');
+        setUserDeliveryName(fullTx.transaction.user_delivery_name || '');
         setEditNotes(fullTx.transaction.notes || '');
 
         if (fullTx.transaction.delivery_date) {
@@ -373,7 +378,7 @@ export default function SerahTerima() {
       const token = localStorage.getItem('token');
       const { data } = await axios.put(`/api/ikm/transactions/${editingTransaction.transaction.id}`, {
         deliveryDate: deliveryDate.replace('T', ' ') + ':00',
-        recorderName: editRecorderName,
+        userDelivery: parseInt(userDelivery),
         notes: editNotes,
         details: activeDetails
       }, {
@@ -480,8 +485,21 @@ export default function SerahTerima() {
     if (oldTx.notes !== newTx.notes) {
       descriptions.push(`Catatan umum: "${oldTx.notes || '—'}" menjadi "${newTx.notes || '—'}"`);
     }
-    if (oldTx.recorder_name !== newTx.recorder_name) {
-      descriptions.push(`Petugas: "${oldTx.recorder_name || '—'}" menjadi "${newTx.recorder_name || '—'}"`);
+    const getEmployeeName = (id) => {
+      const emp = employees.find(e => e.employee_id === id);
+      return emp ? emp.employee_name : `Karyawan #${id}`;
+    };
+
+    if (oldTx.user_pickup !== newTx.user_pickup) {
+      const oldVal = oldTx.user_pickup ? toTitleCase(getEmployeeName(oldTx.user_pickup)) : '—';
+      const newVal = newTx.user_pickup ? toTitleCase(getEmployeeName(newTx.user_pickup)) : '—';
+      descriptions.push(`Petugas Pickup: "${oldVal}" menjadi "${newVal}"`);
+    }
+
+    if (oldTx.user_delivery !== newTx.user_delivery) {
+      const oldVal = oldTx.user_delivery ? toTitleCase(getEmployeeName(oldTx.user_delivery)) : '—';
+      const newVal = newTx.user_delivery ? toTitleCase(getEmployeeName(newTx.user_delivery)) : '—';
+      descriptions.push(`Petugas Delivery: "${oldVal}" menjadi "${newVal}"`);
     }
 
     const oldDetails = oldSnap.details || [];
@@ -681,9 +699,18 @@ export default function SerahTerima() {
                       {/* Form number + recorder */}
                       <div className="min-w-0 flex-1">
                         <p className="text-[10px] text-slate-400 font-semibold tracking-wider uppercase leading-none truncate">{tx.form_number}</p>
-                        <p className="text-sm font-semibold text-slate-800 mt-0.5 flex items-center gap-1 truncate">
-                          <User className="h-3 w-3 text-slate-400 shrink-0" />
-                          {toTitleCase(tx.recorder_name)}
+                        <p className="text-sm font-semibold text-slate-800 mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 truncate">
+                          <span className="flex items-center gap-1">
+                            <User className="h-3 w-3 text-slate-400 shrink-0" />
+                            <span className="text-[11px] text-slate-400 font-medium">Pickup:</span>
+                            {tx.user_pickup_name}
+                          </span>
+                          {tx.user_delivery && (
+                            <span className="flex items-center gap-1 border-l border-slate-200 pl-2">
+                              <span className="text-[11px] text-[#1ea59e] font-medium">Delivery:</span>
+                              {tx.user_delivery_name}
+                            </span>
+                          )}
                         </p>
                       </div>
 
@@ -788,7 +815,9 @@ export default function SerahTerima() {
                     >
                       <div className="flex items-center gap-2">
                         <User className="absolute inset-y-0 left-3.5 my-auto h-4 w-4 text-slate-400" />
-                        <span>{toTitleCase(recorderName) || 'Pilih Pengisi Petugas IKM...'}</span>
+                        <span>
+                          {toTitleCase(userPickupName) || 'Pilih Pengisi Petugas IKM...'}
+                        </span>
                       </div>
                       <ChevronDown className="h-4 w-4 text-slate-400" />
                     </div>
@@ -824,7 +853,8 @@ export default function SerahTerima() {
                                 key={emp.employee_id}
                                 type="button"
                                 onClick={() => {
-                                  setRecorderName(emp.employee_name);
+                                  setUserPickup(emp.employee_id);
+                                  setUserPickupName(emp.employee_name);
                                   setIsEmployeeDropdownOpen(false);
                                   setSearchEmployeeQuery('');
                                 }}
@@ -1054,7 +1084,9 @@ export default function SerahTerima() {
                 </div>
                 <div className="space-y-1">
                   <span className="text-slate-400 font-semibold uppercase text-xs tracking-wider block">Petugas Pengambil</span>
-                  <span className="font-semibold text-slate-700 block text-sm">{toTitleCase(editingTransaction.transaction.recorder_name)}</span>
+                  <span className="font-semibold text-slate-700 block text-sm">
+                    {toTitleCase(editingTransaction.transaction.user_pickup_name)}
+                  </span>
                 </div>
                 <div className="space-y-1">
                   <span className="text-slate-400 font-semibold uppercase text-xs tracking-wider block">Tanggal Pengambilan</span>
@@ -1080,7 +1112,9 @@ export default function SerahTerima() {
                     {!isEditable ? (
                       <div className="w-full pl-10 pr-4 py-2.5 bg-slate-100 border border-slate-200 text-slate-400 rounded-xl text-xs font-semibold flex items-center gap-2 cursor-not-allowed">
                         <User className="h-4 w-4 text-slate-400" />
-                        <span>{toTitleCase(editRecorderName)}</span>
+                        <span>
+                          {toTitleCase(userDeliveryName)}
+                        </span>
                       </div>
                     ) : (
                       <>
@@ -1090,7 +1124,9 @@ export default function SerahTerima() {
                         >
                           <div className="flex items-center gap-2">
                             <User className="absolute inset-y-0 left-3.5 my-auto h-4 w-4 text-slate-400" />
-                            <span>{toTitleCase(editRecorderName) || 'Pilih Pengirim Petugas IKM...'}</span>
+                            <span>
+                              {toTitleCase(userDeliveryName) || 'Pilih Pengirim Petugas IKM...'}
+                            </span>
                           </div>
                           <ChevronDown className="h-4 w-4 text-slate-400" />
                         </div>
@@ -1126,7 +1162,8 @@ export default function SerahTerima() {
                                     key={emp.employee_id}
                                     type="button"
                                     onClick={() => {
-                                      setEditRecorderName(emp.employee_name);
+                                      setUserDelivery(emp.employee_id);
+                                      setUserDeliveryName(emp.employee_name);
                                       setIsEditEmployeeDropdownOpen(false);
                                       setEditSearchEmployeeQuery('');
                                     }}

@@ -52,6 +52,7 @@ export default function Login() {
         localStorage.setItem('userRole', role);
         localStorage.setItem('username', username);
         if (user) {
+          localStorage.setItem('employeeId', user.id || '');
           localStorage.setItem('fullName', user.fullName || '');
           localStorage.setItem('position', user.position || '');
           localStorage.setItem('department', user.department || '');

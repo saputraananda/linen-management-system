@@ -24,6 +24,16 @@ export const getTransactions = async (req, res) => {
       });
     }
 
+    // Lookup employee IDs if search is provided
+    let matchedEmployeeIds = [];
+    if (search) {
+      const [emps] = await mainPool.query(
+        `SELECT employee_id FROM mst_employee WHERE full_name LIKE ?`,
+        [`%${search}%`]
+      );
+      matchedEmployeeIds = emps.map(e => e.employee_id);
+    }
+
     let query = `
       SELECT t.*, h.hospital_name,
         (SELECT COUNT(*) FROM tr_linen_transaction_detail d WHERE d.transaction_id = t.id) as total_items,
@@ -51,18 +61,30 @@ export const getTransactions = async (req, res) => {
     }
 
     if (search) {
-      query += ` AND (t.form_number LIKE ? OR t.recorder_name LIKE ? OR t.notes LIKE ?)`;
       const searchWildcard = `%${search}%`;
-      params.push(searchWildcard, searchWildcard, searchWildcard);
+      if (matchedEmployeeIds.length > 0) {
+        query += ` AND (t.form_number LIKE ? OR t.notes LIKE ? OR t.user_pickup IN (?) OR t.user_delivery IN (?))`;
+        params.push(searchWildcard, searchWildcard, matchedEmployeeIds, matchedEmployeeIds);
+      } else {
+        query += ` AND (t.form_number LIKE ? OR t.notes LIKE ?)`;
+        params.push(searchWildcard, searchWildcard);
+      }
     }
 
     query += ` ORDER BY t.pickup_date DESC, t.id DESC`;
 
     const [transactions] = await ikmPool.query(query, params);
 
+    // Fetch employee name lookup
+    const [employees] = await mainPool.query(
+      `SELECT employee_id, full_name as employee_name FROM mst_employee`
+    );
+    const empMap = new Map(employees.map(emp => [emp.employee_id, emp.employee_name]));
+
     const formattedTransactions = transactions.map(tx => ({
       ...tx,
-      recorder_name: toTitleCase(tx.recorder_name)
+      user_pickup_name: toTitleCase(empMap.get(tx.user_pickup) || ''),
+      user_delivery_name: tx.user_delivery ? toTitleCase(empMap.get(tx.user_delivery) || '') : null
     }));
 
     return res.status(200).json({
@@ -119,7 +141,17 @@ export const getTransactionDetail = async (req, res) => {
 
     const transaction = transactions[0];
     if (transaction) {
-      transaction.recorder_name = toTitleCase(transaction.recorder_name);
+      // Fetch names
+      const [employees] = await mainPool.query(
+        `SELECT employee_id, full_name as employee_name 
+         FROM mst_employee 
+         WHERE employee_id IN (?, ?)`,
+        [transaction.user_pickup, transaction.user_delivery || 0]
+      );
+      const empMap = new Map(employees.map(emp => [emp.employee_id, emp.employee_name]));
+      
+      transaction.user_pickup_name = toTitleCase(empMap.get(transaction.user_pickup) || '');
+      transaction.user_delivery_name = transaction.user_delivery ? toTitleCase(empMap.get(transaction.user_delivery) || '') : null;
 
       // Calculate is_editable
       let isEditable = false;
@@ -172,9 +204,9 @@ export const createTransaction = async (req, res) => {
   try {
     await connection.beginTransaction();
 
-    const { hospitalId, recorderName, pickupDate, notes, details } = req.body;
+    const { hospitalId, userPickup, pickupDate, notes, details } = req.body;
 
-    if (!hospitalId || !recorderName || !pickupDate || !details || details.length === 0) {
+    if (!hospitalId || !userPickup || !pickupDate || !details || details.length === 0) {
       return res.status(400).json({
         success: false,
         message: "Data form pengisian tidak lengkap"
@@ -203,13 +235,11 @@ export const createTransaction = async (req, res) => {
     const hospitalCode = hospitalRows?.[0]?.hospital_id || hospitalId;
     const formNumber = `${hospitalCode}-${yyyymmdd}-${String(nextSeq).padStart(3, '0')}`;
 
-    const formattedRecorderName = toTitleCase(recorderName);
-
     const [result] = await connection.query(
       `INSERT INTO tr_linen_transaction 
-       (form_number, hospital_id, recorder_name, pickup_date, status, notes)
+       (form_number, hospital_id, user_pickup, pickup_date, status, notes)
        VALUES (?, ?, ?, ?, 'PROSES', ?)`,
-      [formNumber, hospitalId, formattedRecorderName, pickupDate, notes || null]
+      [formNumber, hospitalId, userPickup, pickupDate, notes || null]
     );
 
     const transactionId = result.insertId;
@@ -289,13 +319,13 @@ export const updateTransactionDelivery = async (req, res) => {
     await connection.beginTransaction();
 
     const { id } = req.params;
-    const { deliveryDate, recorderName, notes, details } = req.body;
+    const { deliveryDate, userDelivery, notes, details } = req.body;
 
-    if (!deliveryDate || !details || details.length === 0) {
+    if (!deliveryDate || !userDelivery || !details || details.length === 0) {
       await connection.rollback();
       return res.status(400).json({
         success: false,
-        message: "Tanggal pengiriman dan rincian bersih wajib diisi"
+        message: "Tanggal pengiriman, petugas pengirim, dan rincian bersih wajib diisi"
       });
     }
 
@@ -352,16 +382,15 @@ export const updateTransactionDelivery = async (req, res) => {
     }
 
     // Update Header
-    const formattedRecorderName = recorderName ? toTitleCase(recorderName) : null;
     await connection.query(
       `UPDATE tr_linen_transaction 
        SET delivery_date = ?, 
            completed_at = ?,
-           recorder_name = COALESCE(?, recorder_name), 
+           user_delivery = COALESCE(?, user_delivery), 
            notes = COALESCE(?, notes), 
            status = 'SELESAI'
        WHERE id = ?`,
-      [deliveryDate, completedAt, formattedRecorderName, notes || null, id]
+      [deliveryDate, completedAt, userDelivery || null, notes || null, id]
     );
 
     // Update Details (support updating both qty_kotor and qty_bersih)

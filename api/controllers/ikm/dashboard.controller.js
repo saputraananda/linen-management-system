@@ -131,7 +131,7 @@ export const getDashboardData = async (req, res) => {
     const historyQuery = `
       SELECT td.hospital_linen_id, t.form_number, t.pickup_date, t.delivery_date, 
              td.qty_kotor, td.qty_bersih, (td.qty_kotor - td.qty_bersih) AS qty_kurang,
-             td.notes, t.recorder_name
+             td.notes, t.user_pickup, t.user_delivery
       FROM tr_linen_transaction_detail td
       INNER JOIN tr_linen_transaction t ON td.transaction_id = t.id
       WHERE t.hospital_id = ? 
