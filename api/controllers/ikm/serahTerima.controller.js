@@ -17,31 +17,36 @@ const toTitleCase = (str) => {
 const getSignatureUrl = (filename) => {
   if (!filename) return null;
 
-  // Normalize legacy full-path data:
-  // Old records stored `/storage/serahterimalinen/file.png` which now 422s because
-  // the actual server folder is /storage/assets/ → accessible at /assets/
-  if (filename.startsWith('/storage/serahterimalinen/')) {
-    return filename.replace('/storage/serahterimalinen/', '/assets/serahterimalinen/');
-  }
-
-  // If it's already a correct /assets/ path, return it directly
-  if (filename.startsWith('/assets/')) {
-    return filename;
-  }
-
-  // For plain filenames, build the URL prefix from UPLOAD_DIR
+  // Resolve what the public URL prefix should be based on UPLOAD_DIR
   const uploadBaseDir = process.env.UPLOAD_DIR || 'assets/serahterimalinen';
   const isAbsolute = path.isAbsolute(uploadBaseDir);
 
+  // Derive public URL prefix:
+  // e.g. UPLOAD_DIR=/home/u299848391/domains/linen.ikmalora.com/storage/assets/
+  //   → public URL prefix = /storage/assets/serahterimalinen
+  let urlPrefix;
   if (isAbsolute) {
-    // If UPLOAD_DIR points to .../storage/assets/... → serve via /assets/
-    if (uploadBaseDir.includes('/assets/')) {
-      return `/assets/serahterimalinen/${filename}`;
+    // Extract the path after the domain root (/home/.../public_html or /home/.../domains/xxx.com)
+    // by finding /storage/ or /public/ in the absolute path
+    const storageMatch = uploadBaseDir.match(/\/storage\/.*/);
+    if (storageMatch) {
+      urlPrefix = storageMatch[0].replace(/\/$/, '') + '/serahterimalinen';
+    } else {
+      urlPrefix = '/assets/serahterimalinen';
     }
-    return `/storage/serahterimalinen/${filename}`;
   } else {
-    return `/assets/serahterimalinen/${filename}`;
+    urlPrefix = '/assets/serahterimalinen';
   }
+
+  // If it's already a full URL path, normalize it to current prefix
+  if (filename.startsWith('/storage/') || filename.startsWith('/assets/')) {
+    // Extract just the filename from legacy path, rebuild with correct prefix
+    const baseName = path.basename(filename);
+    return `${urlPrefix}/${baseName}`;
+  }
+
+  // Plain filename — prepend the resolved prefix
+  return `${urlPrefix}/${filename}`;
 };
 
 // Helper function to decode and save Base64 image
