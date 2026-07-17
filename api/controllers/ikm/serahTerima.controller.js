@@ -13,93 +13,63 @@ const toTitleCase = (str) => {
     .join(' ');
 };
 
-// Helper to get the public URL/path of a signature image
+// Helper untuk menghasilkan URL publik signature
+// Selalu menghasilkan: /storage/assets/serahterimalinen/<filename>
 const getSignatureUrl = (filename) => {
   if (!filename) return null;
 
-  // Resolve what the public URL prefix should be based on UPLOAD_DIR
-  const uploadBaseDir = process.env.UPLOAD_DIR || 'assets/serahterimalinen';
-  const isAbsolute = path.isAbsolute(uploadBaseDir);
+  const urlPrefix = '/storage/assets/serahterimalinen';
 
-  // Derive public URL prefix:
-  // e.g. UPLOAD_DIR=/home/u299848391/domains/linen.ikmalora.com/storage/assets/
-  //   → public URL prefix = /storage/assets/serahterimalinen
-  let urlPrefix;
-  if (isAbsolute) {
-    // Extract the path after the domain root (/home/.../public_html or /home/.../domains/xxx.com)
-    // by finding /storage/ or /public/ in the absolute path
-    const storageMatch = uploadBaseDir.match(/\/storage\/.*/);
-    if (storageMatch) {
-      urlPrefix = storageMatch[0].replace(/\/$/, '') + '/serahterimalinen';
-    } else {
-      urlPrefix = '/assets/serahterimalinen';
-    }
-  } else {
-    urlPrefix = '/assets/serahterimalinen';
+  // Jika berupa path (legacy /assets/... atau /storage/...) → ambil filename saja
+  if (filename.startsWith('/')) {
+    return `${urlPrefix}/${path.basename(filename)}`;
   }
 
-  // If it's already a full URL path, normalize it to current prefix
-  if (filename.startsWith('/storage/') || filename.startsWith('/assets/')) {
-    // Extract just the filename from legacy path, rebuild with correct prefix
-    const baseName = path.basename(filename);
-    return `${urlPrefix}/${baseName}`;
-  }
-
-  // Plain filename — prepend the resolved prefix
+  // Plain filename
   return `${urlPrefix}/${filename}`;
 };
 
-// Helper function to decode and save Base64 image
+// Helper untuk menyimpan gambar Base64 ke disk
 const saveBase64Image = (base64Str, prefix, transactionId) => {
   if (!base64Str) return null;
 
-  // If it's already a saved URL/path, extract and return the filename
-  if (base64Str.startsWith('/assets/') || base64Str.startsWith('/storage/')) {
+  // Sudah berupa URL/path → ambil filename saja
+  if (base64Str.startsWith('/') || base64Str.startsWith('http')) {
     return path.basename(base64Str);
   }
 
-  // If it's just the filename already, return it directly
-  if (base64Str.includes('_') && base64Str.endsWith('.png') && !base64Str.includes('/')) {
+  // Sudah berupa plain filename (bukan base64) → kembalikan langsung
+  if (!base64Str.startsWith('data:') && base64Str.includes('_') && !base64Str.includes(' ')) {
     return base64Str;
   }
 
-  // Resolve UPLOAD_DIR
-  const uploadBaseDir = process.env.UPLOAD_DIR || 'assets/serahterimalinen';
-  let targetDir;
-  let isAbsolute = path.isAbsolute(uploadBaseDir);
+  // Tentukan direktori fisik:
+  //   Absolut  (prod) : UPLOAD_BASE_DIR/serahterimalinen
+  //   Relatif  (dev)  : cwd/UPLOAD_BASE_DIR/serahterimalinen
+  const uploadBaseDir = process.env.UPLOAD_BASE_DIR || 'assets';
+  const targetDir = path.isAbsolute(uploadBaseDir)
+    ? path.join(uploadBaseDir.replace(/\/$/, ''), 'serahterimalinen')
+    : path.resolve(process.cwd(), uploadBaseDir, 'serahterimalinen');
 
-  if (isAbsolute) {
-    targetDir = path.join(uploadBaseDir, 'serahterimalinen');
-  } else {
-    // Relative to the workspace root (process.cwd())
-    targetDir = path.resolve(process.cwd(), uploadBaseDir);
-  }
-
-  // Create directory recursively if it doesn't exist
   if (!fs.existsSync(targetDir)) {
     fs.mkdirSync(targetDir, { recursive: true });
   }
 
-  // Parse base64 string
+  // Parse base64
   const matches = base64Str.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
   let imageBuffer;
-  let extension = 'png'; // default
+  let extension = 'png';
 
   if (matches && matches.length === 3) {
-    const type = matches[1];
-    extension = type.split('/')[1] || 'png';
+    extension = matches[1].split('/')[1] || 'png';
     imageBuffer = Buffer.from(matches[2], 'base64');
   } else {
-    // Raw base64 string
     imageBuffer = Buffer.from(base64Str, 'base64');
   }
 
   const filename = `${prefix}_${transactionId}_${Date.now()}.${extension}`;
-  const filepath = path.join(targetDir, filename);
+  fs.writeFileSync(path.join(targetDir, filename), imageBuffer);
 
-  fs.writeFileSync(filepath, imageBuffer);
-
-  // Return only the filename instead of the full path
   return filename;
 };
 

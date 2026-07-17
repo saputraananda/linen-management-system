@@ -27,11 +27,20 @@ app.use(express.urlencoded({ extended: true }));
 // Static Storage
 // ==========================
 
-const STORAGE_PATH =
-  process.env.UPLOAD_DIR ||
-  '/home/u299848391/domains/linen.ikmalora.com/storage';
+// UPLOAD_BASE_DIR = folder dasar untuk upload file
+//   dev  : 'assets'   → file disimpan di cwd/assets/serahterimalinen/
+//   prod : '/home/u299848391/domains/linen.ikmalora.com/storage/assets/'
+//          → file disimpan di .../storage/assets/serahterimalinen/
+//
+// Static serve /storage/* diarahkan ke parent dari UPLOAD_BASE_DIR:
+//   dev  : serve dari cwd  → /storage/assets/... = cwd/assets/... ✅
+//   prod : serve dari .../storage → /storage/assets/... = .../storage/assets/... ✅
+const UPLOAD_BASE_DIR = process.env.UPLOAD_BASE_DIR || 'assets';
+const STORAGE_PATH = path.isAbsolute(UPLOAD_BASE_DIR)
+  ? path.dirname(UPLOAD_BASE_DIR.replace(/\/$/, '')) // ambil parent: .../storage/assets → .../storage
+  : path.resolve(__dirname);                          // cwd project root
 
-// expose seluruh folder storage
+// expose /storage/* ke folder storage
 app.use('/storage', express.static(STORAGE_PATH));
 
 // ==========================
