@@ -1,10 +1,6 @@
 import { ikmPool, mainPool } from '../../db/pool.js';
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 // Helper to format string to Capital Each Word (Title Case)
 const toTitleCase = (str) => {
@@ -17,55 +13,71 @@ const toTitleCase = (str) => {
     .join(' ');
 };
 
-// Resolve physical storage directory for signature images
-// UPLOAD_DIR can be absolute (production) or relative (local dev)
-const UPLOAD_BASE = process.env.UPLOAD_DIR
-  ? path.resolve(process.env.UPLOAD_DIR)
-  : path.resolve(__dirname, '../../../assets');
-
-const SIGNATURE_DIR = path.join(UPLOAD_BASE, 'serahterimalinen');
-
-// Ensure directory exists on startup
-if (!fs.existsSync(SIGNATURE_DIR)) {
-  fs.mkdirSync(SIGNATURE_DIR, { recursive: true });
-}
-
-// Build the API URL for a signature filename
-// Files are always served through /api/ikm/signatures/:filename
+// Helper to get the public URL/path of a signature image
 const getSignatureUrl = (filename) => {
   if (!filename) return null;
-  // Extract plain filename from any legacy full-path value
-  const baseName = path.basename(filename);
-  return `/api/ikm/signatures/${baseName}`;
-};
 
-/**
- * Serve a signature file directly via Express res.sendFile()
- * Route: GET /api/ikm/signatures/:filename
- */
-export const serveSignatureFile = (req, res) => {
-  const safe = path.basename(req.params.filename); // prevent path traversal
-  const filePath = path.join(SIGNATURE_DIR, safe);
+  // Resolve what the public URL prefix should be based on UPLOAD_DIR
+  const uploadBaseDir = process.env.UPLOAD_DIR || 'assets/serahterimalinen';
+  const isAbsolute = path.isAbsolute(uploadBaseDir);
 
-  if (!fs.existsSync(filePath)) {
-    return res.status(404).json({ success: false, message: 'File tidak ditemukan' });
+  // Derive public URL prefix:
+  // e.g. UPLOAD_DIR=/home/u299848391/domains/linen.ikmalora.com/storage/assets/
+  //   → public URL prefix = /storage/assets/serahterimalinen
+  let urlPrefix;
+  if (isAbsolute) {
+    // Extract the path after the domain root (/home/.../public_html or /home/.../domains/xxx.com)
+    // by finding /storage/ or /public/ in the absolute path
+    const storageMatch = uploadBaseDir.match(/\/storage\/.*/);
+    if (storageMatch) {
+      urlPrefix = storageMatch[0].replace(/\/$/, '') + '/serahterimalinen';
+    } else {
+      urlPrefix = '/assets/serahterimalinen';
+    }
+  } else {
+    urlPrefix = '/assets/serahterimalinen';
   }
 
-  return res.sendFile(filePath);
+  // If it's already a full URL path, normalize it to current prefix
+  if (filename.startsWith('/storage/') || filename.startsWith('/assets/')) {
+    // Extract just the filename from legacy path, rebuild with correct prefix
+    const baseName = path.basename(filename);
+    return `${urlPrefix}/${baseName}`;
+  }
+
+  // Plain filename — prepend the resolved prefix
+  return `${urlPrefix}/${filename}`;
 };
 
-// Helper function to decode and save Base64 image — returns only the filename
+// Helper function to decode and save Base64 image
 const saveBase64Image = (base64Str, prefix, transactionId) => {
   if (!base64Str) return null;
 
-  // If it's already a saved URL/path or just a filename, extract filename only
-  if (base64Str.startsWith('/assets/') || base64Str.startsWith('/storage/') || base64Str.startsWith('/api/')) {
+  // If it's already a saved URL/path, extract and return the filename
+  if (base64Str.startsWith('/assets/') || base64Str.startsWith('/storage/')) {
     return path.basename(base64Str);
   }
 
-  // If it's just the filename already (no slashes), return directly
-  if (!base64Str.includes('/') && (base64Str.endsWith('.png') || base64Str.endsWith('.jpg'))) {
+  // If it's just the filename already, return it directly
+  if (base64Str.includes('_') && base64Str.endsWith('.png') && !base64Str.includes('/')) {
     return base64Str;
+  }
+
+  // Resolve UPLOAD_DIR
+  const uploadBaseDir = process.env.UPLOAD_DIR || 'assets/serahterimalinen';
+  let targetDir;
+  let isAbsolute = path.isAbsolute(uploadBaseDir);
+
+  if (isAbsolute) {
+    targetDir = path.join(uploadBaseDir, 'serahterimalinen');
+  } else {
+    // Relative to the workspace root (process.cwd())
+    targetDir = path.resolve(process.cwd(), uploadBaseDir);
+  }
+
+  // Create directory recursively if it doesn't exist
+  if (!fs.existsSync(targetDir)) {
+    fs.mkdirSync(targetDir, { recursive: true });
   }
 
   // Parse base64 string
@@ -81,13 +93,13 @@ const saveBase64Image = (base64Str, prefix, transactionId) => {
     // Raw base64 string
     imageBuffer = Buffer.from(base64Str, 'base64');
   }
-  
+
   const filename = `${prefix}_${transactionId}_${Date.now()}.${extension}`;
-  const filepath = path.join(SIGNATURE_DIR, filename);
+  const filepath = path.join(targetDir, filename);
 
   fs.writeFileSync(filepath, imageBuffer);
 
-  // Return only the filename
+  // Return only the filename instead of the full path
   return filename;
 };
 
@@ -236,7 +248,7 @@ export const getTransactionDetail = async (req, res) => {
         [transaction.user_pickup, transaction.user_delivery || 0]
       );
       const empMap = new Map(employees.map(emp => [emp.employee_id, emp.employee_name]));
-      
+
       transaction.user_pickup_name = toTitleCase(empMap.get(transaction.user_pickup) || '');
       transaction.user_delivery_name = transaction.user_delivery ? toTitleCase(empMap.get(transaction.user_delivery) || '') : null;
       transaction.signature_valet_pickup = getSignatureUrl(transaction.signature_valet_pickup);
@@ -297,13 +309,13 @@ export const createTransaction = async (req, res) => {
   try {
     await connection.beginTransaction();
 
-    const { 
-      hospitalId, 
-      userPickup, 
-      hospitalStaffPickup, 
+    const {
+      hospitalId,
+      userPickup,
+      hospitalStaffPickup,
       hospitalAssistantPickup,
-      pickupDate, 
-      notes, 
+      pickupDate,
+      notes,
       details,
       signatureValetPickup,
       signatureHospitalPickup,
@@ -437,14 +449,14 @@ export const updateTransactionDelivery = async (req, res) => {
     await connection.beginTransaction();
 
     const { id } = req.params;
-    const { 
-      deliveryDate, 
-      userDelivery, 
-      hospitalStaffPickup, 
-      hospitalStaffDelivery, 
+    const {
+      deliveryDate,
+      userDelivery,
+      hospitalStaffPickup,
+      hospitalStaffDelivery,
       hospitalAssistantPickup,
       hospitalAssistantDelivery,
-      notes, 
+      notes,
       details,
       signatureValetPickup,
       signatureHospitalPickup,
@@ -542,11 +554,11 @@ export const updateTransactionDelivery = async (req, res) => {
            status = 'SELESAI'
        WHERE id = ?`,
       [
-        deliveryDate, 
-        completedAt, 
-        userDelivery || null, 
+        deliveryDate,
+        completedAt,
+        userDelivery || null,
         toTitleCase(hospitalStaffPickup) || null,
-        toTitleCase(hospitalStaffDelivery) || null, 
+        toTitleCase(hospitalStaffDelivery) || null,
         hospitalAssistantPickup ? toTitleCase(hospitalAssistantPickup) : null,
         hospitalAssistantDelivery ? toTitleCase(hospitalAssistantDelivery) : null,
         valetPickupPath || null,
@@ -555,7 +567,7 @@ export const updateTransactionDelivery = async (req, res) => {
         valetDeliveryPath || null,
         hospitalDeliveryPath || null,
         assistantDeliveryPath || null,
-        notes || null, 
+        notes || null,
         id
       ]
     );
