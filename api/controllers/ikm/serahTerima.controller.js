@@ -16,15 +16,25 @@ const toTitleCase = (str) => {
 // Helper to get the public URL/path of a signature image
 const getSignatureUrl = (filename) => {
   if (!filename) return null;
-  // If it's already a full path (legacy data), return it directly
-  if (filename.startsWith('/assets/') || filename.startsWith('/storage/')) {
+
+  // Normalize legacy full-path data:
+  // Old records stored `/storage/serahterimalinen/file.png` which now 422s because
+  // the actual server folder is /storage/assets/ → accessible at /assets/
+  if (filename.startsWith('/storage/serahterimalinen/')) {
+    return filename.replace('/storage/serahterimalinen/', '/assets/serahterimalinen/');
+  }
+
+  // If it's already a correct /assets/ path, return it directly
+  if (filename.startsWith('/assets/')) {
     return filename;
   }
-  
+
+  // For plain filenames, build the URL prefix from UPLOAD_DIR
   const uploadBaseDir = process.env.UPLOAD_DIR || 'assets/serahterimalinen';
   const isAbsolute = path.isAbsolute(uploadBaseDir);
-  
+
   if (isAbsolute) {
+    // If UPLOAD_DIR points to .../storage/assets/... → serve via /assets/
     if (uploadBaseDir.includes('/assets/')) {
       return `/assets/serahterimalinen/${filename}`;
     }
