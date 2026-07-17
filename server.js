@@ -27,18 +27,17 @@ app.use(express.urlencoded({ extended: true }));
 // Static Storage
 // ==========================
 
-// UPLOAD_BASE_DIR = folder dasar untuk upload file
-//   dev  : 'assets'   → file disimpan di cwd/assets/serahterimalinen/
+// UPLOAD_BASE_DIR = folder dasar tempat file upload disimpan
+//   dev  : 'assets'  (relative)
 //   prod : '/home/u299848391/domains/linen.ikmalora.com/storage/assets/'
-//          → file disimpan di .../storage/assets/serahterimalinen/
 //
-// Static serve /storage/* diarahkan ke parent dari UPLOAD_BASE_DIR:
-//   dev  : serve dari cwd  → /storage/assets/... = cwd/assets/... ✅
-//   prod : serve dari .../storage → /storage/assets/... = .../storage/assets/... ✅
-const UPLOAD_BASE_DIR = process.env.UPLOAD_BASE_DIR || 'assets';
-const STORAGE_PATH = path.isAbsolute(UPLOAD_BASE_DIR)
-  ? path.dirname(UPLOAD_BASE_DIR.replace(/\/$/, '')) // ambil parent: .../storage/assets → .../storage
-  : path.resolve(__dirname);                          // cwd project root
+// STORAGE_PATH = folder yang di-expose ke URL /storage/*
+//   Jika UPLOAD_BASE_DIR absolut → ambil parent-nya (.../storage/assets → .../storage)
+//   Jika tidak di-set / relatif  → fallback ke path production yang sudah pasti benar
+const UPLOAD_BASE_DIR = process.env.UPLOAD_BASE_DIR;
+const STORAGE_PATH = (UPLOAD_BASE_DIR && path.isAbsolute(UPLOAD_BASE_DIR))
+  ? path.dirname(UPLOAD_BASE_DIR.replace(/\/$/, ''))
+  : '/home/u299848391/domains/linen.ikmalora.com/storage';
 
 // expose /storage/* ke folder storage
 app.use('/storage', express.static(STORAGE_PATH));
