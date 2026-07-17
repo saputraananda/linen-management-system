@@ -26,8 +26,6 @@ app.use('/api/auth', authRoutes);
 app.use('/api/ikm', ikmDashboardRoutes);
 app.use('/api/ikm', ikmSerahTerimaRoutes);
 
-// Serve static assets for valet/hospital signatures
-app.use('/assets/serahterimalinen', express.static(path.join(__dirname, 'assets/serahterimalinen')));
 
 // Serve static assets in production
 if (process.env.NODE_ENV === 'production') {

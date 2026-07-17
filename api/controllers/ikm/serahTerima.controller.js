@@ -1,6 +1,10 @@
 import { ikmPool, mainPool } from '../../db/pool.js';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Helper to format string to Capital Each Word (Title Case)
 const toTitleCase = (str) => {
@@ -13,78 +17,62 @@ const toTitleCase = (str) => {
     .join(' ');
 };
 
-// Helper to get the public URL/path of a signature image
+// Resolve physical storage directory for signature images
+// UPLOAD_DIR can be absolute (production) or relative (local dev)
+const UPLOAD_BASE = process.env.UPLOAD_DIR
+  ? path.resolve(process.env.UPLOAD_DIR)
+  : path.resolve(__dirname, '../../../assets');
+
+const SIGNATURE_DIR = path.join(UPLOAD_BASE, 'serahterimalinen');
+
+// Ensure directory exists on startup
+if (!fs.existsSync(SIGNATURE_DIR)) {
+  fs.mkdirSync(SIGNATURE_DIR, { recursive: true });
+}
+
+// Build the API URL for a signature filename
+// Files are always served through /api/ikm/signatures/:filename
 const getSignatureUrl = (filename) => {
   if (!filename) return null;
-
-  // Resolve what the public URL prefix should be based on UPLOAD_DIR
-  const uploadBaseDir = process.env.UPLOAD_DIR || 'assets/serahterimalinen';
-  const isAbsolute = path.isAbsolute(uploadBaseDir);
-
-  // Derive public URL prefix:
-  // e.g. UPLOAD_DIR=/home/u299848391/domains/linen.ikmalora.com/storage/assets/
-  //   → public URL prefix = /storage/assets/serahterimalinen
-  let urlPrefix;
-  if (isAbsolute) {
-    // Extract the path after the domain root (/home/.../public_html or /home/.../domains/xxx.com)
-    // by finding /storage/ or /public/ in the absolute path
-    const storageMatch = uploadBaseDir.match(/\/storage\/.*/);
-    if (storageMatch) {
-      urlPrefix = storageMatch[0].replace(/\/$/, '') + '/serahterimalinen';
-    } else {
-      urlPrefix = '/assets/serahterimalinen';
-    }
-  } else {
-    urlPrefix = '/assets/serahterimalinen';
-  }
-
-  // If it's already a full URL path, normalize it to current prefix
-  if (filename.startsWith('/storage/') || filename.startsWith('/assets/')) {
-    // Extract just the filename from legacy path, rebuild with correct prefix
-    const baseName = path.basename(filename);
-    return `${urlPrefix}/${baseName}`;
-  }
-
-  // Plain filename — prepend the resolved prefix
-  return `${urlPrefix}/${filename}`;
+  // Extract plain filename from any legacy full-path value
+  const baseName = path.basename(filename);
+  return `/api/ikm/signatures/${baseName}`;
 };
 
-// Helper function to decode and save Base64 image
+/**
+ * Serve a signature file directly via Express res.sendFile()
+ * Route: GET /api/ikm/signatures/:filename
+ */
+export const serveSignatureFile = (req, res) => {
+  const safe = path.basename(req.params.filename); // prevent path traversal
+  const filePath = path.join(SIGNATURE_DIR, safe);
+
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ success: false, message: 'File tidak ditemukan' });
+  }
+
+  return res.sendFile(filePath);
+};
+
+// Helper function to decode and save Base64 image — returns only the filename
 const saveBase64Image = (base64Str, prefix, transactionId) => {
   if (!base64Str) return null;
-  
-  // If it's already a saved URL/path, extract and return the filename
-  if (base64Str.startsWith('/assets/') || base64Str.startsWith('/storage/')) {
+
+  // If it's already a saved URL/path or just a filename, extract filename only
+  if (base64Str.startsWith('/assets/') || base64Str.startsWith('/storage/') || base64Str.startsWith('/api/')) {
     return path.basename(base64Str);
   }
-  
-  // If it's just the filename already, return it directly
-  if (base64Str.includes('_') && base64Str.endsWith('.png') && !base64Str.includes('/')) {
+
+  // If it's just the filename already (no slashes), return directly
+  if (!base64Str.includes('/') && (base64Str.endsWith('.png') || base64Str.endsWith('.jpg'))) {
     return base64Str;
   }
-  
-  // Resolve UPLOAD_DIR
-  const uploadBaseDir = process.env.UPLOAD_DIR || 'assets/serahterimalinen';
-  let targetDir;
-  let isAbsolute = path.isAbsolute(uploadBaseDir);
-  
-  if (isAbsolute) {
-    targetDir = path.join(uploadBaseDir, 'serahterimalinen');
-  } else {
-    // Relative to the workspace root (process.cwd())
-    targetDir = path.resolve(process.cwd(), uploadBaseDir);
-  }
-  
-  // Create directory recursively if it doesn't exist
-  if (!fs.existsSync(targetDir)) {
-    fs.mkdirSync(targetDir, { recursive: true });
-  }
-  
+
   // Parse base64 string
   const matches = base64Str.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
   let imageBuffer;
   let extension = 'png'; // default
-  
+
   if (matches && matches.length === 3) {
     const type = matches[1];
     extension = type.split('/')[1] || 'png';
@@ -95,11 +83,11 @@ const saveBase64Image = (base64Str, prefix, transactionId) => {
   }
   
   const filename = `${prefix}_${transactionId}_${Date.now()}.${extension}`;
-  const filepath = path.join(targetDir, filename);
-  
+  const filepath = path.join(SIGNATURE_DIR, filename);
+
   fs.writeFileSync(filepath, imageBuffer);
-  
-  // Return only the filename instead of the full path
+
+  // Return only the filename
   return filename;
 };
 

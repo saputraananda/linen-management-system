@@ -4,7 +4,8 @@ import {
   getTransactionDetail, 
   createTransaction, 
   updateTransactionDelivery,
-  getIkmEmployees
+  getIkmEmployees,
+  serveSignatureFile
 } from '../../controllers/ikm/serahTerima.controller.js';
 import { authenticateToken } from '../../middleware/auth.js';
 
@@ -27,5 +28,8 @@ router.put('/transactions/:id', updateTransactionDelivery);
 
 // GET /api/ikm/employees - Get list of IKM employees
 router.get('/employees', getIkmEmployees);
+
+// GET /api/ikm/signatures/:filename — serve signature images (public, no auth needed)
+router.get('/signatures/:filename', serveSignatureFile);
 
 export default router;
