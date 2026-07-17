@@ -7,6 +7,16 @@ import {
   Warehouse, Building, Shirt, HelpCircle
 } from 'lucide-react';
 
+// Utility to convert string to Title Case
+const toTitleCase = (str) => {
+  if (!str) return '';
+  return str
+    .toLowerCase()
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+};
+
 // Signature Input sub-component supporting Canvas pen drawing and photo upload
 const SignatureInput = ({ title, value, onChange, isEditable, name }) => {
   const [mode, setMode] = useState('draw'); // 'draw' | 'upload'
@@ -662,15 +672,6 @@ export default function SerahTerima() {
 
   const formatNumber = (num) => {
     return new Intl.NumberFormat('id-ID').format(num || 0);
-  };
-
-  const toTitleCase = (str) => {
-    if (!str) return '';
-    return str
-      .toLowerCase()
-      .split(' ')
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ');
   };
 
   const filteredEmployees = employees.filter(emp =>
