@@ -1,13 +1,69 @@
 import { ikmPool, mainPool } from '../../db/pool.js';
+import fs from 'fs';
+import path from 'path';
 
 // Helper to format string to Capital Each Word (Title Case)
 const toTitleCase = (str) => {
   if (!str) return '';
   return str
+    .trim()
     .toLowerCase()
-    .split(' ')
+    .split(/\s+/)
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ');
+};
+
+// Helper function to decode and save Base64 image
+const saveBase64Image = (base64Str, prefix, transactionId) => {
+  if (!base64Str) return null;
+  
+  // If it's already a saved URL/path, return it directly
+  if (base64Str.startsWith('/assets/') || base64Str.startsWith('/storage/')) {
+    return base64Str;
+  }
+  
+  // Resolve UPLOAD_DIR
+  const uploadBaseDir = process.env.UPLOAD_DIR || 'assets/serahterimalinen';
+  let targetDir;
+  let isAbsolute = path.isAbsolute(uploadBaseDir);
+  
+  if (isAbsolute) {
+    targetDir = path.join(uploadBaseDir, 'serahterimalinen');
+  } else {
+    // Relative to the workspace root (process.cwd())
+    targetDir = path.resolve(process.cwd(), uploadBaseDir);
+  }
+  
+  // Create directory recursively if it doesn't exist
+  if (!fs.existsSync(targetDir)) {
+    fs.mkdirSync(targetDir, { recursive: true });
+  }
+  
+  // Parse base64 string
+  const matches = base64Str.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+  let imageBuffer;
+  let extension = 'png'; // default
+  
+  if (matches && matches.length === 3) {
+    const type = matches[1];
+    extension = type.split('/')[1] || 'png';
+    imageBuffer = Buffer.from(matches[2], 'base64');
+  } else {
+    // Raw base64 string
+    imageBuffer = Buffer.from(base64Str, 'base64');
+  }
+  
+  const filename = `${prefix}_${transactionId}_${Date.now()}.${extension}`;
+  const filepath = path.join(targetDir, filename);
+  
+  fs.writeFileSync(filepath, imageBuffer);
+  
+  // Return the web relative path
+  if (isAbsolute) {
+    return `/storage/serahterimalinen/${filename}`;
+  } else {
+    return `/assets/serahterimalinen/${filename}`;
+  }
 };
 
 /**
@@ -63,11 +119,11 @@ export const getTransactions = async (req, res) => {
     if (search) {
       const searchWildcard = `%${search}%`;
       if (matchedEmployeeIds.length > 0) {
-        query += ` AND (t.form_number LIKE ? OR t.notes LIKE ? OR t.user_pickup IN (?) OR t.user_delivery IN (?))`;
-        params.push(searchWildcard, searchWildcard, matchedEmployeeIds, matchedEmployeeIds);
+        query += ` AND (t.form_number LIKE ? OR t.notes LIKE ? OR t.hospital_staff_pickup LIKE ? OR t.hospital_staff_delivery LIKE ? OR t.hospital_assistant_pickup LIKE ? OR t.hospital_assistant_delivery LIKE ? OR t.user_pickup IN (?) OR t.user_delivery IN (?))`;
+        params.push(searchWildcard, searchWildcard, searchWildcard, searchWildcard, searchWildcard, searchWildcard, matchedEmployeeIds, matchedEmployeeIds);
       } else {
-        query += ` AND (t.form_number LIKE ? OR t.notes LIKE ?)`;
-        params.push(searchWildcard, searchWildcard);
+        query += ` AND (t.form_number LIKE ? OR t.notes LIKE ? OR t.hospital_staff_pickup LIKE ? OR t.hospital_staff_delivery LIKE ? OR t.hospital_assistant_pickup LIKE ? OR t.hospital_assistant_delivery LIKE ?)`;
+        params.push(searchWildcard, searchWildcard, searchWildcard, searchWildcard, searchWildcard, searchWildcard);
       }
     }
 
@@ -204,12 +260,23 @@ export const createTransaction = async (req, res) => {
   try {
     await connection.beginTransaction();
 
-    const { hospitalId, userPickup, pickupDate, notes, details } = req.body;
+    const { 
+      hospitalId, 
+      userPickup, 
+      hospitalStaffPickup, 
+      hospitalAssistantPickup,
+      pickupDate, 
+      notes, 
+      details,
+      signatureValetPickup,
+      signatureHospitalPickup,
+      signatureAssistantPickup
+    } = req.body;
 
-    if (!hospitalId || !userPickup || !pickupDate || !details || details.length === 0) {
+    if (!hospitalId || !userPickup || !hospitalStaffPickup || !pickupDate || !signatureValetPickup || !signatureHospitalPickup || !details || details.length === 0) {
       return res.status(400).json({
         success: false,
-        message: "Data form pengisian tidak lengkap"
+        message: "Data form pengisian tidak lengkap (termasuk Petugas RS dan Tanda Tangan)"
       });
     }
 
@@ -237,12 +304,26 @@ export const createTransaction = async (req, res) => {
 
     const [result] = await connection.query(
       `INSERT INTO tr_linen_transaction 
-       (form_number, hospital_id, user_pickup, pickup_date, status, notes)
-       VALUES (?, ?, ?, ?, 'PROSES', ?)`,
-      [formNumber, hospitalId, userPickup, pickupDate, notes || null]
+       (form_number, hospital_id, user_pickup, hospital_staff_pickup, hospital_assistant_pickup, pickup_date, status, notes)
+       VALUES (?, ?, ?, ?, ?, ?, 'PROSES', ?)`,
+      [formNumber, hospitalId, userPickup, toTitleCase(hospitalStaffPickup), hospitalAssistantPickup ? toTitleCase(hospitalAssistantPickup) : null, pickupDate, notes || null]
     );
 
     const transactionId = result.insertId;
+
+    // Decode and save signature images
+    const valetPickupPath = saveBase64Image(signatureValetPickup, 'valet_pickup', transactionId);
+    const hospitalPickupPath = saveBase64Image(signatureHospitalPickup, 'hospital_pickup', transactionId);
+    const assistantPickupPath = signatureAssistantPickup ? saveBase64Image(signatureAssistantPickup, 'assistant_pickup', transactionId) : null;
+
+    if (valetPickupPath || hospitalPickupPath || assistantPickupPath) {
+      await connection.query(
+        `UPDATE tr_linen_transaction 
+         SET signature_valet_pickup = ?, signature_hospital_pickup = ?, signature_assistant_pickup = ?
+         WHERE id = ?`,
+        [valetPickupPath, hospitalPickupPath, assistantPickupPath, transactionId]
+      );
+    }
 
     for (const item of details) {
       await connection.query(
@@ -319,13 +400,28 @@ export const updateTransactionDelivery = async (req, res) => {
     await connection.beginTransaction();
 
     const { id } = req.params;
-    const { deliveryDate, userDelivery, notes, details } = req.body;
+    const { 
+      deliveryDate, 
+      userDelivery, 
+      hospitalStaffPickup, 
+      hospitalStaffDelivery, 
+      hospitalAssistantPickup,
+      hospitalAssistantDelivery,
+      notes, 
+      details,
+      signatureValetPickup,
+      signatureHospitalPickup,
+      signatureAssistantPickup,
+      signatureValetDelivery,
+      signatureHospitalDelivery,
+      signatureAssistantDelivery
+    } = req.body;
 
-    if (!deliveryDate || !userDelivery || !details || details.length === 0) {
+    if (!deliveryDate || !userDelivery || !hospitalStaffDelivery || !signatureValetDelivery || !signatureHospitalDelivery || !details || details.length === 0) {
       await connection.rollback();
       return res.status(400).json({
         success: false,
-        message: "Tanggal pengiriman, petugas pengirim, dan rincian bersih wajib diisi"
+        message: "Tanggal pengiriman, petugas pengirim, petugas RS pemeriksa, tanda tangan delivery, dan rincian bersih wajib diisi"
       });
     }
 
@@ -381,16 +477,50 @@ export const updateTransactionDelivery = async (req, res) => {
       completedAt = new Date();
     }
 
+    // Decode and save delivery signatures
+    const valetPickupPath = saveBase64Image(signatureValetPickup, 'valet_pickup', id);
+    const hospitalPickupPath = saveBase64Image(signatureHospitalPickup, 'hospital_pickup', id);
+    const assistantPickupPath = signatureAssistantPickup ? saveBase64Image(signatureAssistantPickup, 'assistant_pickup', id) : null;
+    const valetDeliveryPath = saveBase64Image(signatureValetDelivery, 'valet_delivery', id);
+    const hospitalDeliveryPath = saveBase64Image(signatureHospitalDelivery, 'hospital_delivery', id);
+    const assistantDeliveryPath = signatureAssistantDelivery ? saveBase64Image(signatureAssistantDelivery, 'assistant_delivery', id) : null;
+
     // Update Header
     await connection.query(
       `UPDATE tr_linen_transaction 
        SET delivery_date = ?, 
            completed_at = ?,
            user_delivery = COALESCE(?, user_delivery), 
+           hospital_staff_pickup = ?,
+           hospital_staff_delivery = ?,
+           hospital_assistant_pickup = ?,
+           hospital_assistant_delivery = ?,
+           signature_valet_pickup = ?,
+           signature_hospital_pickup = ?,
+           signature_assistant_pickup = ?,
+           signature_valet_delivery = ?,
+           signature_hospital_delivery = ?,
+           signature_assistant_delivery = ?,
            notes = COALESCE(?, notes), 
            status = 'SELESAI'
        WHERE id = ?`,
-      [deliveryDate, completedAt, userDelivery || null, notes || null, id]
+      [
+        deliveryDate, 
+        completedAt, 
+        userDelivery || null, 
+        toTitleCase(hospitalStaffPickup) || null,
+        toTitleCase(hospitalStaffDelivery) || null, 
+        hospitalAssistantPickup ? toTitleCase(hospitalAssistantPickup) : null,
+        hospitalAssistantDelivery ? toTitleCase(hospitalAssistantDelivery) : null,
+        valetPickupPath || null,
+        hospitalPickupPath || null,
+        assistantPickupPath || null,
+        valetDeliveryPath || null,
+        hospitalDeliveryPath || null,
+        assistantDeliveryPath || null,
+        notes || null, 
+        id
+      ]
     );
 
     // Update Details (support updating both qty_kotor and qty_bersih)

@@ -7,6 +7,188 @@ import {
   Warehouse, Building, Shirt, HelpCircle
 } from 'lucide-react';
 
+// Signature Input sub-component supporting Canvas pen drawing and photo upload
+const SignatureInput = ({ title, value, onChange, isEditable, name }) => {
+  const [mode, setMode] = useState('draw'); // 'draw' | 'upload'
+  const canvasRef = useRef(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [hasSigned, setHasSigned] = useState(false);
+
+  useEffect(() => {
+    if (mode === 'draw' && canvasRef.current) {
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d');
+      ctx.strokeStyle = '#0f172a'; // slate-900
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      
+      // Clear canvas if value is empty
+      if (!value) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        setHasSigned(false);
+      }
+    }
+  }, [mode, value]);
+
+  const getCoordinates = (e) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect();
+    
+    const clientX = e.touches && e.touches.length > 0 ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches && e.touches.length > 0 ? e.touches[0].clientY : e.clientY;
+    
+    // Map CSS coordinate space to canvas internal coordinate space
+    const x = ((clientX - rect.left) / rect.width) * canvas.width;
+    const y = ((clientY - rect.top) / rect.height) * canvas.height;
+    
+    return { x, y };
+  };
+
+  const startDrawing = (e) => {
+    if (!isEditable) return;
+    e.preventDefault();
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const { x, y } = getCoordinates(e);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    setIsDrawing(true);
+  };
+
+  const draw = (e) => {
+    if (!isDrawing || !isEditable) return;
+    e.preventDefault();
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const { x, y } = getCoordinates(e);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+    setHasSigned(true);
+  };
+
+  const stopDrawing = () => {
+    if (!isDrawing) return;
+    setIsDrawing(false);
+    
+    const canvas = canvasRef.current;
+    if (canvas && hasSigned) {
+      const dataUrl = canvas.toDataURL('image/png');
+      onChange(dataUrl);
+    }
+  };
+
+  const clearCanvas = () => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      setHasSigned(false);
+      onChange('');
+    }
+  };
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        onChange(event.target.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  return (
+    <div className="border border-slate-200 rounded-xl p-4 bg-white shadow-sm space-y-3">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+        <span className="text-xs font-bold text-slate-700 tracking-wide truncate max-w-full">{title}</span>
+        {isEditable && (
+          <div className="flex gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200 shrink-0">
+            <button
+              type="button"
+              onClick={() => { setMode('draw'); onChange(''); }}
+              className={`px-2 py-1 rounded-md text-[9px] font-bold transition-all cursor-pointer whitespace-nowrap ${mode === 'draw' ? 'bg-[#126776] text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              Coret Pen
+            </button>
+            <button
+              type="button"
+              onClick={() => { setMode('upload'); onChange(''); }}
+              className={`px-2 py-1 rounded-md text-[9px] font-bold transition-all cursor-pointer whitespace-nowrap ${mode === 'upload' ? 'bg-[#126776] text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              Upload Foto
+            </button>
+          </div>
+        )}
+      </div>
+
+      {mode === 'draw' ? (
+        <div className="relative">
+          <canvas
+            ref={canvasRef}
+            width={300}
+            height={150}
+            className={`w-full h-[150px] border-2 border-dashed border-slate-200 bg-slate-50 rounded-lg cursor-crosshair touch-none ${!isEditable ? 'pointer-events-none' : ''}`}
+            onMouseDown={startDrawing}
+            onMouseMove={draw}
+            onMouseUp={stopDrawing}
+            onMouseLeave={stopDrawing}
+            onTouchStart={startDrawing}
+            onTouchMove={draw}
+            onTouchEnd={stopDrawing}
+          />
+          {isEditable && (
+            <button
+              type="button"
+              onClick={clearCanvas}
+              className="absolute bottom-2 right-2 px-2 py-1 bg-slate-200/80 hover:bg-slate-300 text-slate-700 rounded-md text-[10px] font-bold transition-all cursor-pointer"
+            >
+              Hapus
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {isEditable ? (
+            <div className="flex items-center justify-center w-full">
+              <label className="flex flex-col items-center justify-center w-full h-[150px] border-2 border-dashed border-slate-200 bg-slate-50 rounded-lg cursor-pointer hover:bg-slate-100/50 transition">
+                <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                  <svg className="w-8 h-8 mb-2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                  </svg>
+                  <p className="mb-1 text-xs text-slate-500 font-semibold">Klik untuk unggah foto</p>
+                  <p className="text-[10px] text-slate-400">PNG, JPG up to 5MB</p>
+                </div>
+                <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload} />
+              </label>
+            </div>
+          ) : null}
+        </div>
+      )}
+
+      {/* Name display under signature */}
+      {name && (
+        <div className="pt-1.5 border-t border-slate-100 text-center">
+          <span className="text-[11px] font-bold text-[#126776] block truncate" title={name}>
+            ({toTitleCase(name)})
+          </span>
+        </div>
+      )}
+
+      {value && (
+        <div className="mt-2 flex flex-col items-center p-2 bg-slate-50 border border-slate-150 rounded-lg">
+          <span className="text-[9px] font-bold text-slate-450 uppercase mb-1">Pratinjau Tanda Tangan</span>
+          <img src={value} alt="Preview Signature" className="max-h-[80px] object-contain border border-slate-200 rounded bg-white p-1" />
+        </div>
+      )}
+    </div>
+  );
+};
+
 export default function SerahTerima() {
   const [activeTab, setActiveTab] = useState('history'); // 'history' | 'form'
   const [hospitalId] = useState(sessionStorage.getItem('valet_hospital_id') || '');
@@ -31,6 +213,11 @@ export default function SerahTerima() {
     new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)
   );
   const [notes, setNotes] = useState('');
+  const [hospitalStaffPickup, setHospitalStaffPickup] = useState('');
+  const [hospitalAssistantPickup, setHospitalAssistantPickup] = useState('');
+  const [signatureValetPickup, setSignatureValetPickup] = useState('');
+  const [signatureHospitalPickup, setSignatureHospitalPickup] = useState('');
+  const [signatureAssistantPickup, setSignatureAssistantPickup] = useState('');
   const [kotorQuantities, setKotorQuantities] = useState({}); // { hospitalLinenId: qty }
   const [itemNotes, setItemNotes] = useState({}); // { hospitalLinenId: noteText }
   const [submittingNew, setSubmittingNew] = useState(false);
@@ -39,6 +226,11 @@ export default function SerahTerima() {
   const [editingTransaction, setEditingTransaction] = useState(null); // transaction detail object
   const [userDelivery, setUserDelivery] = useState('');
   const [userDeliveryName, setUserDeliveryName] = useState('');
+  const [hospitalStaffDelivery, setHospitalStaffDelivery] = useState('');
+  const [hospitalAssistantDelivery, setHospitalAssistantDelivery] = useState('');
+  const [signatureValetDelivery, setSignatureValetDelivery] = useState('');
+  const [signatureHospitalDelivery, setSignatureHospitalDelivery] = useState('');
+  const [signatureAssistantDelivery, setSignatureAssistantDelivery] = useState('');
   const [deliveryDate, setDeliveryDate] = useState(
     new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)
   );
@@ -271,6 +463,20 @@ export default function SerahTerima() {
     e.preventDefault();
     setErrorMsg('');
 
+    if (!hospitalStaffPickup.trim()) {
+      setErrorMsg('Nama petugas RS pemeriksa (Pickup) wajib diisi.');
+      return;
+    }
+
+    if (!signatureValetPickup) {
+      setErrorMsg('Tanda tangan Petugas IKM wajib diisi/digambar.');
+      return;
+    }
+    if (!signatureHospitalPickup) {
+      setErrorMsg('Tanda tangan Petugas RS wajib diisi/digambar.');
+      return;
+    }
+
     const activeDetails = Object.entries(kotorQuantities)
       .filter(([_, qty]) => parseInt(qty) > 0)
       .map(([id, qty]) => ({
@@ -290,9 +496,14 @@ export default function SerahTerima() {
       const { data } = await axios.post('/api/ikm/transactions', {
         hospitalId: parseInt(hospitalId),
         userPickup: parseInt(userPickup),
+        hospitalStaffPickup,
+        hospitalAssistantPickup,
         pickupDate: pickupDate.replace('T', ' ') + ':00',
         notes,
-        details: activeDetails
+        details: activeDetails,
+        signatureValetPickup,
+        signatureHospitalPickup,
+        signatureAssistantPickup
       }, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -301,6 +512,11 @@ export default function SerahTerima() {
         setUserPickup(localStorage.getItem('employeeId') || '');
         setUserPickupName(localStorage.getItem('fullName') || localStorage.getItem('username') || '');
         setNotes('');
+        setHospitalStaffPickup('');
+        setHospitalAssistantPickup('');
+        setSignatureValetPickup('');
+        setSignatureHospitalPickup('');
+        setSignatureAssistantPickup('');
         const resetQtys = {};
         const resetNotes = {};
         linensList.forEach(item => {
@@ -334,6 +550,16 @@ export default function SerahTerima() {
         setUserDelivery(fullTx.transaction.user_delivery || '');
         setUserDeliveryName(fullTx.transaction.user_delivery_name || '');
         setEditNotes(fullTx.transaction.notes || '');
+        setHospitalStaffPickup(fullTx.transaction.hospital_staff_pickup || '');
+        setHospitalStaffDelivery(fullTx.transaction.hospital_staff_delivery || '');
+        setHospitalAssistantPickup(fullTx.transaction.hospital_assistant_pickup || '');
+        setHospitalAssistantDelivery(fullTx.transaction.hospital_assistant_delivery || '');
+        setSignatureValetPickup(fullTx.transaction.signature_valet_pickup || '');
+        setSignatureHospitalPickup(fullTx.transaction.signature_hospital_pickup || '');
+        setSignatureAssistantPickup(fullTx.transaction.signature_assistant_pickup || '');
+        setSignatureValetDelivery(fullTx.transaction.signature_valet_delivery || '');
+        setSignatureHospitalDelivery(fullTx.transaction.signature_hospital_delivery || '');
+        setSignatureAssistantDelivery(fullTx.transaction.signature_assistant_delivery || '');
 
         if (fullTx.transaction.delivery_date) {
           const dDate = new Date(fullTx.transaction.delivery_date);
@@ -365,6 +591,21 @@ export default function SerahTerima() {
   const handleCompleteDelivery = async (e) => {
     e.preventDefault();
     setErrorMsg('');
+
+    if (!hospitalStaffDelivery.trim()) {
+      setErrorMsg('Nama petugas RS pemeriksa (Delivery) wajib diisi.');
+      return;
+    }
+
+    if (!signatureValetDelivery) {
+      setErrorMsg('Tanda tangan Petugas IKM saat Delivery wajib diisi/digambar.');
+      return;
+    }
+    if (!signatureHospitalDelivery) {
+      setErrorMsg('Tanda tangan Petugas RS saat Delivery wajib diisi/digambar.');
+      return;
+    }
+
     setSubmittingEdit(true);
 
     const activeDetails = editingTransaction.details.map(item => ({
@@ -379,8 +620,18 @@ export default function SerahTerima() {
       const { data } = await axios.put(`/api/ikm/transactions/${editingTransaction.transaction.id}`, {
         deliveryDate: deliveryDate.replace('T', ' ') + ':00',
         userDelivery: parseInt(userDelivery),
+        hospitalStaffPickup,
+        hospitalStaffDelivery,
+        hospitalAssistantPickup,
+        hospitalAssistantDelivery,
         notes: editNotes,
-        details: activeDetails
+        details: activeDetails,
+        signatureValetPickup,
+        signatureHospitalPickup,
+        signatureAssistantPickup,
+        signatureValetDelivery,
+        signatureHospitalDelivery,
+        signatureAssistantDelivery
       }, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -500,6 +751,20 @@ export default function SerahTerima() {
       const oldVal = oldTx.user_delivery ? toTitleCase(getEmployeeName(oldTx.user_delivery)) : '—';
       const newVal = newTx.user_delivery ? toTitleCase(getEmployeeName(newTx.user_delivery)) : '—';
       descriptions.push(`Petugas Delivery: "${oldVal}" menjadi "${newVal}"`);
+    }
+
+    if (oldTx.hospital_staff_pickup !== newTx.hospital_staff_pickup) {
+      descriptions.push(`Petugas RS Pickup: "${oldTx.hospital_staff_pickup || '—'}" menjadi "${newTx.hospital_staff_pickup || '—'}"`);
+    }
+    if (oldTx.hospital_assistant_pickup !== newTx.hospital_assistant_pickup) {
+      descriptions.push(`Perawat RS Pickup: "${oldTx.hospital_assistant_pickup || '—'}" menjadi "${newTx.hospital_assistant_pickup || '—'}"`);
+    }
+
+    if (oldTx.hospital_staff_delivery !== newTx.hospital_staff_delivery) {
+      descriptions.push(`Petugas RS Delivery: "${oldTx.hospital_staff_delivery || '—'}" menjadi "${newTx.hospital_staff_delivery || '—'}"`);
+    }
+    if (oldTx.hospital_assistant_delivery !== newTx.hospital_assistant_delivery) {
+      descriptions.push(`Perawat RS Delivery: "${oldTx.hospital_assistant_delivery || '—'}" menjadi "${newTx.hospital_assistant_delivery || '—'}"`);
     }
 
     const oldDetails = oldSnap.details || [];
@@ -703,12 +968,12 @@ export default function SerahTerima() {
                           <span className="flex items-center gap-1">
                             <User className="h-3 w-3 text-slate-400 shrink-0" />
                             <span className="text-[11px] text-slate-400 font-medium">Pickup:</span>
-                            {tx.user_pickup_name}
+                            {tx.user_pickup_name} {tx.hospital_staff_pickup && <span className="text-slate-400 font-normal">({tx.hospital_staff_pickup}{tx.hospital_assistant_pickup ? `, ${tx.hospital_assistant_pickup}` : ''})</span>}
                           </span>
                           {tx.user_delivery && (
                             <span className="flex items-center gap-1 border-l border-slate-200 pl-2">
                               <span className="text-[11px] text-[#1ea59e] font-medium">Delivery:</span>
-                              {tx.user_delivery_name}
+                              {tx.user_delivery_name} {tx.hospital_staff_delivery && <span className="text-slate-400 font-normal">({tx.hospital_staff_delivery}{tx.hospital_assistant_delivery ? `, ${tx.hospital_assistant_delivery}` : ''})</span>}
                             </span>
                           )}
                         </p>
@@ -788,105 +1053,144 @@ export default function SerahTerima() {
             <form onSubmit={handleCreatePickup} className="p-6 space-y-6">
 
               {/* Form Config Fields */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-5 bg-slate-50/50 p-5 rounded-2xl border border-slate-150">
-
-                {/* Form Number */}
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest">
-                    Nomor Formulir
-                  </label>
-                  <input
-                    type="text"
-                    disabled
-                    value="(Otomatis saat disimpan)"
-                    className="w-full px-3.5 py-2.5 bg-slate-100 border border-slate-200 text-slate-400 rounded-xl text-xs font-semibold cursor-not-allowed"
-                  />
-                </div>
-
-                {/* Recorder (Searchable Dropdown Select) */}
-                <div className="space-y-1.5" ref={employeeSelectRef}>
-                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest">
-                    Pengisi (Petugas IKM)
-                  </label>
-                  <div className="relative">
-                    <div
-                      onClick={() => setIsEmployeeDropdownOpen(!isEmployeeDropdownOpen)}
-                      className="w-full pl-10 pr-10 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 flex items-center justify-between cursor-pointer focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] select-none min-h-[38px] border-slate-200 transition-all"
-                    >
-                      <div className="flex items-center gap-2">
-                        <User className="absolute inset-y-0 left-3.5 my-auto h-4 w-4 text-slate-400" />
-                        <span>
-                          {toTitleCase(userPickupName) || 'Pilih Pengisi Petugas IKM...'}
-                        </span>
-                      </div>
-                      <ChevronDown className="h-4 w-4 text-slate-400" />
-                    </div>
-
-                    {isEmployeeDropdownOpen && (
-                      <div className="absolute left-0 right-0 mt-1.5 bg-white border border-slate-200 shadow-xl rounded-2xl p-2.5 z-50 max-h-60 flex flex-col">
-                        {/* Search Input inside dropdown */}
-                        <div className="relative mb-2 shrink-0">
-                          <Search className="absolute inset-y-0 left-2.5 my-auto h-3.5 w-3.5 text-slate-400" />
-                          <input
-                            type="text"
-                            placeholder="Cari petugas..."
-                            value={searchEmployeeQuery}
-                            onChange={e => setSearchEmployeeQuery(e.target.value)}
-                            className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-150 rounded-xl text-xs outline-none focus:ring-2 focus:ring-[#1ea59e]/20 focus:border-[#1ea59e] font-semibold text-slate-700"
-                            onClick={e => e.stopPropagation()} // Prevent closing dropdown on click
-                          />
-                        </div>
-
-                        {/* Employees Scrollable List */}
-                        <div className="overflow-y-auto flex-1 divide-y divide-slate-50 max-h-40">
-                          {loadingEmployees ? (
-                            <div className="p-3 text-center text-slate-400 text-xs font-medium">
-                              Memuat petugas...
-                            </div>
-                          ) : filteredEmployees.length === 0 ? (
-                            <div className="p-3 text-center text-slate-400 text-xs font-medium">
-                              Tidak ada petugas ditemukan
-                            </div>
-                          ) : (
-                            filteredEmployees.map(emp => (
-                              <button
-                                key={emp.employee_id}
-                                type="button"
-                                onClick={() => {
-                                  setUserPickup(emp.employee_id);
-                                  setUserPickupName(emp.employee_name);
-                                  setIsEmployeeDropdownOpen(false);
-                                  setSearchEmployeeQuery('');
-                                }}
-                                className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-[#1ea59e]/5 hover:text-[#126776] rounded-lg transition cursor-pointer"
-                              >
-                                {toTitleCase(emp.employee_name)}
-                              </button>
-                            ))
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Date pickup */}
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest">
-                    Tanggal Pengambilan Kotor
-                  </label>
-                  <div className="relative">
-                    <Calendar className="absolute inset-y-0 left-3.5 my-auto h-4 w-4 text-slate-400" />
+              <div className="space-y-4">
+                {/* Card 1: Data Transaksi IKM */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-5 bg-slate-50/50 p-5 rounded-2xl border border-slate-150">
+                  {/* Form Number */}
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest">
+                      Nomor Formulir
+                    </label>
                     <input
-                      type="datetime-local"
-                      required
-                      value={pickupDate}
-                      onChange={e => setPickupDate(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] transition"
+                      type="text"
+                      disabled
+                      value="(Otomatis saat disimpan)"
+                      className="w-full px-3.5 py-2.5 bg-slate-100 border border-slate-200 text-slate-400 rounded-xl text-xs font-semibold cursor-not-allowed"
                     />
                   </div>
+
+                  {/* Recorder (Searchable Dropdown Select) */}
+                  <div className="space-y-1.5" ref={employeeSelectRef}>
+                    <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest">
+                      Pengisi (Petugas IKM)
+                    </label>
+                    <div className="relative">
+                      <div
+                        onClick={() => setIsEmployeeDropdownOpen(!isEmployeeDropdownOpen)}
+                        className="w-full pl-10 pr-10 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 flex items-center justify-between cursor-pointer focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] select-none min-h-[38px] border-slate-200 transition-all"
+                      >
+                        <div className="flex items-center gap-2">
+                          <User className="absolute inset-y-0 left-3.5 my-auto h-4 w-4 text-slate-400" />
+                          <span>
+                            {toTitleCase(userPickupName) || 'Pilih Pengisi Petugas IKM...'}
+                          </span>
+                        </div>
+                        <ChevronDown className="h-4 w-4 text-slate-400" />
+                      </div>
+
+                      {isEmployeeDropdownOpen && (
+                        <div className="absolute left-0 right-0 mt-1.5 bg-white border border-slate-200 shadow-xl rounded-2xl p-2.5 z-50 max-h-60 flex flex-col">
+                          {/* Search Input inside dropdown */}
+                          <div className="relative mb-2 shrink-0">
+                            <Search className="absolute inset-y-0 left-2.5 my-auto h-3.5 w-3.5 text-slate-400" />
+                            <input
+                              type="text"
+                              placeholder="Cari petugas..."
+                              value={searchEmployeeQuery}
+                              onChange={e => setSearchEmployeeQuery(e.target.value)}
+                              className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-150 rounded-xl text-xs outline-none focus:ring-2 focus:ring-[#1ea59e]/20 focus:border-[#1ea59e] font-semibold text-slate-700"
+                              onClick={e => e.stopPropagation()} // Prevent closing dropdown on click
+                            />
+                          </div>
+
+                          {/* Employees Scrollable List */}
+                          <div className="overflow-y-auto flex-1 divide-y divide-slate-50 max-h-40">
+                            {loadingEmployees ? (
+                              <div className="p-3 text-center text-slate-400 text-xs font-medium">
+                                Memuat petugas...
+                              </div>
+                            ) : filteredEmployees.length === 0 ? (
+                              <div className="p-3 text-center text-slate-400 text-xs font-medium">
+                                Tidak ada petugas ditemukan
+                              </div>
+                            ) : (
+                              filteredEmployees.map(emp => (
+                                <button
+                                  key={emp.employee_id}
+                                  type="button"
+                                  onClick={() => {
+                                    setUserPickup(emp.employee_id);
+                                    setUserPickupName(emp.employee_name);
+                                    setIsEmployeeDropdownOpen(false);
+                                    setSearchEmployeeQuery('');
+                                  }}
+                                  className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-[#1ea59e]/5 hover:text-[#126776] rounded-lg transition cursor-pointer"
+                                >
+                                  {toTitleCase(emp.employee_name)}
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Date pickup */}
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest">
+                      Tanggal Pengambilan Kotor
+                    </label>
+                    <div className="relative">
+                      <Calendar className="absolute inset-y-0 left-3.5 my-auto h-4 w-4 text-slate-400" />
+                      <input
+                        type="datetime-local"
+                        required
+                        value={pickupDate}
+                        onChange={e => setPickupDate(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] transition"
+                      />
+                    </div>
+                  </div>
                 </div>
 
+                {/* Card 2: Data Petugas Pemeriksa Rumah Sakit */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5 bg-slate-50/50 p-5 rounded-2xl border border-slate-150">
+                  {/* Petugas RS Pemeriksa (Pickup) */}
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest">
+                      Petugas RS Pemeriksa (Pickup) <span className="text-rose-500 font-bold">*</span>
+                    </label>
+                    <div className="relative">
+                      <User className="absolute inset-y-0 left-3.5 my-auto h-4 w-4 text-slate-400" />
+                      <input
+                        type="text"
+                        required
+                        placeholder="Nama petugas Rumah Sakit..."
+                        value={hospitalStaffPickup}
+                        onChange={e => setHospitalStaffPickup(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] transition"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Perawat RS (Pickup) */}
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest">
+                      Perawat RS (Pickup) <span className="text-slate-400 font-normal">(Opsional)</span>
+                    </label>
+                    <div className="relative">
+                      <User className="absolute inset-y-0 left-3.5 my-auto h-4 w-4 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="Nama perawat Rumah Sakit (Opsional)..."
+                        value={hospitalAssistantPickup}
+                        onChange={e => setHospitalAssistantPickup(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] transition"
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
 
               {/* Error Alert */}
@@ -1014,6 +1318,41 @@ export default function SerahTerima() {
                 />
               </div>
 
+              {/* Tanda Tangan Section */}
+              <div className="bg-slate-50 p-5 rounded-2xl border border-slate-150 space-y-4">
+                <div className="flex items-center gap-2">
+                  <div className="p-1 bg-[#126776]/5 text-[#126776] rounded-md">
+                    <FileText className="h-4 w-4" />
+                  </div>
+                  <label className="block text-xs font-semibold text-[#126776] uppercase tracking-widest">
+                    Dokumentasi Tanda Tangan Serah Terima (Pickup)
+                  </label>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                  <SignatureInput
+                    title="Tanda Tangan Petugas IKM (Valet)"
+                    value={signatureValetPickup}
+                    onChange={setSignatureValetPickup}
+                    isEditable={true}
+                    name={userPickupName}
+                  />
+                  <SignatureInput
+                    title="Tanda Tangan Petugas RS Pemeriksa"
+                    value={signatureHospitalPickup}
+                    onChange={setSignatureHospitalPickup}
+                    isEditable={true}
+                    name={hospitalStaffPickup}
+                  />
+                  <SignatureInput
+                    title="Tanda Tangan Perawat RS (Opsional)"
+                    value={signatureAssistantPickup}
+                    onChange={setSignatureAssistantPickup}
+                    isEditable={true}
+                    name={hospitalAssistantPickup}
+                  />
+                </div>
+              </div>
+
               {/* Form Buttons */}
               <div className="flex justify-end gap-3 pt-2">
                 <button
@@ -1072,7 +1411,7 @@ export default function SerahTerima() {
             <form onSubmit={handleCompleteDelivery} className="p-6 space-y-6">
 
               {/* Summary Details Info card grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-150 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-150 text-xs">
                 <div className="space-y-1">
                   <span className="text-slate-400 font-semibold uppercase text-xs tracking-wider block">Status Transaksi</span>
                   <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-extrabold uppercase border ${editingTransaction.transaction.status === 'SELESAI'
@@ -1089,6 +1428,18 @@ export default function SerahTerima() {
                   </span>
                 </div>
                 <div className="space-y-1">
+                  <span className="text-slate-400 font-semibold uppercase text-xs tracking-wider block">Petugas RS (Pickup)</span>
+                  <span className="font-semibold text-slate-700 block text-sm">
+                    {editingTransaction.transaction.hospital_staff_pickup || '—'}
+                  </span>
+                </div>
+                <div className="space-y-1">
+                  <span className="text-slate-400 font-semibold uppercase text-xs tracking-wider block">Perawat RS (Pickup)</span>
+                  <span className="font-semibold text-slate-700 block text-sm">
+                    {editingTransaction.transaction.hospital_assistant_pickup || '—'}
+                  </span>
+                </div>
+                <div className="space-y-1">
                   <span className="text-slate-400 font-semibold uppercase text-xs tracking-wider block">Tanggal Pengambilan</span>
                   <span className="font-semibold text-slate-700 block text-xs">{formatDate(editingTransaction.transaction.pickup_date)}</span>
                 </div>
@@ -1101,7 +1452,7 @@ export default function SerahTerima() {
               </div>
 
               {/* Delivery Input Config */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5 bg-slate-50/50 p-5 rounded-2xl border border-slate-150">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-5 bg-slate-50/50 p-5 rounded-2xl border border-slate-150">
 
                 {/* Delivery Complete Recorder */}
                 <div className="space-y-1.5" ref={editEmployeeSelectRef}>
@@ -1194,6 +1545,36 @@ export default function SerahTerima() {
                       value={deliveryDate}
                       onChange={e => setDeliveryDate(e.target.value)}
                       disabled={!isEditable}
+                      className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] transition disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                    />
+                  </div>
+                </div>
+
+                {/* Petugas RS Pemeriksa (Delivery) */}
+                <div className="space-y-1.5">
+                  <div className="flex justify-between items-center h-4">
+                    <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest">
+                      Petugas RS (Delivery)
+                    </label>
+                    {isEditable && (
+                      <button
+                        type="button"
+                        onClick={() => setHospitalStaffDelivery(hospitalStaffPickup)}
+                        className="text-[10px] text-[#1ea59e] hover:text-[#126776] font-bold transition flex items-center gap-1 cursor-pointer select-none"
+                      >
+                        Sama Dengan Pickup
+                      </button>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <User className="absolute inset-y-0 left-3.5 my-auto h-4 w-4 text-slate-400" />
+                    <input
+                      type="text"
+                      required
+                      disabled={!isEditable}
+                      placeholder="Nama petugas Rumah Sakit..."
+                      value={hospitalStaffDelivery}
+                      onChange={e => setHospitalStaffDelivery(e.target.value)}
                       className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] transition disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                     />
                   </div>
@@ -1434,6 +1815,138 @@ export default function SerahTerima() {
                   onChange={e => setEditNotes(e.target.value)}
                   className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] transition resize-none disabled:cursor-not-allowed disabled:bg-slate-100 placeholder-slate-400"
                 />
+              </div>
+
+              {/* Tanda Tangan Section */}
+              <div className="bg-slate-50 p-5 rounded-2xl border border-slate-150 space-y-4">
+                <div className="flex items-center gap-2">
+                  <div className="p-1 bg-[#126776]/5 text-[#126776] rounded-md">
+                    <FileText className="h-4 w-4" />
+                  </div>
+                  <label className="block text-xs font-semibold text-[#126776] uppercase tracking-widest">
+                    Dokumentasi Tanda Tangan Serah Terima
+                  </label>
+                </div>
+                
+                <div className="space-y-6">
+                  {/* Pickup Signatures Card */}
+                  <div className="border border-slate-150 rounded-2xl p-5 bg-slate-50/50 space-y-4">
+                    <span className="text-xs font-bold text-slate-700 uppercase tracking-widest block">Tanda Tangan Saat Pickup (Kotor)</span>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                      <div className="flex flex-col items-center justify-center p-4 bg-white border border-slate-200 rounded-xl min-h-[140px] shadow-sm">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase mb-2">Petugas IKM (Valet)</span>
+                        <div className="flex-1 flex items-center justify-center mb-2">
+                          {signatureValetPickup ? (
+                            <img src={signatureValetPickup} alt="Valet Pickup" className="max-h-[80px] object-contain" />
+                          ) : (
+                            <span className="text-xs text-slate-450 font-bold">—</span>
+                          )}
+                        </div>
+                        <span className="text-[11px] font-bold text-[#126776] text-center border-t border-slate-100 pt-1.5 w-full">
+                          ({toTitleCase(editingTransaction.transaction.user_pickup_name || '')})
+                        </span>
+                      </div>
+                      <div className="flex flex-col items-center justify-center p-4 bg-white border border-slate-200 rounded-xl min-h-[140px] shadow-sm">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase mb-2">Petugas RS</span>
+                        <div className="flex-1 flex items-center justify-center mb-2">
+                          {signatureHospitalPickup ? (
+                            <img src={signatureHospitalPickup} alt="RS Pickup" className="max-h-[80px] object-contain" />
+                          ) : (
+                            <span className="text-xs text-slate-450 font-bold">—</span>
+                          )}
+                        </div>
+                        <span className="text-[11px] font-bold text-[#126776] text-center border-t border-slate-100 pt-1.5 w-full">
+                          {editingTransaction.transaction.hospital_staff_pickup ? `(${toTitleCase(editingTransaction.transaction.hospital_staff_pickup)})` : '—'}
+                        </span>
+                      </div>
+                      <div className="flex flex-col items-center justify-center p-4 bg-white border border-slate-200 rounded-xl min-h-[140px] shadow-sm">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase mb-2">Perawat RS</span>
+                        <div className="flex-1 flex items-center justify-center mb-2">
+                          {signatureAssistantPickup ? (
+                            <img src={signatureAssistantPickup} alt="Perawat Pickup" className="max-h-[80px] object-contain" />
+                          ) : (
+                            <span className="text-xs text-slate-450 font-bold">—</span>
+                          )}
+                        </div>
+                        <span className="text-[11px] font-bold text-[#126776] text-center border-t border-slate-100 pt-1.5 w-full">
+                          {editingTransaction.transaction.hospital_assistant_pickup ? `(${toTitleCase(editingTransaction.transaction.hospital_assistant_pickup)})` : '—'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Delivery Signatures Card */}
+                  <div className="border border-slate-150 rounded-2xl p-5 bg-slate-50/50 space-y-4">
+                    <span className="text-xs font-bold text-slate-700 uppercase tracking-widest block">Tanda Tangan Saat Delivery (Bersih)</span>
+                    {editingTransaction.transaction.status === 'PROSES' ? (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                        <SignatureInput
+                          title="Petugas IKM (Valet)"
+                          value={signatureValetDelivery}
+                          onChange={setSignatureValetDelivery}
+                          isEditable={true}
+                          name={userDeliveryName}
+                        />
+                        <SignatureInput
+                          title="Petugas RS"
+                          value={signatureHospitalDelivery}
+                          onChange={setSignatureHospitalDelivery}
+                          isEditable={true}
+                          name={hospitalStaffDelivery}
+                        />
+                        <SignatureInput
+                          title="Perawat RS (Opsional)"
+                          value={signatureAssistantDelivery}
+                          onChange={setSignatureAssistantDelivery}
+                          isEditable={true}
+                          name={hospitalAssistantDelivery}
+                        />
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                        <div className="flex flex-col items-center justify-center p-4 bg-white border border-slate-200 rounded-xl min-h-[140px] shadow-sm">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase mb-2">Petugas IKM (Valet)</span>
+                          <div className="flex-1 flex items-center justify-center mb-2">
+                            {signatureValetDelivery ? (
+                              <img src={signatureValetDelivery} alt="Valet Delivery" className="max-h-[80px] object-contain" />
+                            ) : (
+                              <span className="text-xs text-slate-450 font-bold">—</span>
+                            )}
+                          </div>
+                          <span className="text-[11px] font-bold text-[#126776] text-center border-t border-slate-100 pt-1.5 w-full">
+                            {editingTransaction.transaction.user_delivery_name ? `(${toTitleCase(editingTransaction.transaction.user_delivery_name)})` : '—'}
+                          </span>
+                        </div>
+                        <div className="flex flex-col items-center justify-center p-4 bg-white border border-slate-200 rounded-xl min-h-[140px] shadow-sm">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase mb-2">Petugas RS</span>
+                          <div className="flex-1 flex items-center justify-center mb-2">
+                            {signatureHospitalDelivery ? (
+                              <img src={signatureHospitalDelivery} alt="RS Delivery" className="max-h-[80px] object-contain" />
+                            ) : (
+                              <span className="text-xs text-slate-450 font-bold">—</span>
+                            )}
+                          </div>
+                          <span className="text-[11px] font-bold text-[#126776] text-center border-t border-slate-100 pt-1.5 w-full">
+                            {editingTransaction.transaction.hospital_staff_delivery ? `(${toTitleCase(editingTransaction.transaction.hospital_staff_delivery)})` : '—'}
+                          </span>
+                        </div>
+                        <div className="flex flex-col items-center justify-center p-4 bg-white border border-slate-200 rounded-xl min-h-[140px] shadow-sm">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase mb-2">Perawat RS</span>
+                          <div className="flex-1 flex items-center justify-center mb-2">
+                            {signatureAssistantDelivery ? (
+                              <img src={signatureAssistantDelivery} alt="Perawat Delivery" className="max-h-[80px] object-contain" />
+                            ) : (
+                              <span className="text-xs text-slate-450 font-bold">—</span>
+                            )}
+                          </div>
+                          <span className="text-[11px] font-bold text-[#126776] text-center border-t border-slate-100 pt-1.5 w-full">
+                            {editingTransaction.transaction.hospital_assistant_delivery ? `(${toTitleCase(editingTransaction.transaction.hospital_assistant_delivery)})` : '—'}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
 
               {/* Actions Button */}
