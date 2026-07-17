@@ -13,12 +13,38 @@ const toTitleCase = (str) => {
     .join(' ');
 };
 
+// Helper to get the public URL/path of a signature image
+const getSignatureUrl = (filename) => {
+  if (!filename) return null;
+  // If it's already a full path (legacy data), return it directly
+  if (filename.startsWith('/assets/') || filename.startsWith('/storage/')) {
+    return filename;
+  }
+  
+  const uploadBaseDir = process.env.UPLOAD_DIR || 'assets/serahterimalinen';
+  const isAbsolute = path.isAbsolute(uploadBaseDir);
+  
+  if (isAbsolute) {
+    if (uploadBaseDir.includes('/assets/')) {
+      return `/assets/serahterimalinen/${filename}`;
+    }
+    return `/storage/serahterimalinen/${filename}`;
+  } else {
+    return `/assets/serahterimalinen/${filename}`;
+  }
+};
+
 // Helper function to decode and save Base64 image
 const saveBase64Image = (base64Str, prefix, transactionId) => {
   if (!base64Str) return null;
   
-  // If it's already a saved URL/path, return it directly
+  // If it's already a saved URL/path, extract and return the filename
   if (base64Str.startsWith('/assets/') || base64Str.startsWith('/storage/')) {
+    return path.basename(base64Str);
+  }
+  
+  // If it's just the filename already, return it directly
+  if (base64Str.includes('_') && base64Str.endsWith('.png') && !base64Str.includes('/')) {
     return base64Str;
   }
   
@@ -58,12 +84,8 @@ const saveBase64Image = (base64Str, prefix, transactionId) => {
   
   fs.writeFileSync(filepath, imageBuffer);
   
-  // Return the web relative path
-  if (isAbsolute) {
-    return `/storage/serahterimalinen/${filename}`;
-  } else {
-    return `/assets/serahterimalinen/${filename}`;
-  }
+  // Return only the filename instead of the full path
+  return filename;
 };
 
 /**
@@ -140,7 +162,13 @@ export const getTransactions = async (req, res) => {
     const formattedTransactions = transactions.map(tx => ({
       ...tx,
       user_pickup_name: toTitleCase(empMap.get(tx.user_pickup) || ''),
-      user_delivery_name: tx.user_delivery ? toTitleCase(empMap.get(tx.user_delivery) || '') : null
+      user_delivery_name: tx.user_delivery ? toTitleCase(empMap.get(tx.user_delivery) || '') : null,
+      signature_valet_pickup: getSignatureUrl(tx.signature_valet_pickup),
+      signature_hospital_pickup: getSignatureUrl(tx.signature_hospital_pickup),
+      signature_assistant_pickup: getSignatureUrl(tx.signature_assistant_pickup),
+      signature_valet_delivery: getSignatureUrl(tx.signature_valet_delivery),
+      signature_hospital_delivery: getSignatureUrl(tx.signature_hospital_delivery),
+      signature_assistant_delivery: getSignatureUrl(tx.signature_assistant_delivery)
     }));
 
     return res.status(200).json({
@@ -208,6 +236,12 @@ export const getTransactionDetail = async (req, res) => {
       
       transaction.user_pickup_name = toTitleCase(empMap.get(transaction.user_pickup) || '');
       transaction.user_delivery_name = transaction.user_delivery ? toTitleCase(empMap.get(transaction.user_delivery) || '') : null;
+      transaction.signature_valet_pickup = getSignatureUrl(transaction.signature_valet_pickup);
+      transaction.signature_hospital_pickup = getSignatureUrl(transaction.signature_hospital_pickup);
+      transaction.signature_assistant_pickup = getSignatureUrl(transaction.signature_assistant_pickup);
+      transaction.signature_valet_delivery = getSignatureUrl(transaction.signature_valet_delivery);
+      transaction.signature_hospital_delivery = getSignatureUrl(transaction.signature_hospital_delivery);
+      transaction.signature_assistant_delivery = getSignatureUrl(transaction.signature_assistant_delivery);
 
       // Calculate is_editable
       let isEditable = false;
