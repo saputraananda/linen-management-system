@@ -60,7 +60,7 @@ export default function Login() {
           localStorage.setItem('hospitalId', user.hospitalId || '');
         }
         setToast({ isOpen: true, title: 'Login Berhasil!', message, icon: 'success' });
-        setTimeout(() => navigate(redirect), 1500);
+        setTimeout(() => navigate(redirect, { replace: true }), 1500);
       }
     } catch (err) {
       console.error('Login error:', err);

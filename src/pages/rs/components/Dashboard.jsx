@@ -14,7 +14,7 @@ export default function Dashboard() {
   useEffect(() => {
     const token = localStorage.getItem('token');
     const role = localStorage.getItem('userRole');
-    if (!token || role !== 'rs') navigate('/login');
+    if (!token || role !== 'rs') navigate('/login', { replace: true });
   }, [navigate]);
   const linenStock = [
     { name: 'Sprei Medis (Bed Sheet)', total: 350, clean: 280, dirty: 70, status: 'Aman' },
@@ -27,7 +27,7 @@ export default function Dashboard() {
   return (
     <main className="min-h-screen bg-slate-50 py-6 sm:py-10">
       <div className="mx-auto max-w-screen-2xl px-4 sm:px-6 lg:px-8 space-y-6">
-        
+
         {/* Metrics */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
@@ -85,8 +85,8 @@ export default function Dashboard() {
                     <td className="py-4 px-6 font-medium text-slate-500">{linen.total} Pcs</td>
                     <td className="py-4 px-6 text-right">
                       <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold ${linen.status === 'Aman'
-                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
-                          : 'bg-rose-50 text-rose-700 border border-rose-100'
+                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+                        : 'bg-rose-50 text-rose-700 border border-rose-100'
                         }`}>
                         <span className={`w-1.5 h-1.5 rounded-full ${linen.status === 'Aman' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
                         {linen.status}

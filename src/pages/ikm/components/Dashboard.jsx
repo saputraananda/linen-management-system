@@ -71,7 +71,7 @@ export default function ValetDashboard() {
     const token = localStorage.getItem('token');
     const role = localStorage.getItem('userRole');
     if (!token || role !== 'valet') {
-      navigate('/login');
+      navigate('/login', { replace: true });
       return;
     }
 
@@ -414,8 +414,8 @@ export default function ValetDashboard() {
                 <div
                   onClick={() => { setOwnershipFilter('all'); setShowOnlyShortage(false); }}
                   className={`cursor-pointer transition-all duration-300 relative overflow-hidden p-2.5 sm:p-3 rounded-xl bg-gradient-to-br from-slate-800 to-slate-950 text-white ${ownershipFilter === 'all' && !showOnlyShortage
-                      ? 'ring-4 ring-offset-2 ring-slate-800 scale-[1.03] shadow-lg border-2 border-slate-700'
-                      : 'opacity-85 hover:opacity-100 border border-slate-700/30 hover:scale-[1.01]'
+                    ? 'ring-4 ring-offset-2 ring-slate-800 scale-[1.03] shadow-lg border-2 border-slate-700'
+                    : 'opacity-85 hover:opacity-100 border border-slate-700/30 hover:scale-[1.01]'
                     }`}
                 >
                   <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full translate-x-10 -translate-y-10 pointer-events-none" />
@@ -438,8 +438,8 @@ export default function ValetDashboard() {
                 <div
                   onClick={() => { setOwnershipFilter('MILIK_RS'); setShowOnlyShortage(false); }}
                   className={`cursor-pointer transition-all duration-300 relative overflow-hidden p-2.5 sm:p-3 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white ${ownershipFilter === 'MILIK_RS' && !showOnlyShortage
-                      ? 'ring-4 ring-offset-2 ring-blue-600 scale-[1.03] shadow-lg border-2 border-blue-400'
-                      : 'opacity-85 hover:opacity-100 border border-blue-500/30 hover:scale-[1.01]'
+                    ? 'ring-4 ring-offset-2 ring-blue-600 scale-[1.03] shadow-lg border-2 border-blue-400'
+                    : 'opacity-85 hover:opacity-100 border border-blue-500/30 hover:scale-[1.01]'
                     }`}
                 >
                   <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full translate-x-10 -translate-y-10 pointer-events-none" />
@@ -462,8 +462,8 @@ export default function ValetDashboard() {
                 <div
                   onClick={() => { setOwnershipFilter('SEWA'); setShowOnlyShortage(false); }}
                   className={`cursor-pointer transition-all duration-300 relative overflow-hidden p-2.5 sm:p-3 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 text-white ${ownershipFilter === 'SEWA' && !showOnlyShortage
-                      ? 'ring-4 ring-offset-2 ring-amber-500 scale-[1.03] shadow-lg border-2 border-amber-400'
-                      : 'opacity-85 hover:opacity-100 border border-amber-500/30 hover:scale-[1.01]'
+                    ? 'ring-4 ring-offset-2 ring-amber-500 scale-[1.03] shadow-lg border-2 border-amber-400'
+                    : 'opacity-85 hover:opacity-100 border border-amber-500/30 hover:scale-[1.01]'
                     }`}
                 >
                   <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full translate-x-10 -translate-y-10 pointer-events-none" />
@@ -486,8 +486,8 @@ export default function ValetDashboard() {
                 <div
                   onClick={() => { setOwnershipFilter('all'); setShowOnlyShortage(true); }}
                   className={`cursor-pointer transition-all duration-300 relative overflow-hidden p-2.5 sm:p-3 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white ${showOnlyShortage
-                      ? 'ring-4 ring-offset-2 ring-emerald-500 scale-[1.03] shadow-lg border-2 border-emerald-400'
-                      : 'opacity-85 hover:opacity-100 border border-emerald-500/30 hover:scale-[1.01]'
+                    ? 'ring-4 ring-offset-2 ring-emerald-500 scale-[1.03] shadow-lg border-2 border-emerald-400'
+                    : 'opacity-85 hover:opacity-100 border border-emerald-500/30 hover:scale-[1.01]'
                     }`}
                 >
                   <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full translate-x-10 -translate-y-10 pointer-events-none" />
@@ -821,7 +821,7 @@ export default function ValetDashboard() {
       <ConfirmDialog
         isOpen={confirmLogout}
         onClose={() => setConfirmLogout(false)}
-        onConfirm={() => { localStorage.clear(); navigate('/login'); }}
+        onConfirm={() => { localStorage.clear(); navigate('/login', { replace: true }); }}
         title="Keluar"
         message="Apakah Anda yakin ingin keluar dari sistem?"
         confirmText="Ya, Keluar"

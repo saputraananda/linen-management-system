@@ -6,20 +6,34 @@ import ValetDashboard from './pages/ikm/components/Dashboard.jsx';
 import SerahTerima from './pages/ikm/components/SerahTerima.jsx';
 import RSPage from './pages/rs/index.jsx';
 import RSDashboard from './pages/rs/components/Dashboard.jsx';
+import { ProtectedRoute, GuestRoute } from './components/RouteGuards.jsx';
 
 function App() {
   return (
     <Router>
       <Routes>
         <Route path="/" element={<Navigate to="/login" replace />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/valet" element={<ValetPage />}>
-          <Route index element={<ValetDashboard />} />
-          <Route path="serah-terima-linen" element={<SerahTerima />} />
+        
+        {/* Guest routes (locked when logged in) */}
+        <Route element={<GuestRoute />}>
+          <Route path="/login" element={<Login />} />
         </Route>
-        <Route path="/rs" element={<RSPage />}>
-          <Route index element={<RSDashboard />} />
+        
+        {/* Valet Portal protected routes */}
+        <Route element={<ProtectedRoute allowedRoles={['valet']} />}>
+          <Route path="/valet" element={<ValetPage />}>
+            <Route index element={<ValetDashboard />} />
+            <Route path="serah-terima-linen" element={<SerahTerima />} />
+          </Route>
         </Route>
+
+        {/* Hospital Portal protected routes */}
+        <Route element={<ProtectedRoute allowedRoles={['rs']} />}>
+          <Route path="/rs" element={<RSPage />}>
+            <Route index element={<RSDashboard />} />
+          </Route>
+        </Route>
+
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </Router>
