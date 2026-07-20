@@ -114,8 +114,8 @@ const SignatureInput = ({ title, value, onChange, isEditable, name }) => {
 
   return (
     <div className="border border-slate-200 rounded-xl p-4 bg-white shadow-sm space-y-3">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-        <span className="text-xs font-bold text-slate-700 tracking-wide truncate max-w-full">{title}</span>
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-2">
+        <span className="text-xs font-bold text-slate-700 tracking-wide max-w-full">{title}</span>
         {isEditable && (
           <div className="flex gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200 shrink-0">
             <button
@@ -191,7 +191,7 @@ const SignatureInput = ({ title, value, onChange, isEditable, name }) => {
 
       {value && (
         <div className="mt-2 flex flex-col items-center p-2 bg-slate-50 border border-slate-150 rounded-lg">
-          <span className="text-[9px] font-bold text-slate-450 uppercase mb-1">Pratinjau Tanda Tangan</span>
+          <span className="text-[9px] font-bold text-slate-700 uppercase mb-1">Pratinjau Tanda Tangan</span>
           <img src={value} alt="Preview Signature" className="max-h-[80px] object-contain border border-slate-200 rounded bg-white p-1" />
         </div>
       )}
@@ -604,15 +604,6 @@ export default function SerahTerima() {
 
     if (!hospitalStaffDelivery.trim()) {
       setErrorMsg('Nama petugas RS pemeriksa (Delivery) wajib diisi.');
-      return;
-    }
-
-    if (!signatureValetDelivery) {
-      setErrorMsg('Tanda tangan Petugas IKM saat Delivery wajib diisi/digambar.');
-      return;
-    }
-    if (!signatureHospitalDelivery) {
-      setErrorMsg('Tanda tangan Petugas RS saat Delivery wajib diisi/digambar.');
       return;
     }
 
@@ -1329,7 +1320,7 @@ export default function SerahTerima() {
                     Dokumentasi Tanda Tangan Serah Terima (Pickup)
                   </label>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
                   <SignatureInput
                     title="Tanda Tangan Petugas IKM (Valet)"
                     value={signatureValetPickup}
@@ -1833,7 +1824,7 @@ export default function SerahTerima() {
                   {/* Pickup Signatures Card */}
                   <div className="border border-slate-150 rounded-2xl p-5 bg-slate-50/50 space-y-4">
                     <span className="text-xs font-bold text-slate-700 uppercase tracking-widest block">Tanda Tangan Saat Pickup (Kotor)</span>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
                       <div className="flex flex-col items-center justify-center p-4 bg-white border border-slate-200 rounded-xl min-h-[140px] shadow-sm">
                         <span className="text-[10px] font-bold text-slate-400 uppercase mb-2">Petugas IKM (Valet)</span>
                         <div className="flex-1 flex items-center justify-center mb-2">
@@ -1880,7 +1871,7 @@ export default function SerahTerima() {
                   <div className="border border-slate-150 rounded-2xl p-5 bg-slate-50/50 space-y-4">
                     <span className="text-xs font-bold text-slate-700 uppercase tracking-widest block">Tanda Tangan Saat Delivery (Bersih)</span>
                     {editingTransaction.transaction.status === 'PROSES' ? (
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
                         <SignatureInput
                           title="Petugas IKM (Valet)"
                           value={signatureValetDelivery}
@@ -1904,7 +1895,7 @@ export default function SerahTerima() {
                         />
                       </div>
                     ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
                         <div className="flex flex-col items-center justify-center p-4 bg-white border border-slate-200 rounded-xl min-h-[140px] shadow-sm">
                           <span className="text-[10px] font-bold text-slate-400 uppercase mb-2">Petugas IKM (Valet)</span>
                           <div className="flex-1 flex items-center justify-center mb-2">

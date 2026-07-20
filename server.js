@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 
 import authRoutes from './api/routes/auth/auth.routes.js';
@@ -13,7 +14,13 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Load env
-dotenv.config();
+const envFile = process.env.NODE_ENV === 'production' ? '.env.prod' : '.env';
+const envPath = path.resolve(__dirname, envFile);
+if (fs.existsSync(envPath)) {
+  dotenv.config({ path: envPath });
+} else {
+  dotenv.config();
+}
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -30,17 +37,16 @@ app.use(express.urlencoded({ extended: true }));
 // UPLOAD_BASE_DIR = folder dasar tempat file upload disimpan
 //   dev  : 'assets'  (relative)
 //   prod : '/home/u299848391/domains/linen.ikmalora.com/storage/assets/'
-//
-// STORAGE_PATH = folder yang di-expose ke URL /storage/*
-//   Jika UPLOAD_BASE_DIR absolut → ambil parent-nya (.../storage/assets → .../storage)
-//   Jika tidak di-set / relatif  → fallback ke path production yang sudah pasti benar
 const UPLOAD_BASE_DIR = process.env.UPLOAD_BASE_DIR;
-const STORAGE_PATH = (UPLOAD_BASE_DIR && path.isAbsolute(UPLOAD_BASE_DIR))
-  ? path.dirname(UPLOAD_BASE_DIR.replace(/\/$/, ''))
-  : '/home/u299848391/domains/linen.ikmalora.com/storage';
 
-// expose /storage/* ke folder storage
-app.use('/storage', express.static(STORAGE_PATH));
+if (UPLOAD_BASE_DIR && path.isAbsolute(UPLOAD_BASE_DIR)) {
+  const STORAGE_PATH = path.dirname(UPLOAD_BASE_DIR.replace(/\/$/, ''));
+  app.use('/storage', express.static(STORAGE_PATH));
+} else {
+  // Development (relative path)
+  const resolvedBaseDir = path.resolve(process.cwd(), UPLOAD_BASE_DIR || 'assets');
+  app.use('/storage/assets', express.static(resolvedBaseDir));
+}
 
 // ==========================
 // API

@@ -1,6 +1,5 @@
 import { ikmPool, mainPool } from '../../db/pool.js';
-import fs from 'fs';
-import path from 'path';
+import { getSignatureUrl, saveBase64Image } from '../../middleware/upload.js';
 
 // Helper to format string to Capital Each Word (Title Case)
 const toTitleCase = (str) => {
@@ -11,66 +10,6 @@ const toTitleCase = (str) => {
     .split(/\s+/)
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ');
-};
-
-// Helper untuk menghasilkan URL publik signature
-// Selalu menghasilkan: /storage/assets/serahterimalinen/<filename>
-const getSignatureUrl = (filename) => {
-  if (!filename) return null;
-
-  const urlPrefix = '/storage/assets/serahterimalinen';
-
-  // Jika berupa path (legacy /assets/... atau /storage/...) → ambil filename saja
-  if (filename.startsWith('/')) {
-    return `${urlPrefix}/${path.basename(filename)}`;
-  }
-
-  // Plain filename
-  return `${urlPrefix}/${filename}`;
-};
-
-// Helper untuk menyimpan gambar Base64 ke disk
-const saveBase64Image = (base64Str, prefix, transactionId) => {
-  if (!base64Str) return null;
-
-  // Sudah berupa URL/path → ambil filename saja
-  if (base64Str.startsWith('/') || base64Str.startsWith('http')) {
-    return path.basename(base64Str);
-  }
-
-  // Sudah berupa plain filename (bukan base64) → kembalikan langsung
-  if (!base64Str.startsWith('data:') && base64Str.includes('_') && !base64Str.includes(' ')) {
-    return base64Str;
-  }
-
-  // Tentukan direktori fisik:
-  //   Absolut  (prod) : UPLOAD_BASE_DIR/serahterimalinen
-  //   Relatif  (dev)  : cwd/UPLOAD_BASE_DIR/serahterimalinen
-  const uploadBaseDir = process.env.UPLOAD_BASE_DIR || 'assets';
-  const targetDir = path.isAbsolute(uploadBaseDir)
-    ? path.join(uploadBaseDir.replace(/\/$/, ''), 'serahterimalinen')
-    : path.resolve(process.cwd(), uploadBaseDir, 'serahterimalinen');
-
-  if (!fs.existsSync(targetDir)) {
-    fs.mkdirSync(targetDir, { recursive: true });
-  }
-
-  // Parse base64
-  const matches = base64Str.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
-  let imageBuffer;
-  let extension = 'png';
-
-  if (matches && matches.length === 3) {
-    extension = matches[1].split('/')[1] || 'png';
-    imageBuffer = Buffer.from(matches[2], 'base64');
-  } else {
-    imageBuffer = Buffer.from(base64Str, 'base64');
-  }
-
-  const filename = `${prefix}_${transactionId}_${Date.now()}.${extension}`;
-  fs.writeFileSync(path.join(targetDir, filename), imageBuffer);
-
-  return filename;
 };
 
 /**
@@ -436,11 +375,11 @@ export const updateTransactionDelivery = async (req, res) => {
       signatureAssistantDelivery
     } = req.body;
 
-    if (!deliveryDate || !userDelivery || !hospitalStaffDelivery || !signatureValetDelivery || !signatureHospitalDelivery || !details || details.length === 0) {
+    if (!deliveryDate || !userDelivery || !hospitalStaffDelivery || !details || details.length === 0) {
       await connection.rollback();
       return res.status(400).json({
         success: false,
-        message: "Tanggal pengiriman, petugas pengirim, petugas RS pemeriksa, tanda tangan delivery, dan rincian bersih wajib diisi"
+        message: "Tanggal pengiriman, petugas pengirim, petugas RS pemeriksa, dan rincian bersih wajib diisi"
       });
     }
 
