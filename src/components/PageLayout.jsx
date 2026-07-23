@@ -54,6 +54,8 @@ function NavItem({ to, icon: Icon, label, description, end, onClose, collapsed }
 }
 
 function Sidebar({ menuItems, collapsed = false, onClose, brandIcon: BrandIcon = Shirt, brandTitle = "IKM", brandSub = "PT Intersolusi Karya Mandiri" }) {
+  const isGrouped = menuItems && menuItems.length > 0 && Array.isArray(menuItems[0].items);
+
   return (
     <div className="flex h-full flex-col overflow-hidden bg-white">
       {/* Brand header */}
@@ -86,17 +88,29 @@ function Sidebar({ menuItems, collapsed = false, onClose, brandIcon: BrandIcon =
         )}
       </div>
 
-      {/* Menu label */}
-      {!collapsed && (
-        <p className="px-5 pt-4 pb-1.5 text-xs font-bold uppercase tracking-widest text-slate-400">Menu</p>
-      )}
-      {collapsed && <div className="pt-3" />}
-
       {/* Navigation items */}
-      <nav className={cn("flex-1 overflow-y-auto space-y-0.5", collapsed ? "px-1.5" : "px-3")}>
-        {menuItems.map(item => (
-          <NavItem key={item.to} {...item} onClose={onClose} collapsed={collapsed} />
-        ))}
+      <nav className={cn("flex-1 overflow-y-auto space-y-4 pt-4", collapsed ? "px-1.5" : "px-3")}>
+        {isGrouped ? (
+          menuItems.map((group, idx) => (
+            <div key={idx} className="space-y-1">
+              {!collapsed && group.category && (
+                <p className="px-3 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-[#126776]">{group.category}</p>
+              )}
+              {group.items.map(item => (
+                <NavItem key={item.to} {...item} onClose={onClose} collapsed={collapsed} />
+              ))}
+            </div>
+          ))
+        ) : (
+          <>
+            {!collapsed && (
+              <p className="px-3 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-[#126776]">Menu</p>
+            )}
+            {menuItems.map(item => (
+              <NavItem key={item.to} {...item} onClose={onClose} collapsed={collapsed} />
+            ))}
+          </>
+        )}
       </nav>
     </div>
   );
@@ -104,9 +118,12 @@ function Sidebar({ menuItems, collapsed = false, onClose, brandIcon: BrandIcon =
 
 function ActiveMenuTitle({ menuItems }) {
   const { pathname } = useLocation();
+  const isGrouped = menuItems && menuItems.length > 0 && Array.isArray(menuItems[0].items);
+  const flatItems = isGrouped ? menuItems.flatMap(group => group.items) : menuItems;
+
   const active =
-    menuItems.find(m => m.end && pathname === m.to) ??
-    menuItems.find(m => !m.end && pathname.startsWith(m.to));
+    flatItems.find(m => m.end && pathname === m.to) ??
+    flatItems.find(m => !m.end && pathname.startsWith(m.to));
 
   const label       = active?.label       ?? "Dashboard";
   const description = active?.description ?? "";
@@ -175,6 +192,7 @@ export default function PageLayout({ menuItems, moduleName = "Module", bgColor =
 
   const handleLogout = () => {
     localStorage.clear();
+    sessionStorage.clear();
     // Navigate with replace to overwrite history stack and prevent back button access
     navigate('/login', { replace: true });
   };

@@ -821,7 +821,7 @@ export default function ValetDashboard() {
       <ConfirmDialog
         isOpen={confirmLogout}
         onClose={() => setConfirmLogout(false)}
-        onConfirm={() => { localStorage.clear(); navigate('/login', { replace: true }); }}
+        onConfirm={() => { localStorage.clear(); sessionStorage.clear(); navigate('/login', { replace: true }); }}
         title="Keluar"
         message="Apakah Anda yakin ingin keluar dari sistem?"
         confirmText="Ya, Keluar"

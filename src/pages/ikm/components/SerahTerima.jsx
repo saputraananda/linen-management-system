@@ -4,7 +4,7 @@ import {
   FileText, Search, Calendar, CheckCircle2,
   AlertTriangle, ArrowLeft, RefreshCw, PlusCircle,
   ChevronRight, ChevronDown, Save, User, Clock, AlertCircle,
-  Warehouse, Building, Shirt, HelpCircle
+  Warehouse, Building, Shirt, HelpCircle, Info, X
 } from 'lucide-react';
 
 // Utility to convert string to Title Case
@@ -203,6 +203,15 @@ export default function SerahTerima() {
   const [activeTab, setActiveTab] = useState('history'); // 'history' | 'form'
   const [hospitalId] = useState(sessionStorage.getItem('valet_hospital_id') || '');
   const [hospitalName, setHospitalName] = useState('');
+  const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
+  const [temporaryTxId, setTemporaryTxId] = useState(null);
+
+  const showToast = (message, type = 'success') => {
+    setToast({ show: true, message, type });
+    setTimeout(() => {
+      setToast(prev => ({ ...prev, show: false }));
+    }, 3000);
+  };
 
   // History tab states
   const [transactions, setTransactions] = useState([]);
@@ -478,14 +487,7 @@ export default function SerahTerima() {
       return;
     }
 
-    if (!signatureValetPickup) {
-      setErrorMsg('Tanda tangan Petugas IKM wajib diisi/digambar.');
-      return;
-    }
-    if (!signatureHospitalPickup) {
-      setErrorMsg('Tanda tangan Petugas RS wajib diisi/digambar.');
-      return;
-    }
+
 
     const activeDetails = Object.entries(kotorQuantities)
       .filter(([_, qty]) => parseInt(qty) > 0)
@@ -504,6 +506,7 @@ export default function SerahTerima() {
     try {
       const token = localStorage.getItem('token');
       const { data } = await axios.post('/api/ikm/transactions', {
+        id: temporaryTxId,
         hospitalId: parseInt(hospitalId),
         userPickup: parseInt(userPickup),
         hospitalStaffPickup,
@@ -519,26 +522,34 @@ export default function SerahTerima() {
       });
 
       if (data?.success) {
-        setUserPickup(localStorage.getItem('employeeId') || '');
-        setUserPickupName(localStorage.getItem('fullName') || localStorage.getItem('username') || '');
-        setNotes('');
-        setHospitalStaffPickup('');
-        setHospitalAssistantPickup('');
-        setSignatureValetPickup('');
-        setSignatureHospitalPickup('');
-        setSignatureAssistantPickup('');
-        const resetQtys = {};
-        const resetNotes = {};
-        linensList.forEach(item => {
-          resetQtys[item.id] = 0;
-          resetNotes[item.id] = '';
-        });
-        setKotorQuantities(resetQtys);
-        setItemNotes(resetNotes);
-        setErrorMsg('');
+        if (data.isTemporary) {
+          setTemporaryTxId(data.data.transactionId);
+          showToast("Berhasil Tersimpan Sementara");
+          fetchHistory();
+        } else {
+          setTemporaryTxId(null);
+          setUserPickup(localStorage.getItem('employeeId') || '');
+          setUserPickupName(localStorage.getItem('fullName') || localStorage.getItem('username') || '');
+          setNotes('');
+          setHospitalStaffPickup('');
+          setHospitalAssistantPickup('');
+          setSignatureValetPickup('');
+          setSignatureHospitalPickup('');
+          setSignatureAssistantPickup('');
+          const resetQtys = {};
+          const resetNotes = {};
+          linensList.forEach(item => {
+            resetQtys[item.id] = 0;
+            resetNotes[item.id] = '';
+          });
+          setKotorQuantities(resetQtys);
+          setItemNotes(resetNotes);
+          setErrorMsg('');
 
-        fetchHistory();
-        setActiveTab('history');
+          showToast("Transaksi serah terima linen (Kotor) berhasil dicatat");
+          fetchHistory();
+          setActiveTab('history');
+        }
       }
     } catch (err) {
       setErrorMsg(err.response?.data?.message || 'Gagal menyimpan transaksi.');
@@ -556,41 +567,80 @@ export default function SerahTerima() {
       });
       if (data?.success) {
         const fullTx = data.data;
-        setEditingTransaction(fullTx);
-        setUserDelivery(fullTx.transaction.user_delivery || '');
-        setUserDeliveryName(fullTx.transaction.user_delivery_name || '');
-        setEditNotes(fullTx.transaction.notes || '');
-        setHospitalStaffPickup(fullTx.transaction.hospital_staff_pickup || '');
-        setHospitalStaffDelivery(fullTx.transaction.hospital_staff_delivery || '');
-        setHospitalAssistantPickup(fullTx.transaction.hospital_assistant_pickup || '');
-        setHospitalAssistantDelivery(fullTx.transaction.hospital_assistant_delivery || '');
-        setSignatureValetPickup(fullTx.transaction.signature_valet_pickup || '');
-        setSignatureHospitalPickup(fullTx.transaction.signature_hospital_pickup || '');
-        setSignatureAssistantPickup(fullTx.transaction.signature_assistant_pickup || '');
-        setSignatureValetDelivery(fullTx.transaction.signature_valet_delivery || '');
-        setSignatureHospitalDelivery(fullTx.transaction.signature_hospital_delivery || '');
-        setSignatureAssistantDelivery(fullTx.transaction.signature_assistant_delivery || '');
 
-        if (fullTx.transaction.delivery_date) {
-          const dDate = new Date(fullTx.transaction.delivery_date);
-          setDeliveryDate(new Date(dDate.getTime() - dDate.getTimezoneOffset() * 60000).toISOString().slice(0, 16));
+        // If pickup signatures are missing/empty, it's still in Day 1 kotor pickup phase!
+        const hasPickupSignatures = fullTx.transaction.signature_valet_pickup && fullTx.transaction.signature_hospital_pickup;
+
+        if (!hasPickupSignatures) {
+          setTemporaryTxId(fullTx.transaction.id);
+          setHospitalStaffPickup(fullTx.transaction.hospital_staff_pickup || '');
+          setHospitalAssistantPickup(fullTx.transaction.hospital_assistant_pickup || '');
+          setNotes(fullTx.transaction.notes_pickup || '');
+
+          if (fullTx.transaction.pickup_date) {
+            const pDate = new Date(fullTx.transaction.pickup_date);
+            setPickupDate(new Date(pDate.getTime() - pDate.getTimezoneOffset() * 60000).toISOString().slice(0, 16));
+          }
+
+          setSignatureValetPickup(fullTx.transaction.signature_valet_pickup || '');
+          setSignatureHospitalPickup(fullTx.transaction.signature_hospital_pickup || '');
+          setSignatureAssistantPickup(fullTx.transaction.signature_assistant_pickup || '');
+
+          // Map kotor quantities
+          const qtys = {};
+          const notesMap = {};
+          linensList.forEach(item => {
+            qtys[item.id] = 0;
+            notesMap[item.id] = '';
+          });
+          fullTx.details.forEach(detailItem => {
+            qtys[detailItem.hospital_linen_id] = detailItem.qty_kotor || 0;
+            notesMap[detailItem.hospital_linen_id] = detailItem.notes || '';
+          });
+          setKotorQuantities(qtys);
+          setItemNotes(notesMap);
+
+          setEditingTransaction(null);
+          setActiveTab('form');
+          setErrorMsg('');
         } else {
-          setDeliveryDate(new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16));
-        }
+          // Normal Day 2 update bersih view
+          setEditingTransaction(fullTx);
+          setUserDelivery(fullTx.transaction.user_delivery || '');
+          setUserDeliveryName(fullTx.transaction.user_delivery_name || '');
+          setEditNotes(fullTx.transaction.notes_delivery || '');
+          setHospitalStaffPickup(fullTx.transaction.hospital_staff_pickup || '');
+          setHospitalStaffDelivery(fullTx.transaction.hospital_staff_delivery || '');
+          setHospitalAssistantPickup(fullTx.transaction.hospital_assistant_pickup || '');
+          setHospitalAssistantDelivery(fullTx.transaction.hospital_assistant_delivery || '');
+          setSignatureValetPickup(fullTx.transaction.signature_valet_pickup || '');
+          setSignatureHospitalPickup(fullTx.transaction.signature_hospital_pickup || '');
+          setSignatureAssistantPickup(fullTx.transaction.signature_assistant_pickup || '');
+          setSignatureValetDelivery(fullTx.transaction.signature_valet_delivery || '');
+          setSignatureHospitalDelivery(fullTx.transaction.signature_hospital_delivery || '');
+          setSignatureAssistantDelivery(fullTx.transaction.signature_assistant_delivery || '');
 
-        // Initialize kotor and bersih quantities
-        const initialKotor = {};
-        const initialBersih = {};
-        const initialNotes = {};
-        fullTx.details.forEach(item => {
-          initialKotor[item.id] = item.qty_kotor !== null ? item.qty_kotor : '';
-          initialBersih[item.id] = item.qty_bersih !== null ? item.qty_bersih : '';
-          initialNotes[item.id] = item.notes || '';
-        });
-        setEditKotorQuantities(initialKotor);
-        setBersihQuantities(initialBersih);
-        setEditItemNotes(initialNotes);
-        setErrorMsg('');
+          if (fullTx.transaction.delivery_date) {
+            const dDate = new Date(fullTx.transaction.delivery_date);
+            setDeliveryDate(new Date(dDate.getTime() - dDate.getTimezoneOffset() * 60000).toISOString().slice(0, 16));
+          } else {
+            setDeliveryDate(new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16));
+          }
+
+          // Initialize kotor and bersih quantities
+          const initialKotor = {};
+          const initialBersih = {};
+          const initialNotes = {};
+          fullTx.details.forEach(item => {
+            initialKotor[item.id] = item.qty_kotor !== null ? item.qty_kotor : '';
+            initialBersih[item.id] = item.qty_bersih !== null ? item.qty_bersih : '';
+            initialNotes[item.id] = item.notes || '';
+          });
+          setEditKotorQuantities(initialKotor);
+          setBersihQuantities(initialBersih);
+          setEditItemNotes(initialNotes);
+          setErrorMsg('');
+        }
       }
     } catch (err) {
       console.error('Error fetching transaction detail:', err);
@@ -612,7 +662,7 @@ export default function SerahTerima() {
     const activeDetails = editingTransaction.details.map(item => ({
       id: item.id,
       qtyKotor: parseInt(editKotorQuantities[item.id] !== undefined ? editKotorQuantities[item.id] : item.qty_kotor || 0),
-      qtyBersih: parseInt(bersihQuantities[item.id] || 0),
+      qtyBersih: (bersihQuantities[item.id] === '' || bersihQuantities[item.id] === undefined || bersihQuantities[item.id] === null) ? null : parseInt(bersihQuantities[item.id]),
       notes: editItemNotes[item.id] || ''
     }));
 
@@ -638,9 +688,46 @@ export default function SerahTerima() {
       });
 
       if (data?.success) {
-        setEditingTransaction(null);
-        setErrorMsg('');
-        fetchHistory();
+        if (data.isTemporary) {
+          const { data: detailData } = await axios.get(`/api/ikm/transactions/${editingTransaction.transaction.id}`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (detailData?.success) {
+            const fullTx = detailData.data;
+            setEditingTransaction(fullTx);
+            setUserDelivery(fullTx.transaction.user_delivery || '');
+            setUserDeliveryName(fullTx.transaction.user_delivery_name || '');
+            setEditNotes(fullTx.transaction.notes_delivery || '');
+            setHospitalStaffPickup(fullTx.transaction.hospital_staff_pickup || '');
+            setHospitalStaffDelivery(fullTx.transaction.hospital_staff_delivery || '');
+            setHospitalAssistantPickup(fullTx.transaction.hospital_assistant_pickup || '');
+            setHospitalAssistantDelivery(fullTx.transaction.hospital_assistant_delivery || '');
+            setSignatureValetPickup(fullTx.transaction.signature_valet_pickup || '');
+            setSignatureHospitalPickup(fullTx.transaction.signature_hospital_pickup || '');
+            setSignatureAssistantPickup(fullTx.transaction.signature_assistant_pickup || '');
+            setSignatureValetDelivery(fullTx.transaction.signature_valet_delivery || '');
+            setSignatureHospitalDelivery(fullTx.transaction.signature_hospital_delivery || '');
+            setSignatureAssistantDelivery(fullTx.transaction.signature_assistant_delivery || '');
+
+            const initialKotor = {};
+            const initialBersih = {};
+            const initialItemNotes = {};
+            fullTx.details.forEach(item => {
+              initialKotor[item.id] = item.qty_kotor;
+              initialBersih[item.id] = item.qty_bersih !== null ? item.qty_bersih : '';
+              initialItemNotes[item.id] = item.notes || '';
+            });
+            setEditKotorQuantities(initialKotor);
+            setBersihQuantities(initialBersih);
+            setEditItemNotes(initialItemNotes);
+          }
+          showToast("Berhasil Tersimpan Sementara");
+          fetchHistory();
+        } else {
+          setEditingTransaction(null);
+          setErrorMsg('');
+          fetchHistory();
+        }
       }
     } catch (err) {
       setErrorMsg(err.response?.data?.message || 'Gagal menyelesaikan pengiriman.');
@@ -700,15 +787,17 @@ export default function SerahTerima() {
   const formatAuditTime = (dateStr) => {
     if (!dateStr) return '';
     const d = new Date(dateStr);
+    const dayName = d.toLocaleDateString('id-ID', { weekday: 'long' });
+    const dateFormatted = d.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
     const hours = String(d.getHours()).padStart(2, '0');
     const minutes = String(d.getMinutes()).padStart(2, '0');
-    return `${hours}:${minutes} WIB`;
+    return `${dayName}, ${dateFormatted}, ${hours}:${minutes} WIB`;
   };
 
   const generateAuditLogDescriptions = (audit) => {
     const descriptions = [];
     if (!audit.old_values || !audit.new_values) {
-      if (audit.action === 'CREATE') {
+      if (audit.action === 'CREATE' || audit.action === 'PICKUP_KOTOR') {
         descriptions.push("Membuat transaksi kotor");
       }
       return descriptions;
@@ -725,6 +814,12 @@ export default function SerahTerima() {
     const oldTx = oldSnap.transaction || {};
     const newTx = newSnap.transaction || {};
 
+    if (oldTx.notes_pickup !== newTx.notes_pickup) {
+      descriptions.push(`Catatan pickup: "${oldTx.notes_pickup || '—'}" menjadi "${newTx.notes_pickup || '—'}"`);
+    }
+    if (oldTx.notes_delivery !== newTx.notes_delivery) {
+      descriptions.push(`Catatan delivery: "${oldTx.notes_delivery || '—'}" menjadi "${newTx.notes_delivery || '—'}"`);
+    }
     if (oldTx.notes !== newTx.notes) {
       descriptions.push(`Catatan umum: "${oldTx.notes || '—'}" menjadi "${newTx.notes || '—'}"`);
     }
@@ -818,7 +913,25 @@ export default function SerahTerima() {
               Riwayat Transaksi
             </button>
             <button
-              onClick={() => { setActiveTab('form'); setEditingTransaction(null); }}
+              onClick={() => {
+                setActiveTab('form');
+                setEditingTransaction(null);
+                setTemporaryTxId(null);
+                setNotes('');
+                setHospitalStaffPickup('');
+                setHospitalAssistantPickup('');
+                setSignatureValetPickup('');
+                setSignatureHospitalPickup('');
+                setSignatureAssistantPickup('');
+                const resetQtys = {};
+                const resetNotes = {};
+                linensList.forEach(item => {
+                  resetQtys[item.id] = 0;
+                  resetNotes[item.id] = '';
+                });
+                setKotorQuantities(resetQtys);
+                setItemNotes(resetNotes);
+              }}
               className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${activeTab === 'form' && !editingTransaction
                 ? 'bg-gradient-to-r from-[#126776] to-[#1ea59e] text-white shadow-md shadow-[#126776]/10'
                 : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/55'
@@ -830,7 +943,19 @@ export default function SerahTerima() {
           </div>
         </div>
 
-        {/* ══════════════════════ TAB 1: HISTORY ══════════════════════ */}
+        {!hospitalId ? (
+          <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-3xl p-6 flex items-start gap-4">
+            <Info className="h-6 w-6 text-amber-500 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold text-sm">Rumah Sakit Belum Dipilih</p>
+              <p className="text-xs text-amber-700/90 mt-1 leading-relaxed">
+                Silakan pilih salah satu Rumah Sakit di sidebar atau kembali ke Dashboard terlebih dahulu untuk memproses data.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* ══════════════════════ TAB 1: HISTORY ══════════════════════ */}
         {activeTab === 'history' && !editingTransaction && (
           <div className="space-y-6 animate-[fadeIn_0.3s_ease-out]">
 
@@ -1047,139 +1172,149 @@ export default function SerahTerima() {
               {/* Form Config Fields */}
               <div className="space-y-4">
                 {/* Card 1: Data Transaksi IKM */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-5 bg-slate-50/50 p-5 rounded-2xl border border-slate-150">
-                  {/* Form Number */}
-                  <div className="space-y-1.5">
-                    <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest">
-                      Nomor Formulir
-                    </label>
-                    <input
-                      type="text"
-                      disabled
-                      value="(Otomatis saat disimpan)"
-                      className="w-full px-3.5 py-2.5 bg-slate-100 border border-slate-200 text-slate-400 rounded-xl text-xs font-semibold cursor-not-allowed"
-                    />
+                <div className="flex rounded-2xl border border-slate-150 bg-slate-50/50">
+                  <div className="bg-[#678083] text-white flex items-center justify-center px-4 font-bold text-[10px] uppercase select-none tracking-widest shrink-0 [writing-mode:vertical-lr] rotate-180 rounded-r-2xl">
+                    Valet IKM
                   </div>
-
-                  {/* Recorder (Searchable Dropdown Select) */}
-                  <div className="space-y-1.5" ref={employeeSelectRef}>
-                    <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest">
-                      Pengisi (Petugas IKM)
-                    </label>
-                    <div className="relative">
-                      <div
-                        onClick={() => setIsEmployeeDropdownOpen(!isEmployeeDropdownOpen)}
-                        className="w-full pl-10 pr-10 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 flex items-center justify-between cursor-pointer focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] select-none min-h-[38px] border-slate-200 transition-all"
-                      >
-                        <div className="flex items-center gap-2">
-                          <User className="absolute inset-y-0 left-3.5 my-auto h-4 w-4 text-slate-400" />
-                          <span>
-                            {toTitleCase(userPickupName) || 'Pilih Pengisi Petugas IKM...'}
-                          </span>
-                        </div>
-                        <ChevronDown className="h-4 w-4 text-slate-400" />
-                      </div>
-
-                      {isEmployeeDropdownOpen && (
-                        <div className="absolute left-0 right-0 mt-1.5 bg-white border border-slate-200 shadow-xl rounded-2xl p-2.5 z-50 max-h-60 flex flex-col">
-                          {/* Search Input inside dropdown */}
-                          <div className="relative mb-2 shrink-0">
-                            <Search className="absolute inset-y-0 left-2.5 my-auto h-3.5 w-3.5 text-slate-400" />
-                            <input
-                              type="text"
-                              placeholder="Cari petugas..."
-                              value={searchEmployeeQuery}
-                              onChange={e => setSearchEmployeeQuery(e.target.value)}
-                              className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-150 rounded-xl text-xs outline-none focus:ring-2 focus:ring-[#1ea59e]/20 focus:border-[#1ea59e] font-semibold text-slate-700"
-                              onClick={e => e.stopPropagation()} // Prevent closing dropdown on click
-                            />
-                          </div>
-
-                          {/* Employees Scrollable List */}
-                          <div className="overflow-y-auto flex-1 divide-y divide-slate-50 max-h-40">
-                            {loadingEmployees ? (
-                              <div className="p-3 text-center text-slate-400 text-xs font-medium">
-                                Memuat petugas...
-                              </div>
-                            ) : filteredEmployees.length === 0 ? (
-                              <div className="p-3 text-center text-slate-400 text-xs font-medium">
-                                Tidak ada petugas ditemukan
-                              </div>
-                            ) : (
-                              filteredEmployees.map(emp => (
-                                <button
-                                  key={emp.employee_id}
-                                  type="button"
-                                  onClick={() => {
-                                    setUserPickup(emp.employee_id);
-                                    setUserPickupName(emp.employee_name);
-                                    setIsEmployeeDropdownOpen(false);
-                                    setSearchEmployeeQuery('');
-                                  }}
-                                  className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-[#1ea59e]/5 hover:text-[#126776] rounded-lg transition cursor-pointer"
-                                >
-                                  {toTitleCase(emp.employee_name)}
-                                </button>
-                              ))
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Date pickup */}
-                  <div className="space-y-1.5">
-                    <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest">
-                      Tanggal Pengambilan Kotor
-                    </label>
-                    <div className="relative">
-                      <Calendar className="absolute inset-y-0 left-3.5 my-auto h-4 w-4 text-slate-400" />
+                  <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-5 p-5">
+                    {/* Form Number */}
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest">
+                        Nomor Formulir
+                      </label>
                       <input
-                        type="datetime-local"
-                        required
-                        value={pickupDate}
-                        onChange={e => setPickupDate(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] transition"
+                        type="text"
+                        disabled
+                        value="(Otomatis saat disimpan)"
+                        className="w-full px-3.5 py-2.5 bg-slate-100 border border-slate-200 text-slate-400 rounded-xl text-xs font-semibold cursor-not-allowed"
                       />
+                    </div>
+
+                    {/* Recorder (Searchable Dropdown Select) */}
+                    <div className="space-y-1.5" ref={employeeSelectRef}>
+                      <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest">
+                        Pengisi (Petugas IKM)
+                      </label>
+                      <div className="relative">
+                        <div
+                          onClick={() => setIsEmployeeDropdownOpen(!isEmployeeDropdownOpen)}
+                          className="w-full pl-10 pr-10 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 flex items-center justify-between cursor-pointer focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] select-none min-h-[38px] border-slate-200 transition-all"
+                        >
+                          <div className="flex items-center gap-2">
+                            <User className="absolute inset-y-0 left-3.5 my-auto h-4 w-4 text-slate-400" />
+                            <span>
+                              {toTitleCase(userPickupName) || 'Pilih Pengisi Petugas IKM...'}
+                            </span>
+                          </div>
+                          <ChevronDown className="h-4 w-4 text-slate-400" />
+                        </div>
+
+                        {isEmployeeDropdownOpen && (
+                          <div className="absolute left-0 right-0 mt-1.5 bg-white border border-slate-200 shadow-xl rounded-2xl p-2.5 z-50 max-h-60 flex flex-col">
+                            {/* Search Input inside dropdown */}
+                            <div className="relative mb-2 shrink-0">
+                              <Search className="absolute inset-y-0 left-2.5 my-auto h-3.5 w-3.5 text-slate-400" />
+                              <input
+                                type="text"
+                                placeholder="Cari petugas..."
+                                value={searchEmployeeQuery}
+                                onChange={e => setSearchEmployeeQuery(e.target.value)}
+                                className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-150 rounded-xl text-xs outline-none focus:ring-2 focus:ring-[#1ea59e]/20 focus:border-[#1ea59e] font-semibold text-slate-700"
+                                onClick={e => e.stopPropagation()} // Prevent closing dropdown on click
+                              />
+                            </div>
+
+                            {/* Employees Scrollable List */}
+                            <div className="overflow-y-auto flex-1 divide-y divide-slate-50 max-h-40">
+                              {loadingEmployees ? (
+                                <div className="p-3 text-center text-slate-400 text-xs font-medium">
+                                  Memuat petugas...
+                                </div>
+                              ) : filteredEmployees.length === 0 ? (
+                                <div className="p-3 text-center text-slate-400 text-xs font-medium">
+                                  Tidak ada petugas ditemukan
+                                </div>
+                              ) : (
+                                filteredEmployees.map(emp => (
+                                  <button
+                                    key={emp.employee_id}
+                                    type="button"
+                                    onClick={() => {
+                                      setUserPickup(emp.employee_id);
+                                      setUserPickupName(emp.employee_name);
+                                      setIsEmployeeDropdownOpen(false);
+                                      setSearchEmployeeQuery('');
+                                    }}
+                                    className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-[#1ea59e]/5 hover:text-[#126776] rounded-lg transition cursor-pointer"
+                                  >
+                                    {toTitleCase(emp.employee_name)}
+                                  </button>
+                                ))
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Date pickup */}
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest">
+                        Tanggal Pengambilan Kotor
+                      </label>
+                      <div className="relative">
+                        <Calendar className="absolute inset-y-0 left-3.5 my-auto h-4 w-4 text-slate-400" />
+                        <input
+                          type="datetime-local"
+                          required
+                          value={pickupDate}
+                          onChange={e => setPickupDate(e.target.value)}
+                          className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] transition"
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
 
                 {/* Card 2: Data Petugas Pemeriksa Rumah Sakit */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5 bg-slate-50/50 p-5 rounded-2xl border border-slate-150">
-                  {/* Petugas RS Pemeriksa (Pickup) */}
-                  <div className="space-y-1.5">
-                    <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest">
-                      Petugas RS Pemeriksa (Pickup) <span className="text-rose-500 font-bold">*</span>
-                    </label>
-                    <div className="relative">
-                      <User className="absolute inset-y-0 left-3.5 my-auto h-4 w-4 text-slate-400" />
-                      <input
-                        type="text"
-                        required
-                        placeholder="Nama petugas Rumah Sakit..."
-                        value={hospitalStaffPickup}
-                        onChange={e => setHospitalStaffPickup(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] transition"
-                      />
-                    </div>
+                <div className="flex rounded-2xl border border-slate-150 bg-slate-50/50">
+                  <div className="bg-[#678083] text-white flex items-center justify-center px-4 font-bold text-[10px] uppercase select-none tracking-widest shrink-0 [writing-mode:vertical-lr] rotate-180 rounded-r-2xl">
+                    Petugas RS
                   </div>
+                  <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-5 p-5">
+                    {/* Petugas RS Pemeriksa (Pickup) */}
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest">
+                        Petugas RS Pemeriksa (Pickup) <span className="text-rose-500 font-bold">*</span>
+                      </label>
+                      <div className="relative">
+                        <User className="absolute inset-y-0 left-3.5 my-auto h-4 w-4 text-slate-400" />
+                        <input
+                          type="text"
+                          required
+                          placeholder="Nama petugas Rumah Sakit..."
+                          value={hospitalStaffPickup}
+                          onChange={e => setHospitalStaffPickup(e.target.value)}
+                          className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] transition"
+                        />
+                      </div>
+                    </div>
 
-                  {/* Perawat RS (Pickup) */}
-                  <div className="space-y-1.5">
-                    <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest">
-                      Perawat RS (Pickup) <span className="text-slate-400 font-normal">(Opsional)</span>
-                    </label>
-                    <div className="relative">
-                      <User className="absolute inset-y-0 left-3.5 my-auto h-4 w-4 text-slate-400" />
-                      <input
-                        type="text"
-                        placeholder="Nama perawat Rumah Sakit (Opsional)..."
-                        value={hospitalAssistantPickup}
-                        onChange={e => setHospitalAssistantPickup(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] transition"
-                      />
+                    {/* Perawat RS (Pickup) */}
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest">
+                        Perawat RS (Pickup) <span className="text-slate-400 font-normal">(Opsional)</span>
+                      </label>
+                      <div className="relative">
+                        <User className="absolute inset-y-0 left-3.5 my-auto h-4 w-4 text-slate-400" />
+                        <input
+                          type="text"
+                          placeholder="Nama perawat Rumah Sakit (Opsional)..."
+                          value={hospitalAssistantPickup}
+                          onChange={e => setHospitalAssistantPickup(e.target.value)}
+                          className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] transition"
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1402,176 +1537,215 @@ export default function SerahTerima() {
 
             <form onSubmit={handleCompleteDelivery} className="p-6 space-y-6">
 
-              {/* Summary Details Info card grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-150 text-xs">
-                <div className="space-y-1">
-                  <span className="text-slate-400 font-semibold uppercase text-xs tracking-wider block">Status Transaksi</span>
-                  <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-extrabold uppercase border ${editingTransaction.transaction.status === 'SELESAI'
-                    ? 'bg-teal-50 text-teal-700 border-teal-200'
-                    : 'bg-[#1ea59e]/10 text-[#126776] border border-[#1ea59e]/30'
-                    }`}>
-                    {editingTransaction.transaction.status === 'SELESAI' ? 'Selesai' : 'Pengambilan Kotor'}
-                  </span>
+              {/* Pengambilan Section */}
+              <div className="flex rounded-2xl border border-slate-150 bg-slate-50/50 min-h-[130px]">
+                <div className="bg-[#678083] text-white flex items-center justify-center px-4 font-bold text-[10px] uppercase select-none tracking-widest shrink-0 [writing-mode:vertical-lr] rotate-180 rounded-r-2xl">
+                  Pengambilan
                 </div>
-                <div className="space-y-1">
-                  <span className="text-slate-400 font-semibold uppercase text-xs tracking-wider block">Petugas Pengambil</span>
-                  <span className="font-semibold text-slate-700 block text-sm">
-                    {toTitleCase(editingTransaction.transaction.user_pickup_name)}
-                  </span>
-                </div>
-                <div className="space-y-1">
-                  <span className="text-slate-400 font-semibold uppercase text-xs tracking-wider block">Petugas RS (Pickup)</span>
-                  <span className="font-semibold text-slate-700 block text-sm">
-                    {editingTransaction.transaction.hospital_staff_pickup || '—'}
-                  </span>
-                </div>
-                <div className="space-y-1">
-                  <span className="text-slate-400 font-semibold uppercase text-xs tracking-wider block">Perawat RS (Pickup)</span>
-                  <span className="font-semibold text-slate-700 block text-sm">
-                    {editingTransaction.transaction.hospital_assistant_pickup || '—'}
-                  </span>
-                </div>
-                <div className="space-y-1">
-                  <span className="text-slate-400 font-semibold uppercase text-xs tracking-wider block">Tanggal Pengambilan</span>
-                  <span className="font-semibold text-slate-700 block text-xs">{formatDate(editingTransaction.transaction.pickup_date)}</span>
-                </div>
-                <div className="space-y-1">
-                  <span className="text-slate-400 font-semibold uppercase text-xs tracking-wider block">Catatan Pengambilan</span>
-                  <span className="font-medium text-slate-500 block italic text-xs truncate" title={editingTransaction.transaction.notes || ''}>
-                    {editingTransaction.transaction.notes || '—'}
-                  </span>
+                <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 p-5 text-xs items-center">
+                  <div className="space-y-1">
+                    <span className="text-slate-400 font-semibold uppercase text-xs tracking-wider block">Status Transaksi</span>
+                    <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-extrabold uppercase border ${editingTransaction.transaction.status === 'SELESAI'
+                      ? 'bg-teal-50 text-teal-700 border-teal-200'
+                      : 'bg-[#1ea59e]/10 text-[#126776] border border-[#1ea59e]/30'
+                      }`}>
+                      {editingTransaction.transaction.status === 'SELESAI' ? 'Selesai' : 'Pengambilan Kotor'}
+                    </span>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-slate-400 font-semibold uppercase text-xs tracking-wider block">Petugas Pengambil</span>
+                    <span className="font-semibold text-slate-700 block text-sm">
+                      {toTitleCase(editingTransaction.transaction.user_pickup_name)}
+                    </span>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-slate-400 font-semibold uppercase text-xs tracking-wider block">Petugas RS (Pickup)</span>
+                    <span className="font-semibold text-slate-700 block text-sm">
+                      {editingTransaction.transaction.hospital_staff_pickup || '—'}
+                    </span>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-slate-400 font-semibold uppercase text-xs tracking-wider block">Perawat RS (Pickup)</span>
+                    <span className="font-semibold text-slate-700 block text-sm">
+                      {editingTransaction.transaction.hospital_assistant_pickup || '—'}
+                    </span>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-slate-400 font-semibold uppercase text-xs tracking-wider block">Tanggal Pengambilan</span>
+                    <span className="font-semibold text-slate-700 block text-xs">{formatDate(editingTransaction.transaction.pickup_date)}</span>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-slate-400 font-semibold uppercase text-xs tracking-wider block">Catatan Pengambilan</span>
+                    <span className="font-medium text-slate-500 block italic text-xs truncate" title={editingTransaction.transaction.notes_pickup || ''}>
+                      {editingTransaction.transaction.notes_pickup || '—'}
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              {/* Delivery Input Config */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-5 bg-slate-50/50 p-5 rounded-2xl border border-slate-150">
-
-                {/* Delivery Complete Recorder */}
-                <div className="space-y-1.5" ref={editEmployeeSelectRef}>
-                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest">
-                    Petugas Pengirim
-                  </label>
-                  <div className="relative">
-                    {!isEditable ? (
-                      <div className="w-full pl-10 pr-4 py-2.5 bg-slate-100 border border-slate-200 text-slate-400 rounded-xl text-xs font-semibold flex items-center gap-2 cursor-not-allowed">
-                        <User className="h-4 w-4 text-slate-400" />
-                        <span>
-                          {toTitleCase(userDeliveryName)}
-                        </span>
-                      </div>
-                    ) : (
-                      <>
-                        <div
-                          onClick={() => setIsEditEmployeeDropdownOpen(!isEditEmployeeDropdownOpen)}
-                          className="w-full pl-10 pr-10 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 flex items-center justify-between cursor-pointer focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] select-none min-h-[38px] border-slate-200 transition-all"
-                        >
-                          <div className="flex items-center gap-2">
-                            <User className="absolute inset-y-0 left-3.5 my-auto h-4 w-4 text-slate-400" />
-                            <span>
-                              {toTitleCase(userDeliveryName) || 'Pilih Pengirim Petugas IKM...'}
-                            </span>
-                          </div>
-                          <ChevronDown className="h-4 w-4 text-slate-400" />
-                        </div>
-
-                        {isEditEmployeeDropdownOpen && (
-                          <div className="absolute left-0 right-0 mt-1.5 bg-white border border-slate-200 shadow-xl rounded-2xl p-2.5 z-50 max-h-60 flex flex-col">
-                            {/* Search Input inside dropdown */}
-                            <div className="relative mb-2 shrink-0">
-                              <Search className="absolute inset-y-0 left-2.5 my-auto h-3.5 w-3.5 text-slate-400" />
-                              <input
-                                type="text"
-                                placeholder="Cari petugas..."
-                                value={editSearchEmployeeQuery}
-                                onChange={e => setEditSearchEmployeeQuery(e.target.value)}
-                                className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-150 rounded-xl text-xs outline-none focus:ring-2 focus:ring-[#1ea59e]/20 focus:border-[#1ea59e] font-semibold text-slate-700"
-                                onClick={e => e.stopPropagation()} // Prevent closing dropdown on click
-                              />
-                            </div>
-
-                            {/* Employees Scrollable List */}
-                            <div className="overflow-y-auto flex-1 divide-y divide-slate-50 max-h-40">
-                              {loadingEmployees ? (
-                                <div className="p-3 text-center text-slate-400 text-xs font-medium">
-                                  Memuat petugas...
-                                </div>
-                              ) : filteredEditEmployees.length === 0 ? (
-                                <div className="p-3 text-center text-slate-400 text-xs font-medium">
-                                  Tidak ada petugas ditemukan
-                                </div>
-                              ) : (
-                                filteredEditEmployees.map(emp => (
-                                  <button
-                                    key={emp.employee_id}
-                                    type="button"
-                                    onClick={() => {
-                                      setUserDelivery(emp.employee_id);
-                                      setUserDeliveryName(emp.employee_name);
-                                      setIsEditEmployeeDropdownOpen(false);
-                                      setEditSearchEmployeeQuery('');
-                                    }}
-                                    className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-[#1ea59e]/5 hover:text-[#126776] rounded-lg transition cursor-pointer"
-                                  >
-                                    {toTitleCase(emp.employee_name)}
-                                  </button>
-                                ))
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </div>
+              {/* Pengiriman Section */}
+              <div className="flex rounded-2xl border border-slate-150 bg-slate-50/50 min-h-[130px]">
+                <div className="bg-[#126776] text-white flex items-center justify-center px-4 font-bold text-[10px] uppercase select-none tracking-widest shrink-0 [writing-mode:vertical-lr] rotate-180 rounded-r-2xl">
+                  Pengiriman
                 </div>
+                <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 p-5 items-center">
 
-                {/* Delivery Date */}
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest">
-                    Tanggal Pengembalian Bersih
-                  </label>
-                  <div className="relative">
-                    <Calendar className="absolute inset-y-0 left-3.5 my-auto h-4 w-4 text-slate-400" />
-                    <input
-                      type="datetime-local"
-                      required
-                      value={deliveryDate}
-                      onChange={e => setDeliveryDate(e.target.value)}
-                      disabled={!isEditable}
-                      className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] transition disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
-                    />
-                  </div>
-                </div>
-
-                {/* Petugas RS Pemeriksa (Delivery) */}
-                <div className="space-y-1.5">
-                  <div className="flex justify-between items-center h-4">
+                  {/* Delivery Complete Recorder */}
+                  <div className="space-y-1.5" ref={editEmployeeSelectRef}>
                     <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest">
-                      Petugas RS (Delivery)
+                      Petugas Pengirim
                     </label>
-                    {isEditable && (
-                      <button
-                        type="button"
-                        onClick={() => setHospitalStaffDelivery(hospitalStaffPickup)}
-                        className="text-[10px] text-[#1ea59e] hover:text-[#126776] font-bold transition flex items-center gap-1 cursor-pointer select-none"
-                      >
-                        Sama Dengan Pickup
-                      </button>
-                    )}
-                  </div>
-                  <div className="relative">
-                    <User className="absolute inset-y-0 left-3.5 my-auto h-4 w-4 text-slate-400" />
-                    <input
-                      type="text"
-                      required
-                      disabled={!isEditable}
-                      placeholder="Nama petugas Rumah Sakit..."
-                      value={hospitalStaffDelivery}
-                      onChange={e => setHospitalStaffDelivery(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] transition disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
-                    />
-                  </div>
-                </div>
+                    <div className="relative">
+                      {!isEditable ? (
+                        <div className="w-full pl-10 pr-4 py-2.5 bg-slate-100 border border-slate-200 text-slate-400 rounded-xl text-xs font-semibold flex items-center gap-2 cursor-not-allowed">
+                          <User className="h-4 w-4 text-slate-400" />
+                          <span>
+                            {toTitleCase(userDeliveryName)}
+                          </span>
+                        </div>
+                      ) : (
+                        <>
+                          <div
+                            onClick={() => setIsEditEmployeeDropdownOpen(!isEditEmployeeDropdownOpen)}
+                            className="w-full pl-10 pr-10 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 flex items-center justify-between cursor-pointer focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] select-none min-h-[38px] transition-all"
+                          >
+                            <div className="flex items-center gap-2">
+                              <User className="absolute inset-y-0 left-3.5 my-auto h-4 w-4 text-slate-400" />
+                              <span>
+                                {toTitleCase(userDeliveryName) || 'Pilih Pengirim Petugas IKM...'}
+                              </span>
+                            </div>
+                            <ChevronDown className="h-4 w-4 text-slate-400" />
+                          </div>
 
+                          {isEditEmployeeDropdownOpen && (
+                            <div className="absolute left-0 right-0 mt-1.5 bg-white border border-slate-200 shadow-xl rounded-2xl p-2.5 z-50 max-h-60 flex flex-col">
+                              {/* Search Input inside dropdown */}
+                              <div className="relative mb-2 shrink-0">
+                                <Search className="absolute inset-y-0 left-2.5 my-auto h-3.5 w-3.5 text-slate-400" />
+                                <input
+                                  type="text"
+                                  placeholder="Cari petugas..."
+                                  value={editSearchEmployeeQuery}
+                                  onChange={e => setEditSearchEmployeeQuery(e.target.value)}
+                                  className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-150 rounded-xl text-xs outline-none focus:ring-2 focus:ring-[#1ea59e]/20 focus:border-[#1ea59e] font-semibold text-slate-700"
+                                  onClick={e => e.stopPropagation()} // Prevent closing dropdown on click
+                                />
+                              </div>
+
+                              {/* Employees Scrollable List */}
+                              <div className="overflow-y-auto flex-1 divide-y divide-slate-50 max-h-40">
+                                {loadingEmployees ? (
+                                  <div className="p-3 text-center text-slate-400 text-xs font-medium">
+                                    Memuat petugas...
+                                  </div>
+                                ) : filteredEditEmployees.length === 0 ? (
+                                  <div className="p-3 text-center text-slate-400 text-xs font-medium">
+                                    Tidak ada petugas ditemukan
+                                  </div>
+                                ) : (
+                                  filteredEditEmployees.map(emp => (
+                                    <button
+                                      key={emp.employee_id}
+                                      type="button"
+                                      onClick={() => {
+                                        setUserDelivery(emp.employee_id);
+                                        setUserDeliveryName(emp.employee_name);
+                                        setIsEditEmployeeDropdownOpen(false);
+                                        setEditSearchEmployeeQuery('');
+                                      }}
+                                      className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-[#1ea59e]/5 hover:text-[#126776] rounded-lg transition cursor-pointer"
+                                    >
+                                      {toTitleCase(emp.employee_name)}
+                                    </button>
+                                  ))
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Delivery Date */}
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest">
+                      Tanggal Pengembalian Bersih
+                    </label>
+                    <div className="relative">
+                      <Calendar className="absolute inset-y-0 left-3.5 my-auto h-4 w-4 text-slate-400" />
+                      <input
+                        type="datetime-local"
+                        required
+                        value={deliveryDate}
+                        onChange={e => setDeliveryDate(e.target.value)}
+                        disabled={!isEditable}
+                        className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] transition disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Petugas RS Pemeriksa (Delivery) */}
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between items-center h-4">
+                      <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest">
+                        Petugas RS (Delivery)
+                      </label>
+                      {isEditable && (
+                        <button
+                          type="button"
+                          onClick={() => setHospitalStaffDelivery(hospitalStaffPickup)}
+                          className="text-[10px] text-[#1ea59e] hover:text-[#126776] font-bold transition flex items-center gap-1 cursor-pointer select-none"
+                        >
+                          Sama Dengan Pickup
+                        </button>
+                      )}
+                    </div>
+                    <div className="relative">
+                      <User className="absolute inset-y-0 left-3.5 my-auto h-4 w-4 text-slate-400" />
+                      <input
+                        type="text"
+                        required
+                        disabled={!isEditable}
+                        placeholder="Nama petugas Rumah Sakit..."
+                        value={hospitalStaffDelivery}
+                        onChange={e => setHospitalStaffDelivery(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] transition disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Perawat RS Pemeriksa (Delivery) */}
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between items-center h-4">
+                      <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest">
+                        Perawat RS (Delivery)
+                      </label>
+                      {isEditable && (
+                        <button
+                          type="button"
+                          onClick={() => setHospitalAssistantDelivery(hospitalAssistantPickup || '')}
+                          className="text-[10px] text-[#1ea59e] hover:text-[#126776] font-bold transition flex items-center gap-1 cursor-pointer select-none"
+                        >
+                          Sama Dengan Pickup
+                        </button>
+                      )}
+                    </div>
+                    <div className="relative">
+                      <User className="absolute inset-y-0 left-3.5 my-auto h-4 w-4 text-slate-400" />
+                      <input
+                        type="text"
+                        disabled={!isEditable}
+                        placeholder="Nama perawat Rumah Sakit (Opsional)..."
+                        value={hospitalAssistantDelivery}
+                        onChange={e => setHospitalAssistantDelivery(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] transition disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                      />
+                    </div>
+                  </div>
+
+                </div>
               </div>
 
               {/* Error Alert */}
@@ -1769,21 +1943,83 @@ export default function SerahTerima() {
 
                   {/* Collapsible Content */}
                   {showAuditLogs && (
-                    <div className="px-5 pb-5 border-t border-slate-150/70 pt-4 bg-white animate-[fadeIn_0.2s_ease-out]">
-                      <div className="space-y-2 max-h-56 overflow-y-auto pr-2 divide-y divide-slate-100">
-                        {editingTransaction.audits.map((audit) => {
-                          const descriptions = generateAuditLogDescriptions(audit);
-                          return descriptions.map((desc, idx) => (
-                            <div key={`${audit.id}-${idx}`} className="py-2.5 text-xs font-semibold text-slate-650 flex items-start gap-1.5 first:pt-0">
-                              <span className="text-slate-400 font-bold shrink-0">{formatAuditTime(audit.created_at)}</span>
-                              <span className="text-slate-400 font-bold shrink-0">•</span>
-                              <span className="text-[#126776] font-bold shrink-0">{audit.full_name || audit.username}</span>
-                              <span className="text-slate-400 font-bold shrink-0">•</span>
-                              <span className="text-slate-700 font-medium">{desc}</span>
-                            </div>
-                          ));
-                        })}
-                      </div>
+                    <div className="px-5 pb-5 border-t border-slate-150/70 pt-4 bg-white animate-[fadeIn_0.2s_ease-out] space-y-5 max-h-72 overflow-y-auto pr-2 divide-y divide-slate-100/70">
+                      
+                      {/* Section 1: Pickup Linen Kotor */}
+                      {editingTransaction.audits.some(a => a.action === 'CREATE' || a.action === 'PICKUP_KOTOR') && (
+                        <div className="space-y-2 pt-3 first:pt-0">
+                          <h5 className="text-[10px] font-extrabold text-[#678083] uppercase tracking-wider block">
+                            Pickup Linen Kotor
+                          </h5>
+                          <div className="space-y-1.5 pl-1.5">
+                            {editingTransaction.audits
+                              .filter(a => a.action === 'CREATE' || a.action === 'PICKUP_KOTOR')
+                              .map(audit => {
+                                const descriptions = generateAuditLogDescriptions(audit);
+                                return descriptions.map((desc, idx) => (
+                                  <div key={`${audit.id}-${idx}`} className="text-xs font-semibold text-slate-600 flex items-start gap-1.5">
+                                    <span className="text-slate-400 font-bold shrink-0">{formatAuditTime(audit.created_at)}</span>
+                                    <span className="text-slate-400 font-bold shrink-0">•</span>
+                                    <span className="text-[#126776] font-bold shrink-0">{audit.full_name || audit.username}</span>
+                                    <span className="text-slate-400 font-bold shrink-0">•</span>
+                                    <span className="text-slate-700 font-medium">{desc}</span>
+                                  </div>
+                                ));
+                              })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Section 2: Pengantaran Linen Bersih */}
+                      {editingTransaction.audits.some(a => a.action === 'UPDATE' || a.action === 'DELIVERY_BERSIH') && (
+                        <div className="space-y-2 pt-3">
+                          <h5 className="text-[10px] font-extrabold text-[#1ea59e] uppercase tracking-wider block">
+                            Pengantaran Linen Bersih
+                          </h5>
+                          <div className="space-y-1.5 pl-1.5">
+                            {editingTransaction.audits
+                              .filter(a => a.action === 'UPDATE' || a.action === 'DELIVERY_BERSIH')
+                              .map(audit => {
+                                const descriptions = generateAuditLogDescriptions(audit);
+                                return descriptions.map((desc, idx) => (
+                                  <div key={`${audit.id}-${idx}`} className="text-xs font-semibold text-slate-600 flex items-start gap-1.5">
+                                    <span className="text-slate-400 font-bold shrink-0">{formatAuditTime(audit.created_at)}</span>
+                                    <span className="text-slate-400 font-bold shrink-0">•</span>
+                                    <span className="text-[#1ea59e] font-bold shrink-0">{audit.full_name || audit.username}</span>
+                                    <span className="text-slate-400 font-bold shrink-0">•</span>
+                                    <span className="text-slate-700 font-medium">{desc}</span>
+                                  </div>
+                                ));
+                              })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Section 3: Linen Kurang Kirim */}
+                      {editingTransaction.audits.some(a => a.action === 'KURANG_KIRIM') && (
+                        <div className="space-y-2 pt-3">
+                          <h5 className="text-[10px] font-extrabold text-rose-500 uppercase tracking-wider block">
+                            Linen Kurang Kirim
+                          </h5>
+                          <div className="space-y-1.5 pl-1.5">
+                            {editingTransaction.audits
+                              .filter(a => a.action === 'KURANG_KIRIM')
+                              .map(audit => {
+                                const descriptions = generateAuditLogDescriptions(audit);
+                                return descriptions.map((desc, idx) => (
+                                  <div key={`${audit.id}-${idx}`} className="text-xs font-semibold text-slate-600 flex items-start gap-1.5">
+                                    <span className="text-slate-400 font-bold shrink-0">{formatAuditTime(audit.created_at)}</span>
+                                    <span className="text-slate-400 font-bold shrink-0">•</span>
+                                    <span className="text-[#126776] font-bold shrink-0">{audit.full_name || audit.username}</span>
+                                    <span className="text-slate-400 font-bold shrink-0">•</span>
+                                    <span className="text-slate-700 font-medium">{desc}</span>
+                                  </div>
+                                ));
+                              })}
+                          </div>
+                        </div>
+                      )}
+
                     </div>
                   )}
                 </div>
@@ -1969,8 +2205,34 @@ export default function SerahTerima() {
             </form>
           </div>
         )}
+          </>
+        )}
 
       </div>
+
+      {/* Toast Notification */}
+      {toast.show && (
+        <div className="fixed bottom-5 right-5 z-[9999] flex items-center gap-2.5 px-4 py-3 rounded-2xl shadow-xl border border-slate-100 bg-white/95 backdrop-blur-md animate-[slideIn_0.3s_ease-out] min-w-[280px]">
+          <div className={`p-1.5 rounded-lg ${toast.type === 'success' ? 'bg-teal-50 text-teal-600' : 'bg-rose-50 text-rose-600'}`}>
+            {toast.type === 'success' ? <CheckCircle2 className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
+          </div>
+          <div className="flex-1">
+            <p className="text-xs font-bold text-slate-800 leading-tight">
+              {toast.type === 'success' ? 'Berhasil' : 'Pemberitahuan'}
+            </p>
+            <p className="text-[10px] text-slate-500 mt-0.5 font-semibold leading-tight">
+              {toast.message}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setToast(prev => ({ ...prev, show: false }))}
+            className="text-slate-400 hover:text-slate-650 transition shrink-0 p-1 cursor-pointer"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

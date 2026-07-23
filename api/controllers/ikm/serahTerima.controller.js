@@ -219,6 +219,7 @@ export const createTransaction = async (req, res) => {
     await connection.beginTransaction();
 
     const {
+      id,
       hospitalId,
       userPickup,
       hospitalStaffPickup,
@@ -231,43 +232,98 @@ export const createTransaction = async (req, res) => {
       signatureAssistantPickup
     } = req.body;
 
-    if (!hospitalId || !userPickup || !hospitalStaffPickup || !pickupDate || !signatureValetPickup || !signatureHospitalPickup || !details || details.length === 0) {
+    const isTemporary = !signatureValetPickup || !signatureHospitalPickup;
+
+    if (!hospitalId || !userPickup || !pickupDate || !details || details.length === 0) {
       return res.status(400).json({
         success: false,
-        message: "Data form pengisian tidak lengkap (termasuk Petugas RS dan Tanda Tangan)"
+        message: "Data form pengisian tidak lengkap"
       });
     }
 
-    // Generate form number: {hospitalCode}-{yyyymmdd}-{0001} (sequential per hospital+day)
-    const d = new Date(pickupDate);
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    const yyyymmdd = `${yyyy}${mm}${dd}`;
+    if (!isTemporary && !hospitalStaffPickup) {
+      return res.status(400).json({
+        success: false,
+        message: "Nama Petugas RS wajib diisi untuk simpan permanen."
+      });
+    }
 
-    const [countResult] = await connection.query(
-      `SELECT COUNT(*) as cnt FROM tr_linen_transaction
-       WHERE hospital_id = ? AND DATE(pickup_date) = DATE(?)`,
-      [hospitalId, pickupDate]
-    );
-    const nextSeq = (countResult?.[0]?.cnt || 0) + 1;
+    let transactionId = id;
+    let formNumber;
 
-    // Get the hospital_id code from mst_hospital
-    const [hospitalRows] = await connection.query(
-      `SELECT hospital_id FROM mst_hospital WHERE id = ?`,
-      [hospitalId]
-    );
-    const hospitalCode = hospitalRows?.[0]?.hospital_id || hospitalId;
-    const formNumber = `${hospitalCode}-${yyyymmdd}-${String(nextSeq).padStart(3, '0')}`;
+    if (transactionId) {
+      // Check existing
+      const [oldTxRows] = await connection.query(
+        `SELECT form_number, status FROM tr_linen_transaction WHERE id = ?`,
+        [transactionId]
+      );
+      if (oldTxRows.length === 0) {
+        await connection.rollback();
+        return res.status(404).json({ success: false, message: "Transaksi tidak ditemukan" });
+      }
+      if (oldTxRows[0].status === 'SELESAI') {
+        await connection.rollback();
+        return res.status(400).json({ success: false, message: "Transaksi yang sudah selesai tidak dapat diubah dari form pengambilan" });
+      }
+      formNumber = oldTxRows[0].form_number;
 
-    const [result] = await connection.query(
-      `INSERT INTO tr_linen_transaction 
-       (form_number, hospital_id, user_pickup, hospital_staff_pickup, hospital_assistant_pickup, pickup_date, status, notes)
-       VALUES (?, ?, ?, ?, ?, ?, 'PROSES', ?)`,
-      [formNumber, hospitalId, userPickup, toTitleCase(hospitalStaffPickup), hospitalAssistantPickup ? toTitleCase(hospitalAssistantPickup) : null, pickupDate, notes || null]
-    );
+      // Update Header
+      await connection.query(
+        `UPDATE tr_linen_transaction 
+         SET user_pickup = ?, 
+             hospital_staff_pickup = ?, 
+             hospital_assistant_pickup = ?, 
+             pickup_date = ?, 
+             notes_pickup = ?
+         WHERE id = ?`,
+        [
+          userPickup, 
+          hospitalStaffPickup ? toTitleCase(hospitalStaffPickup) : null, 
+          hospitalAssistantPickup ? toTitleCase(hospitalAssistantPickup) : null, 
+          pickupDate, 
+          notes || null,
+          transactionId
+        ]
+      );
 
-    const transactionId = result.insertId;
+      // Delete existing details so we can re-insert
+      await connection.query(
+        `DELETE FROM tr_linen_transaction_detail WHERE transaction_id = ?`,
+        [transactionId]
+      );
+    } else {
+      // Generate form number: {hospitalCode}-{ddmmyy}-{001} (sequential per hospital+day)
+      const d = new Date(pickupDate);
+      const yyyy = d.getFullYear();
+      const yy = String(yyyy).slice(-2);
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      const ddmmyy = `${dd}${mm}${yy}`;
+
+      const [countResult] = await connection.query(
+        `SELECT COUNT(*) as cnt FROM tr_linen_transaction
+         WHERE hospital_id = ? AND DATE(pickup_date) = DATE(?)`,
+         [hospitalId, pickupDate]
+      );
+      const nextSeq = (countResult?.[0]?.cnt || 0) + 1;
+
+      // Get the hospital_id code from mst_hospital
+      const [hospitalRows] = await connection.query(
+        `SELECT hospital_id FROM mst_hospital WHERE id = ?`,
+        [hospitalId]
+      );
+      const hospitalCode = hospitalRows?.[0]?.hospital_id || hospitalId;
+      formNumber = `${hospitalCode}-${ddmmyy}-${String(nextSeq).padStart(3, '0')}`;
+
+      const [result] = await connection.query(
+        `INSERT INTO tr_linen_transaction 
+         (form_number, hospital_id, user_pickup, hospital_staff_pickup, hospital_assistant_pickup, pickup_date, status, notes_pickup)
+         VALUES (?, ?, ?, ?, ?, ?, 'PROSES', ?)`,
+        [formNumber, hospitalId, userPickup, hospitalStaffPickup ? toTitleCase(hospitalStaffPickup) : null, hospitalAssistantPickup ? toTitleCase(hospitalAssistantPickup) : null, pickupDate, notes || null]
+      );
+
+      transactionId = result.insertId;
+    }
 
     // Decode and save signature images
     const valetPickupPath = saveBase64Image(signatureValetPickup, 'valet_pickup', transactionId);
@@ -277,9 +333,11 @@ export const createTransaction = async (req, res) => {
     if (valetPickupPath || hospitalPickupPath || assistantPickupPath) {
       await connection.query(
         `UPDATE tr_linen_transaction 
-         SET signature_valet_pickup = ?, signature_hospital_pickup = ?, signature_assistant_pickup = ?
+         SET signature_valet_pickup = COALESCE(?, signature_valet_pickup), 
+             signature_hospital_pickup = COALESCE(?, signature_hospital_pickup), 
+             signature_assistant_pickup = COALESCE(?, signature_assistant_pickup)
          WHERE id = ?`,
-        [valetPickupPath, hospitalPickupPath, assistantPickupPath, transactionId]
+        [valetPickupPath || null, hospitalPickupPath || null, assistantPickupPath || null, transactionId]
       );
     }
 
@@ -318,7 +376,7 @@ export const createTransaction = async (req, res) => {
     await connection.query(
       `INSERT INTO tr_linen_transaction_audit 
        (transaction_id, action, user_id, username, full_name, role, old_values, new_values)
-       VALUES (?, 'CREATE', ?, ?, ?, ?, NULL, ?)`,
+       VALUES (?, 'PICKUP_KOTOR', ?, ?, ?, ?, NULL, ?)`,
       [
         transactionId,
         userId,
@@ -333,7 +391,8 @@ export const createTransaction = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: "Transaksi serah terima linen (Kotor) berhasil dicatat",
+      message: isTemporary ? "Berhasil Tersimpan Sementara" : "Transaksi serah terima linen (Kotor) berhasil dicatat",
+      isTemporary,
       data: { transactionId, formNumber }
     });
   } catch (error) {
@@ -375,11 +434,21 @@ export const updateTransactionDelivery = async (req, res) => {
       signatureAssistantDelivery
     } = req.body;
 
-    if (!deliveryDate || !userDelivery || !hospitalStaffDelivery || !details || details.length === 0) {
+    const isTemporary = !signatureValetDelivery || !signatureHospitalDelivery;
+
+    if (!deliveryDate || !details || details.length === 0) {
       await connection.rollback();
       return res.status(400).json({
         success: false,
-        message: "Tanggal pengiriman, petugas pengirim, petugas RS pemeriksa, dan rincian bersih wajib diisi"
+        message: "Tanggal pengiriman dan rincian bersih wajib diisi"
+      });
+    }
+
+    if (!isTemporary && (!userDelivery || !hospitalStaffDelivery)) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "Petugas pengirim dan nama Petugas RS wajib diisi untuk simpan permanen."
       });
     }
 
@@ -429,9 +498,9 @@ export const updateTransactionDelivery = async (req, res) => {
       [id]
     );
 
-    // Determine completed_at (set to now if transitioning from PROSES to SELESAI)
+    // Determine completed_at (set to now if transitioning from PROSES to SELESAI, and is not temporary save)
     let completedAt = oldHeader.completed_at;
-    if (oldHeader.status === 'PROSES') {
+    if (oldHeader.status === 'PROSES' && !isTemporary) {
       completedAt = new Date();
     }
 
@@ -442,6 +511,9 @@ export const updateTransactionDelivery = async (req, res) => {
     const valetDeliveryPath = saveBase64Image(signatureValetDelivery, 'valet_delivery', id);
     const hospitalDeliveryPath = saveBase64Image(signatureHospitalDelivery, 'hospital_delivery', id);
     const assistantDeliveryPath = signatureAssistantDelivery ? saveBase64Image(signatureAssistantDelivery, 'assistant_delivery', id) : null;
+
+    const status = isTemporary ? 'PROSES' : 'SELESAI';
+    const completedAtValue = isTemporary ? null : completedAt;
 
     // Update Header
     await connection.query(
@@ -459,8 +531,8 @@ export const updateTransactionDelivery = async (req, res) => {
            signature_valet_delivery = ?,
            signature_hospital_delivery = ?,
            signature_assistant_delivery = ?,
-           notes = COALESCE(?, notes), 
-           status = 'SELESAI'
+           notes_delivery = ?, 
+           status = ?
        WHERE id = ?`,
       [
         deliveryDate,
@@ -477,6 +549,7 @@ export const updateTransactionDelivery = async (req, res) => {
         hospitalDeliveryPath || null,
         assistantDeliveryPath || null,
         notes || null,
+        status,
         id
       ]
     );
@@ -529,7 +602,7 @@ export const updateTransactionDelivery = async (req, res) => {
     await connection.query(
       `INSERT INTO tr_linen_transaction_audit 
        (transaction_id, action, user_id, username, full_name, role, old_values, new_values)
-       VALUES (?, 'UPDATE', ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, 'DELIVERY_BERSIH', ?, ?, ?, ?, ?, ?)`,
       [
         id,
         userId,
@@ -545,7 +618,8 @@ export const updateTransactionDelivery = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Transaksi serah terima linen berhasil diperbarui"
+      message: isTemporary ? "Berhasil Tersimpan Sementara" : "Transaksi serah terima linen bersih berhasil diselesaikan",
+      isTemporary
     });
   } catch (error) {
     await connection.rollback();

@@ -8,6 +8,7 @@ import { fileURLToPath } from 'url';
 import authRoutes from './api/routes/auth/auth.routes.js';
 import ikmDashboardRoutes from './api/routes/ikm/dashboard.routes.js';
 import ikmSerahTerimaRoutes from './api/routes/ikm/serahTerima.routes.js';
+import ikmKurangKirimRoutes from './api/routes/ikm/kurangKirimLinen.routes.js';
 
 // Resolve directory paths
 const __filename = fileURLToPath(import.meta.url);
@@ -55,6 +56,7 @@ if (UPLOAD_BASE_DIR && path.isAbsolute(UPLOAD_BASE_DIR)) {
 app.use('/api/auth', authRoutes);
 app.use('/api/ikm', ikmDashboardRoutes);
 app.use('/api/ikm', ikmSerahTerimaRoutes);
+app.use('/api/ikm', ikmKurangKirimRoutes);
 
 // ==========================
 // Frontend
