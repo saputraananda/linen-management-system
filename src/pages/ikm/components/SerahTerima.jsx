@@ -799,6 +799,8 @@ export default function SerahTerima() {
     if (!audit.old_values || !audit.new_values) {
       if (audit.action === 'CREATE' || audit.action === 'PICKUP_KOTOR') {
         descriptions.push("Membuat transaksi kotor");
+      } else if (audit.action === 'ADMIN') {
+        descriptions.push("Melakukan perubahan admin");
       }
       return descriptions;
     }
@@ -811,8 +813,8 @@ export default function SerahTerima() {
       return ["Gagal memuat detail log"];
     }
 
-    const oldTx = oldSnap.transaction || {};
-    const newTx = newSnap.transaction || {};
+    const oldTx = oldSnap.transaction || oldSnap.header || {};
+    const newTx = newSnap.transaction || newSnap.header || {};
 
     if (oldTx.notes_pickup !== newTx.notes_pickup) {
       descriptions.push(`Catatan pickup: "${oldTx.notes_pickup || '—'}" menjadi "${newTx.notes_pickup || '—'}"`);
@@ -854,6 +856,16 @@ export default function SerahTerima() {
       descriptions.push(`Perawat RS Delivery: "${oldTx.hospital_assistant_delivery || '—'}" menjadi "${newTx.hospital_assistant_delivery || '—'}"`);
     }
 
+    if (oldTx.pickup_date !== newTx.pickup_date) {
+      descriptions.push(`Tanggal Pickup: "${oldTx.pickup_date || '—'}" menjadi "${newTx.pickup_date || '—'}"`);
+    }
+    if (oldTx.delivery_date !== newTx.delivery_date) {
+      descriptions.push(`Tanggal Pengantaran: "${oldTx.delivery_date || '—'}" menjadi "${newTx.delivery_date || '—'}"`);
+    }
+    if (oldTx.status !== newTx.status) {
+      descriptions.push(`Status Transaksi: "${oldTx.status || '—'}" menjadi "${newTx.status || '—'}"`);
+    }
+
     const oldDetails = oldSnap.details || [];
     const newDetails = newSnap.details || [];
 
@@ -877,6 +889,10 @@ export default function SerahTerima() {
         }
       }
     });
+
+    if (descriptions.length === 0) {
+      descriptions.push("Melakukan pembaruan data transaksi");
+    }
 
     return descriptions;
   };
@@ -2011,6 +2027,31 @@ export default function SerahTerima() {
                                     <span className="text-slate-400 font-bold shrink-0">{formatAuditTime(audit.created_at)}</span>
                                     <span className="text-slate-400 font-bold shrink-0">•</span>
                                     <span className="text-[#126776] font-bold shrink-0">{audit.full_name || audit.username}</span>
+                                    <span className="text-slate-400 font-bold shrink-0">•</span>
+                                    <span className="text-slate-700 font-medium">{desc}</span>
+                                  </div>
+                                ));
+                              })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Section 4: Perubahan Oleh Admin */}
+                      {editingTransaction.audits.some(a => a.action === 'ADMIN') && (
+                        <div className="space-y-2 pt-3">
+                          <h5 className="text-[10px] font-extrabold text-violet-600 uppercase tracking-wider block">
+                            Perubahan Oleh Admin
+                          </h5>
+                          <div className="space-y-1.5 pl-1.5">
+                            {editingTransaction.audits
+                              .filter(a => a.action === 'ADMIN')
+                              .map(audit => {
+                                const descriptions = generateAuditLogDescriptions(audit);
+                                return descriptions.map((desc, idx) => (
+                                  <div key={`${audit.id}-${idx}`} className="text-xs font-semibold text-slate-600 flex items-start gap-1.5">
+                                    <span className="text-slate-400 font-bold shrink-0">{formatAuditTime(audit.created_at)}</span>
+                                    <span className="text-slate-400 font-bold shrink-0">•</span>
+                                    <span className="text-violet-600 font-bold shrink-0">{audit.full_name || audit.username}</span>
                                     <span className="text-slate-400 font-bold shrink-0">•</span>
                                     <span className="text-slate-700 font-medium">{desc}</span>
                                   </div>

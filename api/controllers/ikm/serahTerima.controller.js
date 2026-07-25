@@ -192,6 +192,23 @@ export const getTransactionDetail = async (req, res) => {
       [id]
     );
 
+    // Fetch names of users in audits from mainPool.mst_employee
+    const auditUserIds = audits.map(a => a.user_id).filter(uid => uid !== null && uid !== undefined);
+    if (auditUserIds.length > 0) {
+      const [employees] = await mainPool.query(
+        `SELECT employee_id, full_name as employee_name 
+         FROM mst_employee 
+         WHERE employee_id IN (?)`,
+        [auditUserIds]
+      );
+      const empMap = new Map(employees.map(emp => [emp.employee_id, emp.employee_name]));
+      audits.forEach(a => {
+        if (a.user_id && empMap.has(a.user_id)) {
+          a.full_name = toTitleCase(empMap.get(a.user_id));
+        }
+      });
+    }
+
     return res.status(200).json({
       success: true,
       data: {
@@ -373,12 +390,15 @@ export const createTransaction = async (req, res) => {
     const fullName = req.user?.fullName || null;
     const role = req.user?.role || null;
 
+    const action = (role?.toLowerCase() === 'admin' || role?.toLowerCase() === 'superadmin' || role?.toLowerCase() === 'administrator') ? 'ADMIN' : 'PICKUP_KOTOR';
+
     await connection.query(
       `INSERT INTO tr_linen_transaction_audit 
        (transaction_id, action, user_id, username, full_name, role, old_values, new_values)
-       VALUES (?, 'PICKUP_KOTOR', ?, ?, ?, ?, NULL, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, NULL, ?)`,
       [
         transactionId,
+        action,
         userId,
         username,
         fullName,
@@ -599,12 +619,15 @@ export const updateTransactionDelivery = async (req, res) => {
     const fullName = req.user?.fullName || null;
     const role = req.user?.role || null;
 
+    const action = (role?.toLowerCase() === 'admin' || role?.toLowerCase() === 'superadmin' || role?.toLowerCase() === 'administrator') ? 'ADMIN' : 'DELIVERY_BERSIH';
+
     await connection.query(
       `INSERT INTO tr_linen_transaction_audit 
        (transaction_id, action, user_id, username, full_name, role, old_values, new_values)
-       VALUES (?, 'DELIVERY_BERSIH', ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
+        action,
         userId,
         username,
         fullName,
