@@ -91,8 +91,8 @@ export default function exportSuratJalanKurangKirim(delivery, details) {
       <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
       <style>
         @page {
-          size: A4 portrait;
-          margin: 12mm;
+          size: auto;
+          margin: 0mm;
         }
         * {
           box-sizing: border-box;
@@ -109,8 +109,12 @@ export default function exportSuratJalanKurangKirim(delivery, details) {
           line-height: 1.4;
         }
         @media print {
-          body {
-            padding: 0 !important;
+          @page {
+            margin: 0mm;
+          }
+          html, body {
+            margin: 0 !important;
+            padding: 10mm !important;
           }
           .paper-card {
             border: 1px solid #cbd5e1 !important;

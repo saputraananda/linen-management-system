@@ -367,10 +367,6 @@ export default function ValetDashboard() {
               {/* Title & Change RS Header */}
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                  <div className="flex items-center gap-2 text-xs font-semibold text-[#126776] bg-[#126776]/5 px-2.5 py-1 rounded-full w-fit border border-[#126776]/15 shadow-sm mb-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#1ea59e]" />
-                    Valet Terverifikasi
-                  </div>
                   <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
                     {dashboardData?.hospital?.hospital_name || 'Linen Rumah Sakit'}
                   </h1>

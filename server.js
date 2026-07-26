@@ -9,6 +9,8 @@ import authRoutes from './api/routes/auth/auth.routes.js';
 import ikmDashboardRoutes from './api/routes/ikm/dashboard.routes.js';
 import ikmSerahTerimaRoutes from './api/routes/ikm/serahTerima.routes.js';
 import ikmKurangKirimRoutes from './api/routes/ikm/kurangKirimLinen.routes.js';
+import rsDashboardRoutes from './api/routes/rs/rs-dashboard.routes.js';
+import rsSerahTerimaRoutes from './api/routes/rs/rs-serahTerima.routes.js';
 
 // Resolve directory paths
 const __filename = fileURLToPath(import.meta.url);
@@ -57,6 +59,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/ikm', ikmDashboardRoutes);
 app.use('/api/ikm', ikmSerahTerimaRoutes);
 app.use('/api/ikm', ikmKurangKirimRoutes);
+app.use('/api/rs', rsDashboardRoutes);
+app.use('/api/rs', rsSerahTerimaRoutes);
 
 // ==========================
 // Frontend
@@ -83,7 +87,22 @@ if (process.env.NODE_ENV === 'production') {
 // ==========================
 
 app.use((err, req, res, next) => {
-  console.error(err);
+  console.error('[EXPRESS ERROR]', err);
+
+  // If a fatal database connection error occurs (ECONNRESET, connection lost)
+  if (err && (err.code === 'ECONNRESET' || err.code === 'PROTOCOL_CONNECTION_LOST' || err.fatal)) {
+    console.error('[FATAL DB ERROR] Database connection lost/reset. Exiting process to trigger automatic server restart...');
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        message: 'Koneksi database terputus. Server sedang melakukan pemulihan otomatis, silakan coba beberapa detik lagi.'
+      });
+    }
+    setTimeout(() => {
+      process.exit(1);
+    }, 300);
+    return;
+  }
 
   if (err.type === 'entity.too.large') {
     return res.status(413).json({
@@ -99,6 +118,24 @@ app.use((err, req, res, next) => {
 });
 
 // ==========================
+// Automatic Server Restart on Fatal Connection Errors
+// ==========================
+
+process.on('uncaughtException', (err) => {
+  console.error('[UNCAUGHT EXCEPTION]', err);
+  if (err && (err.code === 'ECONNRESET' || err.code === 'PROTOCOL_CONNECTION_LOST' || err.code === 'PROTOCOL_ENQUEUE_AFTER_FATAL_ERROR' || err.fatal)) {
+    console.error('[FATAL PROCESS ERROR] Fatal database error caught. Triggering automatic server restart...');
+    process.exit(1);
+  }
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[UNHANDLED REJECTION]', reason);
+  if (reason && (reason.code === 'ECONNRESET' || reason.code === 'PROTOCOL_CONNECTION_LOST' || reason.code === 'PROTOCOL_ENQUEUE_AFTER_FATAL_ERROR' || reason.fatal)) {
+    console.error('[FATAL PROCESS ERROR] Fatal database error caught. Triggering automatic server restart...');
+    process.exit(1);
+  }
+});
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);

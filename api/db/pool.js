@@ -25,9 +25,11 @@ export const mainPool = mysql.createPool({
   timezone: '+07:00',
   waitForConnections: true,
   connectionLimit: 10,
+  maxIdle: 10,
+  idleTimeout: 60000,
   queueLimit: 0,
   enableKeepAlive: true,
-  keepAliveInitialDelay: 30000, // 30 detik
+  keepAliveInitialDelay: 10000, // 10 detik keep-alive ping
   connectTimeout: 10000         // 10 detik timeout koneksi
 });
 
@@ -40,9 +42,11 @@ export const ikmPool = mysql.createPool({
   timezone: '+07:00',
   waitForConnections: true,
   connectionLimit: 10,
+  maxIdle: 10,
+  idleTimeout: 60000,
   queueLimit: 0,
   enableKeepAlive: true,
-  keepAliveInitialDelay: 30000, // 30 detik
+  keepAliveInitialDelay: 10000, // 10 detik keep-alive ping
   connectTimeout: 10000         // 10 detik timeout koneksi
 });
 
