@@ -12,12 +12,20 @@ import {
 } from 'lucide-react';
 import Toast from '../../components/Toast';
 
+import ikmLogo from '../../assets/images/ikm.png';
+import ikmWhiteLogo from '../../assets/images/ikm_white.png';
+import dokum1 from '../../assets/images/dokum1.png';
+import dokum2 from '../../assets/images/dokum2.png';
+import dokum3 from '../../assets/images/dokum3.png';
+import dokum5 from '../../assets/images/dokum5.png';
+import dokum6 from '../../assets/images/dokum6.png';
+
 const SLIDES = [
-  { img: '/dokum1.png', caption: 'Sistem monitoring linen rumah sakit terintegrasi', accent: 'Hygiene & Infection Control' },
-  { img: '/dokum2.png', caption: 'Manajemen linen modern untuk layanan kesehatan', accent: 'Quality Assurance' },
-  { img: '/dokum3.png', caption: 'Proses pencucian dengan standar higienis tertinggi', accent: 'Operational Efficiency' },
-  { img: '/dokum5.png', caption: 'Tim profesional siap melayani kebutuhan Anda', accent: 'Compliance & Logistics' },
-  { img: '/dokum6.png', caption: 'Solusi laundry rumah sakit yang terpercaya', accent: 'Tailored Solutions' },
+  { img: dokum1, caption: 'Sistem monitoring linen rumah sakit terintegrasi', accent: 'Hygiene & Infection Control' },
+  { img: dokum2, caption: 'Manajemen linen modern untuk layanan kesehatan', accent: 'Quality Assurance' },
+  { img: dokum3, caption: 'Proses pencucian dengan standar higienis tertinggi', accent: 'Operational Efficiency' },
+  { img: dokum5, caption: 'Tim profesional siap melayani kebutuhan Anda', accent: 'Compliance & Logistics' },
+  { img: dokum6, caption: 'Solusi laundry rumah sakit yang terpercaya', accent: 'Tailored Solutions' },
 ];
 
 export default function Login() {
@@ -105,7 +113,7 @@ export default function Login() {
           {/* Top: Logo */}
           <div className="flex items-center gap-3">
             <img
-              src="/ikm_white.png"
+              src={ikmWhiteLogo}
               alt="IKM"
               className="h-10 object-contain drop-shadow-lg"
             />
@@ -158,7 +166,7 @@ export default function Login() {
 
           {/* Mobile: Compact brand bar */}
           <div className="flex items-center gap-2.5 lg:hidden mb-6">
-            <img src="/ikm_white.png" alt="IKM" className="h-7 object-contain drop-shadow" />
+            <img src={ikmWhiteLogo} alt="IKM" className="h-7 object-contain drop-shadow" />
             <div>
               <p className="text-white font-bold text-sm tracking-tight leading-none">Linen Management</p>
               <p className="text-[#1ea59e]/60 text-xs font-bold tracking-wider mt-0.5 uppercase">PT Intersolusi Karya Mandiri</p>
@@ -170,7 +178,7 @@ export default function Login() {
             {/* Header (Desktop Only) */}
             <div className="hidden lg:block mb-6">
               <div className="flex items-center gap-3 mb-6">
-                <img src="/ikm.png" alt="IKM" className="h-8 object-contain" />
+                <img src={ikmLogo} alt="IKM" className="h-8 object-contain" />
                 <div>
                   <p className="text-sm font-bold text-slate-800 leading-tight">PT Intersolusi Karya Mandiri</p>
                   <p className="text-xs text-slate-400 font-semibold tracking-wider">Linen Management System</p>

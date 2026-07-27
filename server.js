@@ -42,13 +42,23 @@ app.use(express.urlencoded({ extended: true }));
 //   prod : '/home/u299848391/domains/linen.ikmalora.com/storage/assets/'
 const UPLOAD_BASE_DIR = process.env.UPLOAD_BASE_DIR;
 
+// Opsi cache-control untuk file storage upload (misal gambar/tanda tangan)
+// no-cache, must-revalidate + ETag memaksa browser memverifikasi ke server jika ada perubahan tanpa perlu clear cache manual
+const storageStaticOptions = {
+  etag: true,
+  lastModified: true,
+  setHeaders: (res) => {
+    res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+  }
+};
+
 if (UPLOAD_BASE_DIR && path.isAbsolute(UPLOAD_BASE_DIR)) {
   const STORAGE_PATH = path.dirname(UPLOAD_BASE_DIR.replace(/\/$/, ''));
-  app.use('/storage', express.static(STORAGE_PATH));
+  app.use('/storage', express.static(STORAGE_PATH, storageStaticOptions));
 } else {
   // Development (relative path)
   const resolvedBaseDir = path.resolve(process.cwd(), UPLOAD_BASE_DIR || 'assets');
-  app.use('/storage/assets', express.static(resolvedBaseDir));
+  app.use('/storage/assets', express.static(resolvedBaseDir, storageStaticOptions));
 }
 
 // ==========================
@@ -68,9 +78,29 @@ app.use('/api/rs', rsSerahTerimaRoutes);
 
 if (process.env.NODE_ENV === 'production') {
 
-  app.use(express.static(path.join(__dirname, 'dist')));
+  app.use(express.static(path.join(__dirname, 'dist'), {
+    etag: true,
+    lastModified: true,
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith('.html')) {
+        // index.html TIDAK BOLEH dicache agar browser selalu mendownload referensi bundle JS/CSS produksi terbaru
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+      } else if (filePath.includes(path.join('dist', 'assets')) || filePath.includes('/assets/') || filePath.includes('\\assets\\')) {
+        // Asset bundle Vite ber-hash aman dicache panjang (immutable)
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      } else {
+        // Gambar statis/asset unhashed di folder public
+        res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+      }
+    }
+  }));
 
   app.get('*', (req, res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     res.sendFile(path.join(__dirname, 'dist', 'index.html'));
   });
 

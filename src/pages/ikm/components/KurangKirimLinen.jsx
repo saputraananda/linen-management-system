@@ -7,6 +7,7 @@ import {
   Truck, Printer, X, Plus, Info
 } from 'lucide-react';
 import exportSuratJalanKurangKirim from '../utils/exportSuratJalanKurangKirim';
+import ikmLogo from '../../../assets/images/ikm.png';
 
 // Helper to convert string to Title Case
 const toTitleCase = (str) => {
@@ -928,7 +929,7 @@ export default function KurangKirimLinen() {
                       {/* Header */}
                       <div className="flex flex-row items-center justify-between pb-4 border-b-2 border-slate-900 gap-4">
                         <div className="flex items-center gap-3">
-                          <img src="/ikm.png" alt="IKM Logo" className="h-14 object-contain" />
+                          <img src={ikmLogo} alt="IKM Logo" className="h-14 object-contain" />
                           <div>
                             <h2 className="text-md sm:text-lg font-bold uppercase tracking-tight text-slate-900 leading-none">PT. INTERSOLUSI KARYA MANDIRI</h2>
                             <p className="text-[10px] text-slate-500 font-semibold mt-1">Jl. Pringgondani No. 101, Cimanggis, Depok, Jawa Barat</p>
@@ -1374,7 +1375,7 @@ export default function KurangKirimLinen() {
                 {/* Paper Header */}
                 <div className="flex flex-row items-center justify-between pb-4 border-b-2 border-slate-900 gap-4">
                   <div className="flex items-center gap-3">
-                    <img src="/ikm.png" alt="IKM Logo" className="h-14 object-contain" />
+                    <img src={ikmLogo} alt="IKM Logo" className="h-14 object-contain" />
                     <div>
                       <h2 className="text-md font-bold uppercase tracking-tight text-slate-900 leading-none">PT. INTERSOLUSI KARYA MANDIRI</h2>
                       <p className="text-[10px] text-slate-500 font-semibold mt-1">Jl. Pringgondani No. 101, Cimanggis, Depok, Jawa Barat</p>

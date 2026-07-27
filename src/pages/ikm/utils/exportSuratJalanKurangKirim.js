@@ -1,3 +1,5 @@
+import ikmLogo from '../../../assets/images/ikm.png';
+
 /**
  * Utility to print/export Surat Jalan Kurang Kirim to PDF / printer
  * Formatted to match the UI modal preview exactly.
@@ -142,7 +144,7 @@ export default function exportSuratJalanKurangKirim(delivery, details) {
         <!-- Paper Header -->
         <div style="display: flex; align-items: center; justify-content: space-between; padding-bottom: 16px; border-bottom: 2px solid #0f172a; gap: 16px;">
           <div style="display: flex; align-items: center; gap: 12px;">
-            <img src="/ikm.png" alt="IKM Logo" style="height: 56px; object-fit: contain;" />
+            <img src="${ikmLogo}" alt="IKM Logo" style="height: 56px; object-fit: contain;" />
             <div>
               <h2 style="font-size: 16px; font-weight: 700; text-transform: uppercase; tracking: tight; color: #0f172a; margin: 0; line-height: 1;">PT. INTERSOLUSI KARYA MANDIRI</h2>
               <p style="font-size: 10px; color: #64748b; font-weight: 600; margin-top: 4px; margin-bottom: 0;">Jl. Pringgondani No. 101, Cimanggis, Depok, Jawa Barat</p>

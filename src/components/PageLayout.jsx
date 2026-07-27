@@ -6,6 +6,7 @@ import {
   X,
   Shirt,
 } from "lucide-react";
+import ikmLogo from "../assets/images/ikm.png";
 
 function cn(...classes) { return classes.filter(Boolean).join(" "); }
 
@@ -182,7 +183,7 @@ export default function PageLayout({ menuItems, moduleName = "Module", bgColor =
         avatarUrl = `http://103.197.189.185${profilePath}`;
       }
     } else {
-      avatarUrl = '/ikm.png';
+      avatarUrl = ikmLogo;
     }
   } else if (role === 'rs') {
     avatarUrl = `/assets/logos/${hospitalId}.png`;
@@ -284,7 +285,7 @@ export default function PageLayout({ menuItems, moduleName = "Module", bgColor =
                 </div>
                  {role === 'valet' && !profilePath ? (
                    <img
-                     src="/ikm.png"
+                     src={ikmLogo}
                      alt="IKM Logo"
                      className="h-8 object-contain shrink-0"
                    />
@@ -295,7 +296,7 @@ export default function PageLayout({ menuItems, moduleName = "Module", bgColor =
                      className="h-9 w-9 rounded-full object-cover border border-slate-200 bg-slate-100 shadow-sm"
                      onError={(e) => {
                        if (role === 'valet') {
-                         e.target.src = '/ikm.png';
+                         e.target.src = ikmLogo;
                          e.target.className = "h-8 object-contain shrink-0";
                        } else {
                          e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(fullName)}&background=0ea5e9&color=fff&bold=true`;
@@ -342,7 +343,7 @@ export default function PageLayout({ menuItems, moduleName = "Module", bgColor =
             >
               {role === 'valet' && !profilePath ? (
                 <img
-                  src="/ikm.png"
+                  src={ikmLogo}
                   alt="IKM Logo"
                   className="h-7 object-contain shrink-0"
                 />
@@ -353,7 +354,7 @@ export default function PageLayout({ menuItems, moduleName = "Module", bgColor =
                   className="h-8 w-8 rounded-full object-cover border border-slate-200 bg-slate-100 shadow-sm"
                   onError={(e) => {
                     if (role === 'valet') {
-                      e.target.src = '/ikm.png';
+                      e.target.src = ikmLogo;
                       e.target.className = "h-7 object-contain shrink-0";
                     } else {
                       e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(fullName)}&background=0ea5e9&color=fff&bold=true`;
