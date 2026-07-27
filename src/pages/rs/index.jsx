@@ -10,9 +10,9 @@ const MENU_ITEMS = [
     ]
   },
   {
-    category: "Gorden",
+    category: "Linen Khusus",
     items: [
-      { to: "/rs/serah-terima-gorden", icon: FileText, label: "Serah Terima Gorden", description: "Form Serah Terima Gorden", end: false },
+      { to: "/rs/serah-terima-custom", icon: FileText, label: "Serah Terima Khusus", description: "Form Serah Terima Custom (PxL)", end: false },
     ]
   }
 ];

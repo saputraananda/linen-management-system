@@ -11,10 +11,10 @@ const MENU_ITEMS = [
     ]
   },
   {
-    category: "Gorden",
+    category: "Item Custom",
     items: [
-      { to: "/valet/serah-terima-gorden", icon: FileText, label: "Serah Terima Gorden", description: "Form Serah Terima Gorden", end: false },
-      { to: "/valet/kurang-kirim-gorden", icon: ClipboardList, label: "Kurang Kirim Gorden", description: "Form Kurang Kirim Gorden", end: false },
+      { to: "/valet/serah-terima-custom", icon: FileText, label: "Serah Terima Custom", description: "Form Serah Terima Custom (PxL)", end: false },
+      { to: "/valet/kurang-kirim-custom", icon: ClipboardList, label: "Kurang Kirim Custom", description: "Form Kurang Kirim Custom (PxL)", end: false },
     ]
   }
 ];

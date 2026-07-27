@@ -9,8 +9,11 @@ import authRoutes from './api/routes/auth/auth.routes.js';
 import ikmDashboardRoutes from './api/routes/ikm/dashboard.routes.js';
 import ikmSerahTerimaRoutes from './api/routes/ikm/serahTerima.routes.js';
 import ikmKurangKirimRoutes from './api/routes/ikm/kurangKirimLinen.routes.js';
+import ikmSerahTerimaCustomRoutes from './api/routes/ikm/SerahTerimaCustom.routes.js';
+import ikmKurangKirimCustomRoutes from './api/routes/ikm/kurangKirimCustom.routes.js';
 import rsDashboardRoutes from './api/routes/rs/rs-dashboard.routes.js';
 import rsSerahTerimaRoutes from './api/routes/rs/rs-serahTerima.routes.js';
+import rsSerahTerimaCustomRoutes from './api/routes/rs/rs-SerahTerimaCustom.routes.js';
 
 // Resolve directory paths
 const __filename = fileURLToPath(import.meta.url);
@@ -69,8 +72,11 @@ app.use('/api/auth', authRoutes);
 app.use('/api/ikm', ikmDashboardRoutes);
 app.use('/api/ikm', ikmSerahTerimaRoutes);
 app.use('/api/ikm', ikmKurangKirimRoutes);
+app.use('/api/ikm', ikmSerahTerimaCustomRoutes);
+app.use('/api/ikm', ikmKurangKirimCustomRoutes);
 app.use('/api/rs', rsDashboardRoutes);
 app.use('/api/rs', rsSerahTerimaRoutes);
+app.use('/api/rs', rsSerahTerimaCustomRoutes);
 
 // ==========================
 // Frontend
