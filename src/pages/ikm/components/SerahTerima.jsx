@@ -1100,13 +1100,13 @@ export default function SerahTerima() {
                         <p className="text-sm font-semibold text-slate-800 mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 truncate">
                           <span className="flex items-center gap-1">
                             <User className="h-3 w-3 text-slate-400 shrink-0" />
-                            <span className="text-[11px] text-slate-400 font-medium">Pickup:</span>
-                            {tx.user_pickup_name} {tx.hospital_staff_pickup && <span className="text-slate-400 font-normal">({tx.hospital_staff_pickup}{tx.hospital_assistant_pickup ? `, ${tx.hospital_assistant_pickup}` : ''})</span>}
+                            <span className="text-[11px] text-[#1ea59e] font-medium">Valet - Linen Kotor:</span>
+                            {tx.user_pickup_name}
                           </span>
                           {tx.user_delivery && (
                             <span className="flex items-center gap-1 border-l border-slate-200 pl-2">
-                              <span className="text-[11px] text-[#1ea59e] font-medium">Delivery:</span>
-                              {tx.user_delivery_name} {tx.hospital_staff_delivery && <span className="text-slate-400 font-normal">({tx.hospital_staff_delivery}{tx.hospital_assistant_delivery ? `, ${tx.hospital_assistant_delivery}` : ''})</span>}
+                              <span className="text-[11px] text-[#1ea59e] font-medium">Valet - Linen Bersih:</span>
+                              {tx.user_delivery_name}
                             </span>
                           )}
                         </p>
