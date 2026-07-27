@@ -20,4 +20,4 @@ dist-ssr/
 *.sln
 *.sw?
 
-assets/
+/assets/
