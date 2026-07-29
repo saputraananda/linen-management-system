@@ -224,6 +224,9 @@ export default function KurangKirimLinen() {
 
   // Lists
   const [shortageTransactions, setShortageTransactions] = useState([]);
+  const [linensList, setLinensList] = useState([]);
+  const [roomLinensList, setRoomLinensList] = useState([]);
+  const [selectedRoomId, setSelectedRoomId] = useState('');
   const [loadingTransactions, setLoadingTransactions] = useState(false);
   const [sjList, setSjList] = useState([]);
   const [loadingSj, setLoadingSj] = useState(false);
@@ -280,6 +283,89 @@ export default function KurangKirimLinen() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Get unique rooms from roomLinensList
+  const uniqueRooms = [];
+  const roomMap = new Map();
+  roomLinensList.forEach(rl => {
+    if (rl.room_id && !roomMap.has(rl.room_id)) {
+      roomMap.set(rl.room_id, rl.room_name);
+      uniqueRooms.push({ id: rl.room_id, name: rl.room_name });
+    }
+  });
+
+  const getHospitalLinenTotalStock = (hospitalLinenId) => {
+    if (shortageDetails) {
+      const detail = shortageDetails.find(d => d.hospital_linen_id === hospitalLinenId);
+      if (detail && detail.stock_in_rs !== undefined) {
+        return detail.stock_in_rs;
+      }
+    }
+    const linen = linensList.find(l => l.id === hospitalLinenId);
+    return linen ? (linen.stock_in_rs || 0) : 0;
+  };
+
+  const sumDeliverQty = (delivObj) => {
+    if (!delivObj) return 0;
+    let sum = 0;
+    Object.values(delivObj).forEach(val => {
+      if (val && val.qtyDelivered) {
+        sum += parseInt(val.qtyDelivered) || 0;
+      }
+    });
+    return sum;
+  };
+
+  const getMergedDeliverNotes = (delivObj) => {
+    if (!delivObj) return '';
+    const parts = [];
+    Object.entries(delivObj).forEach(([roomId, val]) => {
+      if (val && val.notes && val.notes.trim() !== '') {
+        if (roomId === 'all') {
+          parts.push(val.notes.trim());
+        } else {
+          const room = uniqueRooms.find(r => r.id === parseInt(roomId));
+          const roomPrefix = room ? `${room.name}: ` : '';
+          parts.push(`${roomPrefix}${val.notes.trim()}`);
+        }
+      }
+    });
+    return parts.join('; ');
+  };
+
+  const getDeliverQty = (hospitalLinenId) => {
+    const delivObj = deliveriesMap[hospitalLinenId];
+    if (delivObj === undefined || delivObj === null) return '';
+    if (typeof delivObj === 'number' || typeof delivObj === 'string') {
+      return selectedRoomId ? '' : delivObj;
+    }
+    if (selectedRoomId) {
+      return delivObj[selectedRoomId]?.qtyDelivered !== undefined ? delivObj[selectedRoomId].qtyDelivered : '';
+    } else {
+      let sum = 0;
+      let hasValue = false;
+      Object.entries(delivObj).forEach(([room, val]) => {
+        if (val && val.qtyDelivered !== '') {
+          sum += parseInt(val.qtyDelivered) || 0;
+          hasValue = true;
+        }
+      });
+      return hasValue ? sum : '';
+    }
+  };
+
+  const getDeliverNotes = (hospitalLinenId) => {
+    const delivObj = deliveriesMap[hospitalLinenId];
+    if (!delivObj) return '';
+    if (typeof delivObj === 'string') {
+      return selectedRoomId ? '' : delivObj;
+    }
+    if (selectedRoomId) {
+      return delivObj[selectedRoomId]?.notes || '';
+    } else {
+      return delivObj['all']?.notes || '';
+    }
+  };
+
   // Fetch employees list on load
   const fetchEmployees = async () => {
     setLoadingEmployees(true);
@@ -298,6 +384,30 @@ export default function KurangKirimLinen() {
     }
   };
 
+  const getRoomAndStockInfo = (hospitalLinenId) => {
+    const totalStock = getHospitalLinenTotalStock(hospitalLinenId);
+    if (selectedRoomId) {
+      const roomLinen = roomLinensList.find(rl => 
+        rl.hospital_linen_id === hospitalLinenId && rl.room_id === parseInt(selectedRoomId)
+      );
+      const roomName = roomLinen?.room_name || 'Tidak ada di ruangan';
+      const roomStock = roomLinen?.stock_in_rs || 0;
+      return {
+        roomName,
+        roomStock,
+        totalStock,
+        isRoomSelected: true
+      };
+    } else {
+      return {
+        roomName: 'Semua Ruangan',
+        roomStock: null,
+        totalStock,
+        isRoomSelected: false
+      };
+    }
+  };
+
   const fetchHospitalInfo = async () => {
     try {
       const token = localStorage.getItem('token');
@@ -306,6 +416,8 @@ export default function KurangKirimLinen() {
       });
       if (data?.success) {
         setHospitalName(data.data.hospital?.hospital_name || '');
+        setLinensList(data.data.linens || []);
+        setRoomLinensList(data.data.roomLinens || []);
       }
     } catch (err) {
       console.error('Error fetching hospital info:', err);
@@ -393,10 +505,7 @@ export default function KurangKirimLinen() {
         // Initialize deliveries mapping
         const initMap = {};
         (data.data.details || []).forEach(item => {
-          initMap[item.hospital_linen_id] = {
-            qtyDelivered: 0,
-            notes: ''
-          };
+          initMap[item.id] = { qtyDelivered: '', notes: '' };
         });
         setDeliveriesMap(initMap);
       }
@@ -430,23 +539,41 @@ export default function KurangKirimLinen() {
   const handleQtyChange = (hospitalLinenId, val, maxLimit) => {
     const parsed = parseInt(val) || 0;
     const clamped = Math.min(maxLimit, Math.max(0, parsed));
-    setDeliveriesMap(prev => ({
-      ...prev,
-      [hospitalLinenId]: {
-        ...prev[hospitalLinenId],
-        qtyDelivered: clamped
-      }
-    }));
+    const activeRoom = selectedRoomId || 'all';
+    
+    setDeliveriesMap(prev => {
+      const delivObj = prev[hospitalLinenId] || {};
+      const roomVal = delivObj[activeRoom] || { qtyDelivered: 0, notes: '' };
+      return {
+        ...prev,
+        [hospitalLinenId]: {
+          ...delivObj,
+          [activeRoom]: {
+            ...roomVal,
+            qtyDelivered: clamped
+          }
+        }
+      };
+    });
   };
 
   const handleNotesChange = (hospitalLinenId, val) => {
-    setDeliveriesMap(prev => ({
-      ...prev,
-      [hospitalLinenId]: {
-        ...prev[hospitalLinenId],
-        notes: val
-      }
-    }));
+    const activeRoom = selectedRoomId || 'all';
+    
+    setDeliveriesMap(prev => {
+      const delivObj = prev[hospitalLinenId] || {};
+      const roomVal = delivObj[activeRoom] || { qtyDelivered: 0, notes: '' };
+      return {
+        ...prev,
+        [hospitalLinenId]: {
+          ...delivObj,
+          [activeRoom]: {
+            ...roomVal,
+            notes: val
+          }
+        }
+      };
+    });
   };
 
   // Submit delivery
@@ -456,14 +583,18 @@ export default function KurangKirimLinen() {
 
     // Filter items being delivered (qty > 0)
     const itemsToDeliver = [];
-    Object.keys(deliveriesMap).forEach(hlId => {
-      const deliveryObj = deliveriesMap[hlId];
-      if (deliveryObj.qtyDelivered > 0) {
-        itemsToDeliver.push({
-          hospitalLinenId: parseInt(hlId),
-          qtyDelivered: deliveryObj.qtyDelivered,
-          notes: deliveryObj.notes
-        });
+    Object.entries(deliveriesMap).forEach(([detailId, val]) => {
+      const parsedQty = parseInt(val?.qtyDelivered) || 0;
+      if (parsedQty > 0) {
+        const item = shortageDetails.find(d => d.id === parseInt(detailId));
+        if (item) {
+          itemsToDeliver.push({
+            hospitalLinenId: item.hospital_linen_id,
+            roomId: item.room_id || null,
+            qtyDelivered: parsedQty,
+            notes: val.notes || null
+          });
+        }
       }
     });
 
@@ -515,10 +646,10 @@ export default function KurangKirimLinen() {
   // Print active unsaved/new shortage delivery preview
   const handlePrintActive = () => {
     const activeDetails = shortageDetails.map(item => {
-      const deliverObj = deliveriesMap[item.hospital_linen_id] || { qtyDelivered: 0, notes: '' };
+      const deliverObj = deliveriesMap[item.id] || { qtyDelivered: '', notes: '' };
       return {
         ...item,
-        qty_delivered: deliverObj.qtyDelivered,
+        qty_delivered: parseInt(deliverObj.qtyDelivered) || 0,
         notes: deliverObj.notes
       };
     }).filter(item => item.qty_delivered > 0);
@@ -592,6 +723,31 @@ export default function KurangKirimLinen() {
 
     return true;
   });
+
+  const filteredShortageItems = (() => {
+    if (selectedRoomId) {
+      return shortageDetails.filter(item => item.room_id === parseInt(selectedRoomId));
+    } else {
+      const grouped = {};
+      shortageDetails.forEach(item => {
+        const lid = item.hospital_linen_id;
+        if (!grouped[lid]) {
+          grouped[lid] = {
+            ...item,
+            id: `grouped_${lid}`,
+            remaining_shortage: 0,
+            room_id: null,
+            room_name: null,
+            isGrouped: true,
+            originalItemIds: []
+          };
+        }
+        grouped[lid].remaining_shortage += parseInt(item.remaining_shortage || 0);
+        grouped[lid].originalItemIds.push(item.id);
+      });
+      return Object.values(grouped);
+    }
+  })();
 
   return (
     <div className="min-h-full py-6 bg-slate-50/50">
@@ -855,51 +1011,129 @@ export default function KurangKirimLinen() {
 
                     {/* Shortage Item Table */}
                     <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+                      {/* Room Selector above the table */}
+                      <div className="p-3 border-b border-slate-100 bg-slate-50/70 flex gap-3">
+                        <div className="relative min-w-[200px]">
+                          <select
+                            value={selectedRoomId}
+                            onChange={e => setSelectedRoomId(e.target.value)}
+                            className="w-full pl-3 pr-9 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] cursor-pointer appearance-none"
+                          >
+                            <option value="">Semua Ruangan</option>
+                            {uniqueRooms.map(room => (
+                              <option key={room.id} value={room.id}>{room.name}</option>
+                            ))}
+                          </select>
+                          <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-slate-400">
+                            <ChevronDown className="w-4 h-4" />
+                          </div>
+                        </div>
+                      </div>
+
                       <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse">
                           <thead>
                             <tr className="bg-slate-50 text-xs font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-150">
                               <th className="px-4 py-3.5 text-center w-12">No</th>
                               <th className="px-4 py-3.5">Nama Linen</th>
+                              <th className="px-4 py-3.5 text-center">Ruangan</th>
+                              <th className="px-4 py-3.5 text-center">Stok</th>
                               <th className="px-4 py-3.5 text-center w-48">Sisa Kurang Kirim</th>
                               <th className="px-4 py-3.5 text-center w-36">Jumlah Kirim</th>
                               <th className="px-4 py-3.5 min-w-[200px]">Catatan</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
-                            {shortageDetails.map((item, idx) => {
-                              const deliverObj = deliveriesMap[item.hospital_linen_id] || { qtyDelivered: 0, notes: '' };
-                              return (
-                                <tr key={item.id} className="hover:bg-slate-50/50 text-xs font-medium text-slate-700">
-                                  <td className="px-4 py-3 text-center font-bold text-slate-400 text-xs">{idx + 1}</td>
-                                  <td className="px-4 py-3">
-                                    <div className="font-semibold text-slate-800 text-sm">{getLinenDisplayName(item)}</div>
-                                  </td>
-                                  <td className="px-4 py-3 text-center text-rose-500 font-bold text-sm">{item.remaining_shortage}</td>
-                                  <td className="px-4 py-3 text-center">
-                                    <div className="flex items-center justify-center">
-                                      <input
-                                        type="number"
-                                        min="0"
-                                        max={item.remaining_shortage}
-                                        value={deliverObj.qtyDelivered || ''}
-                                        onChange={e => handleQtyChange(item.hospital_linen_id, e.target.value, item.remaining_shortage)}
-                                        className="w-16 text-center py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] focus:bg-white transition"
-                                      />
-                                    </div>
-                                  </td>
-                                  <td className="px-4 py-3">
-                                    <input
-                                      type="text"
-                                      placeholder="Catatan item..."
-                                      value={deliverObj.notes}
-                                      onChange={e => handleNotesChange(item.hospital_linen_id, e.target.value)}
-                                      className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 text-xs font-medium text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] focus:bg-white transition"
-                                    />
-                                  </td>
-                                </tr>
-                              );
-                            })}
+                            {filteredShortageItems.length === 0 ? (
+                              <tr>
+                                <td colSpan="7" className="px-4 py-8 text-center text-slate-400 font-semibold text-xs">
+                                  Tidak ada sisa kurang kirim untuk ruangan terpilih.
+                                </td>
+                              </tr>
+                            ) : (
+                              filteredShortageItems.map((item, idx) => {
+                                const isRowEditable = !item.isGrouped || (item.originalItemIds.length === 1 && shortageDetails.find(d => d.id === item.originalItemIds[0])?.room_id === null);
+                                const inputKey = item.isGrouped ? (item.originalItemIds?.[0] || item.id) : item.id;
+                                const roomInfo = getRoomAndStockInfo(item.hospital_linen_id);
+
+                                return (
+                                  <tr key={item.id} className="hover:bg-slate-50/50 text-xs font-medium text-slate-700">
+                                    <td className="px-4 py-3 text-center font-bold text-slate-400 text-xs">{idx + 1}</td>
+                                    <td className="px-4 py-3">
+                                      <div className="font-semibold text-slate-800 text-sm">{getLinenDisplayName(item)}</div>
+                                    </td>
+                                    <td className="px-4 py-3 text-center">
+                                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-650 border border-slate-200">
+                                        {item.room_name || 'Semua Ruangan'}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-3 text-center">
+                                      {roomInfo.isRoomSelected ? (
+                                        <div>
+                                          <div className="font-bold text-slate-700">{roomInfo.roomStock} Pcs</div>
+                                          <div className="text-[10px] text-slate-400 font-semibold mt-0.5">Total RS: {roomInfo.totalStock} Pcs</div>
+                                        </div>
+                                      ) : (
+                                        <div className="font-bold text-slate-700">{roomInfo.totalStock} Pcs</div>
+                                      )}
+                                    </td>
+                                    <td className="px-4 py-3 text-center text-rose-500 font-bold text-sm">{item.remaining_shortage}</td>
+                                    <td className="px-4 py-3 text-center">
+                                      {isRowEditable ? (
+                                        <div className="flex items-center justify-center">
+                                          <input
+                                            type="number"
+                                            min="0"
+                                            max={item.remaining_shortage}
+                                            value={deliveriesMap[inputKey]?.qtyDelivered !== undefined ? deliveriesMap[inputKey].qtyDelivered : ''}
+                                            onChange={e => {
+                                              const val = e.target.value === '' ? '' : Math.min(item.remaining_shortage, Math.max(0, parseInt(e.target.value) || 0));
+                                              setDeliveriesMap(prev => ({ ...prev, [inputKey]: { ...prev[inputKey], qtyDelivered: val } }));
+                                            }}
+                                            className="w-16 text-center py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] focus:bg-white transition"
+                                          />
+                                        </div>
+                                      ) : (
+                                        <div className="text-center font-bold text-slate-700 text-sm">
+                                          {(() => {
+                                            let totalDelivered = 0;
+                                            item.originalItemIds.forEach(subId => {
+                                              totalDelivered += parseInt(deliveriesMap[subId]?.qtyDelivered) || 0;
+                                            });
+                                            return totalDelivered > 0 ? totalDelivered : '—';
+                                          })()}
+                                        </div>
+                                      )}
+                                    </td>
+                                    <td className="px-4 py-3">
+                                      {isRowEditable ? (
+                                        <input
+                                          type="text"
+                                          placeholder="Catatan item..."
+                                          value={deliveriesMap[inputKey]?.notes || ''}
+                                          onChange={e => {
+                                            const val = e.target.value;
+                                            setDeliveriesMap(prev => ({ ...prev, [inputKey]: { ...prev[inputKey], notes: val } }));
+                                          }}
+                                          className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 text-xs font-medium text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] focus:bg-white transition"
+                                        />
+                                      ) : (
+                                        <div className="flex flex-col gap-1">
+                                          <span className="text-slate-400 italic text-[11px]">
+                                            {item.notes || '—'}
+                                          </span>
+                                          {item.isGrouped && item.originalItemIds.length > 1 && (
+                                            <span className="text-[10px] text-amber-600 font-bold italic">
+                                              * Pilih ruangan untuk mengisi jumlah kirim.
+                                            </span>
+                                          )}
+                                        </div>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })
+                            )}
                           </tbody>
                         </table>
                       </div>
@@ -1004,23 +1238,35 @@ export default function KurangKirimLinen() {
                           </thead>
                           <tbody className="divide-y divide-slate-900 border-b border-slate-900">
                             {shortageDetails.map((item, idx) => {
-                              const deliverObj = deliveriesMap[item.hospital_linen_id] || { qtyDelivered: 0, notes: '' };
-                              const calculatedWeight = parseFloat(item.grammage || 0) * (deliverObj.qtyDelivered || 0);
+                              const delivObj = deliveriesMap[item.id] || { qtyDelivered: '', notes: '' };
+                              const qtyDelivered = parseInt(delivObj.qtyDelivered) || 0;
+                              const notes = delivObj.notes || '';
+                              const calculatedWeight = parseFloat(item.grammage || 0) * qtyDelivered;
 
                               // Only show items with Qty Kirim > 0 in print preview
-                              if (deliverObj.qtyDelivered <= 0) return null;
+                              if (qtyDelivered <= 0) return null;
 
                               return (
                                 <tr key={item.id} className="text-slate-800">
                                   <td className="px-4 py-3 border-r border-slate-900 text-center font-bold">{idx + 1}</td>
-                                  <td className="px-4 py-3 border-r border-slate-900">{getLinenDisplayName(item)}</td>
+                                  <td className="px-4 py-3 border-r border-slate-900">
+                                    <div>{getLinenDisplayName(item)}</div>
+                                    {item.room_name && (
+                                      <span className="inline-flex mt-1 items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                                        {item.room_name}
+                                      </span>
+                                    )}
+                                  </td>
                                   <td className="px-4 py-3 border-r border-slate-900 text-center">
                                     <input
                                       type="number"
                                       min="0"
                                       max={item.remaining_shortage}
-                                      value={deliverObj.qtyDelivered}
-                                      onChange={e => handleQtyChange(item.hospital_linen_id, e.target.value, item.remaining_shortage)}
+                                      value={deliveriesMap[item.id]?.qtyDelivered !== undefined ? deliveriesMap[item.id].qtyDelivered : ''}
+                                      onChange={e => {
+                                        const val = e.target.value === '' ? '' : Math.min(item.remaining_shortage, Math.max(0, parseInt(e.target.value) || 0));
+                                        setDeliveriesMap(prev => ({ ...prev, [item.id]: { ...prev[item.id], qtyDelivered: val } }));
+                                      }}
                                       className="w-16 text-center border border-slate-200 rounded p-1 font-bold inline-block"
                                     />
                                   </td>
@@ -1031,8 +1277,11 @@ export default function KurangKirimLinen() {
                                     <input
                                       type="text"
                                       placeholder="keterangan..."
-                                      value={deliverObj.notes}
-                                      onChange={e => handleNotesChange(item.hospital_linen_id, e.target.value)}
+                                      value={deliveriesMap[item.id]?.notes || ''}
+                                      onChange={e => {
+                                        const val = e.target.value;
+                                        setDeliveriesMap(prev => ({ ...prev, [item.id]: { ...prev[item.id], notes: val } }));
+                                      }}
                                       className="w-full border border-transparent hover:border-slate-200 focus:border-teal-500 rounded p-1"
                                     />
                                   </td>
@@ -1041,7 +1290,7 @@ export default function KurangKirimLinen() {
                             })}
                             
                             {/* Empty State warning inside tab table */}
-                            {Object.values(deliveriesMap).every(item => item.qtyDelivered <= 0) && (
+                            {Object.values(deliveriesMap).every(val => (parseInt(val?.qtyDelivered) || 0) <= 0) && (
                               <tr>
                                 <td colSpan="5" className="px-4 py-8 text-center text-slate-400 italic">
                                   Belum ada barang yang dikirim. Masukkan jumlah kirim di tab "Form Update" atau di kolom jumlah di atas.

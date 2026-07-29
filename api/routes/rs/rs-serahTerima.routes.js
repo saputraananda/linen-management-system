@@ -2,7 +2,9 @@ import express from 'express';
 import {
   getTransactions,
   getTransactionDetail,
-  getShortageDeliveryDetail
+  getShortageDeliveryDetail,
+  updateTransactionDetail,
+  deleteTransactionDetail
 } from '../../controllers/rs/rs-serahTerima.controller.js';
 import { authenticateToken } from '../../middleware/auth.js';
 
@@ -19,5 +21,11 @@ router.get('/transactions/:id', getTransactionDetail);
 
 // GET /api/rs/kurang-kirim-linen/delivery/:id - Get detail of a specific waybill
 router.get('/kurang-kirim-linen/delivery/:id', getShortageDeliveryDetail);
+
+// PUT /api/rs/transactions/:id/detail/:detailId - Update detail item
+router.put('/transactions/:id/detail/:detailId', updateTransactionDetail);
+
+// DELETE /api/rs/transactions/:id/detail/:detailId - Delete detail item
+router.delete('/transactions/:id/detail/:detailId', deleteTransactionDetail);
 
 export default router;

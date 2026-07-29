@@ -223,6 +223,8 @@ export default function SerahTerima() {
 
   // Form tab states (New transaction - Day 1 Kotor)
   const [linensList, setLinensList] = useState([]);
+  const [roomLinensList, setRoomLinensList] = useState([]);
+  const [selectedRoomId, setSelectedRoomId] = useState('');
   const [loadingLinens, setLoadingLinens] = useState(false);
   const [userPickup, setUserPickup] = useState(localStorage.getItem('employeeId') || '');
   const [userPickupName, setUserPickupName] = useState(
@@ -370,6 +372,244 @@ export default function SerahTerima() {
     return parts.filter(Boolean).join(' ');
   };
 
+  const getHospitalLinenTotalStock = (hospitalLinenId) => {
+    if (editingTransaction) {
+      const detail = editingTransaction.details.find(d => d.hospital_linen_id === hospitalLinenId);
+      if (detail && detail.stock_in_rs !== undefined) {
+        return detail.stock_in_rs;
+      }
+    }
+    const linen = linensList.find(l => l.id === hospitalLinenId);
+    return linen ? (linen.stock_in_rs || 0) : 0;
+  };
+
+  const getRoomAndStockInfo = (hospitalLinenId) => {
+    const totalStock = getHospitalLinenTotalStock(hospitalLinenId);
+    if (selectedRoomId) {
+      const roomLinen = roomLinensList.find(rl => 
+        rl.hospital_linen_id === hospitalLinenId && rl.room_id === parseInt(selectedRoomId)
+      );
+      const roomName = roomLinen?.room_name || 'Tidak ada di ruangan';
+      const roomStock = roomLinen?.stock_in_rs || 0;
+      return {
+        roomName,
+        roomStock,
+        totalStock,
+        isRoomSelected: true
+      };
+    } else {
+      return {
+        roomName: 'Semua Ruangan',
+        roomStock: null,
+        totalStock,
+        isRoomSelected: false
+      };
+    }
+  };
+
+  const sumQty = (qtyObj) => {
+    if (qtyObj === undefined || qtyObj === null) return 0;
+    if (typeof qtyObj === 'number') return qtyObj;
+    if (typeof qtyObj === 'string') return parseInt(qtyObj) || 0;
+    let sum = 0;
+    Object.values(qtyObj).forEach(val => {
+      if (val !== '') {
+        sum += parseInt(val) || 0;
+      }
+    });
+    return sum;
+  };
+
+  const getMergedNotes = (notesObj) => {
+    if (!notesObj) return '';
+    if (typeof notesObj === 'string') return notesObj;
+    const parts = [];
+    Object.entries(notesObj).forEach(([roomId, noteText]) => {
+      if (noteText && noteText.trim() !== '') {
+        if (roomId === 'all') {
+          parts.push(noteText.trim());
+        } else {
+          const room = uniqueRooms.find(r => r.id === parseInt(roomId));
+          const roomPrefix = room ? `${room.name}: ` : '';
+          parts.push(`${roomPrefix}${noteText.trim()}`);
+        }
+      }
+    });
+    return parts.join('; ');
+  };
+
+  const getKotorQty = (linenId) => {
+    const linenQtys = kotorQuantities[linenId];
+    if (linenQtys === undefined || linenQtys === null) return '';
+    if (typeof linenQtys === 'number' || typeof linenQtys === 'string') {
+      return selectedRoomId ? '' : linenQtys;
+    }
+    if (selectedRoomId) {
+      return linenQtys[selectedRoomId] !== undefined ? linenQtys[selectedRoomId] : '';
+    } else {
+      let sum = 0;
+      let hasValue = false;
+      Object.entries(linenQtys).forEach(([room, qty]) => {
+        if (qty !== '') {
+          sum += parseInt(qty) || 0;
+          hasValue = true;
+        }
+      });
+      return hasValue ? sum : '';
+    }
+  };
+
+  const handleKotorQtyChange = (linenId, value) => {
+    setKotorQuantities(prev => {
+      const linenQtys = prev[linenId] || {};
+      const activeRoom = selectedRoomId || 'all';
+      if (typeof linenQtys === 'number' || typeof linenQtys === 'string') {
+        return { ...prev, [linenId]: { all: linenQtys, [activeRoom]: value === '' ? '' : (parseInt(value) || 0) } };
+      }
+      return {
+        ...prev,
+        [linenId]: {
+          ...linenQtys,
+          [activeRoom]: value === '' ? '' : (parseInt(value) || 0)
+        }
+      };
+    });
+  };
+
+  const getBersihQty = (detailId) => {
+    const detailQtys = bersihQuantities[detailId];
+    if (detailQtys === undefined || detailQtys === null) return '';
+    if (typeof detailQtys === 'number' || typeof detailQtys === 'string') {
+      return selectedRoomId ? '' : detailQtys;
+    }
+    if (selectedRoomId) {
+      return detailQtys[selectedRoomId] !== undefined ? detailQtys[selectedRoomId] : '';
+    } else {
+      let sum = 0;
+      let hasValue = false;
+      Object.entries(detailQtys).forEach(([room, qty]) => {
+        if (qty !== '') {
+          sum += parseInt(qty) || 0;
+          hasValue = true;
+        }
+      });
+      return hasValue ? sum : '';
+    }
+  };
+
+  const handleBersihQtyChange = (detailId, value) => {
+    setBersihQuantities(prev => {
+      const detailQtys = prev[detailId] || {};
+      const activeRoom = selectedRoomId || 'all';
+      if (typeof detailQtys === 'number' || typeof detailQtys === 'string') {
+        return { ...prev, [detailId]: { all: detailQtys, [activeRoom]: value === '' ? '' : (parseInt(value) || 0) } };
+      }
+      return {
+        ...prev,
+        [detailId]: {
+          ...detailQtys,
+          [activeRoom]: value === '' ? '' : (parseInt(value) || 0)
+        }
+      };
+    });
+  };
+
+  const getEditKotorQty = (detailId) => {
+    const detailQtys = editKotorQuantities[detailId];
+    if (detailQtys === undefined || detailQtys === null) return '';
+    if (typeof detailQtys === 'number' || typeof detailQtys === 'string') {
+      return selectedRoomId ? '' : detailQtys;
+    }
+    if (selectedRoomId) {
+      return detailQtys[selectedRoomId] !== undefined ? detailQtys[selectedRoomId] : '';
+    } else {
+      let sum = 0;
+      let hasValue = false;
+      Object.entries(detailQtys).forEach(([room, qty]) => {
+        if (qty !== '') {
+          sum += parseInt(qty) || 0;
+          hasValue = true;
+        }
+      });
+      return hasValue ? sum : '';
+    }
+  };
+
+  const handleEditKotorQtyChange = (detailId, value) => {
+    setEditKotorQuantities(prev => {
+      const detailQtys = prev[detailId] || {};
+      const activeRoom = selectedRoomId || 'all';
+      if (typeof detailQtys === 'number' || typeof detailQtys === 'string') {
+        return { ...prev, [detailId]: { all: detailQtys, [activeRoom]: value === '' ? '' : (parseInt(value) || 0) } };
+      }
+      return {
+        ...prev,
+        [detailId]: {
+          ...detailQtys,
+          [activeRoom]: value === '' ? '' : (parseInt(value) || 0)
+        }
+      };
+    });
+  };
+
+  const getNoteVal = (id) => {
+    const notesObj = itemNotes[id];
+    if (!notesObj) return '';
+    if (typeof notesObj === 'string') {
+      return selectedRoomId ? '' : notesObj;
+    }
+    if (selectedRoomId) {
+      return notesObj[selectedRoomId] || '';
+    } else {
+      return notesObj['all'] || '';
+    }
+  };
+
+  const handleNoteValChange = (id, value) => {
+    setItemNotes(prev => {
+      const notesObj = prev[id] || {};
+      if (typeof notesObj === 'string') {
+        return { ...prev, [id]: { all: notesObj, [selectedRoomId || 'all']: value } };
+      }
+      return {
+        ...prev,
+        [id]: {
+          ...notesObj,
+          [selectedRoomId || 'all']: value
+        }
+      };
+    });
+  };
+
+  const getEditNoteVal = (id) => {
+    const notesObj = editItemNotes[id];
+    if (!notesObj) return '';
+    if (typeof notesObj === 'string') {
+      return selectedRoomId ? '' : notesObj;
+    }
+    if (selectedRoomId) {
+      return notesObj[selectedRoomId] || '';
+    } else {
+      return notesObj['all'] || '';
+    }
+  };
+
+  const handleEditNoteValChange = (id, value) => {
+    setEditItemNotes(prev => {
+      const notesObj = prev[id] || {};
+      if (typeof notesObj === 'string') {
+        return { ...prev, [id]: { all: notesObj, [selectedRoomId || 'all']: value } };
+      }
+      return {
+        ...prev,
+        [id]: {
+          ...notesObj,
+          [selectedRoomId || 'all']: value
+        }
+      };
+    });
+  };
+
   // Fetch initial data — runs once when hospitalId is available
   useEffect(() => {
     fetchEmployees();
@@ -460,6 +700,7 @@ export default function SerahTerima() {
       });
       if (data?.success) {
         setLinensList(data.data.linens || []);
+        setRoomLinensList(data.data.roomLinens || []);
         // Initialize kotor quantities to 0
         const initialQtys = {};
         const initialNotes = {};
@@ -489,13 +730,35 @@ export default function SerahTerima() {
 
 
 
-    const activeDetails = Object.entries(kotorQuantities)
-      .filter(([_, qty]) => parseInt(qty) > 0)
-      .map(([id, qty]) => ({
-        hospitalLinenId: parseInt(id),
-        qtyKotor: parseInt(qty),
-        notes: itemNotes[id] || ''
-      }));
+    const activeDetails = [];
+    Object.entries(kotorQuantities).forEach(([linenId, qtyVal]) => {
+      if (qtyVal && typeof qtyVal === 'object') {
+        Object.entries(qtyVal).forEach(([roomId, qty]) => {
+          const parsedQty = parseInt(qty) || 0;
+          if (parsedQty > 0) {
+            const rId = roomId === 'all' ? null : parseInt(roomId);
+            const notesObj = itemNotes[linenId] || {};
+            const noteText = typeof notesObj === 'string' ? notesObj : (notesObj[roomId] || '');
+            activeDetails.push({
+              hospitalLinenId: parseInt(linenId),
+              roomId: rId,
+              qtyKotor: parsedQty,
+              notes: noteText || null
+            });
+          }
+        });
+      } else {
+        const parsedQty = parseInt(qtyVal) || 0;
+        if (parsedQty > 0) {
+          activeDetails.push({
+            hospitalLinenId: parseInt(linenId),
+            roomId: null,
+            qtyKotor: parsedQty,
+            notes: typeof itemNotes[linenId] === 'string' ? itemNotes[linenId] : null
+          });
+        }
+      }
+    });
 
     if (activeDetails.length === 0) {
       setErrorMsg('Harap isi jumlah "Kotor" minimal untuk 1 jenis linen.');
@@ -659,12 +922,20 @@ export default function SerahTerima() {
 
     setSubmittingEdit(true);
 
-    const activeDetails = editingTransaction.details.map(item => ({
-      id: item.id,
-      qtyKotor: parseInt(editKotorQuantities[item.id] !== undefined ? editKotorQuantities[item.id] : item.qty_kotor || 0),
-      qtyBersih: (bersihQuantities[item.id] === '' || bersihQuantities[item.id] === undefined || bersihQuantities[item.id] === null) ? null : parseInt(bersihQuantities[item.id]),
-      notes: editItemNotes[item.id] || ''
-    }));
+    const activeDetails = editingTransaction.details.map(item => {
+      const kotorVal = editKotorQuantities[item.id];
+      const bersihVal = bersihQuantities[item.id];
+      
+      const qtyKotor = kotorVal !== undefined && kotorVal !== '' ? parseInt(kotorVal) : (item.qty_kotor || 0);
+      const qtyBersih = bersihVal !== undefined && bersihVal !== '' ? parseInt(bersihVal) : (item.qty_bersih !== null ? item.qty_bersih : null);
+      
+      return {
+        id: item.id,
+        qtyKotor,
+        qtyBersih,
+        notes: editItemNotes[item.id] || ''
+      };
+    });
 
     try {
       const token = localStorage.getItem('token');
@@ -760,20 +1031,62 @@ export default function SerahTerima() {
     (emp.employee_name || '').toLowerCase().includes(editSearchEmployeeQuery.toLowerCase())
   );
 
-  // Filtered linen lists for table search
-  const filteredLinensList = linenSearch.trim() === ''
-    ? linensList
-    : linensList.filter(item =>
-      getLinenDisplayName(item).toLowerCase().includes(linenSearch.toLowerCase())
-    );
+  // Filtered linen lists for table search and selected room
+  const filteredLinensList = linensList.filter(item => {
+    const matchSearch = linenSearch.trim() === '' ||
+      getLinenDisplayName(item).toLowerCase().includes(linenSearch.toLowerCase());
+    
+    if (selectedRoomId) {
+      const existsInRoom = roomLinensList.some(rl => 
+        rl.hospital_linen_id === item.id && rl.room_id === parseInt(selectedRoomId)
+      );
+      return matchSearch && existsInRoom;
+    }
+    return matchSearch;
+  });
 
-  const filteredEditDetails = editingTransaction
-    ? (editLinenSearch.trim() === ''
-      ? editingTransaction.details
-      : editingTransaction.details.filter(item =>
-        getLinenDisplayName(item).toLowerCase().includes(editLinenSearch.toLowerCase())
-      ))
-    : [];
+  const filteredEditDetails = (() => {
+    if (!editingTransaction) return [];
+    
+    const baseFiltered = editingTransaction.details.filter(item => {
+      return editLinenSearch.trim() === '' ||
+        getLinenDisplayName(item).toLowerCase().includes(editLinenSearch.toLowerCase());
+    });
+
+    if (selectedRoomId) {
+      return baseFiltered.filter(item => item.room_id === parseInt(selectedRoomId));
+    } else {
+      const grouped = {};
+      baseFiltered.forEach(item => {
+        const lid = item.hospital_linen_id;
+        if (!grouped[lid]) {
+          grouped[lid] = {
+            ...item,
+            id: `grouped_${lid}`,
+            qty_kotor: 0,
+            qty_bersih: 0,
+            room_id: null,
+            room_name: null,
+            notes: [],
+            isGrouped: true,
+            originalItemIds: []
+          };
+        }
+        grouped[lid].qty_kotor += parseInt(item.qty_kotor || 0);
+        if (item.qty_bersih !== null && item.qty_bersih !== undefined) {
+          grouped[lid].qty_bersih += parseInt(item.qty_bersih || 0);
+        }
+        if (item.notes && item.notes.trim() !== '') {
+          grouped[lid].notes.push(item.notes.trim());
+        }
+        grouped[lid].originalItemIds.push(item.id);
+      });
+      return Object.values(grouped).map(group => ({
+        ...group,
+        notes: group.notes.join('; ')
+      }));
+    }
+  })();
 
   const isEditable = editingTransaction
     ? (editingTransaction.transaction.status === 'PROSES' || editingTransaction.transaction.is_editable)
@@ -801,6 +1114,8 @@ export default function SerahTerima() {
         descriptions.push("Membuat transaksi kotor");
       } else if (audit.action === 'ADMIN') {
         descriptions.push("Melakukan perubahan admin");
+      } else if (audit.action === 'RUMAH_SAKIT') {
+        descriptions.push("Rumah Sakit memperbarui data transaksi");
       }
       return descriptions;
     }
@@ -869,6 +1184,7 @@ export default function SerahTerima() {
     const oldDetails = oldSnap.details || [];
     const newDetails = newSnap.details || [];
 
+    // Check for updated details
     newDetails.forEach(newItem => {
       const oldItem = oldDetails.find(o => o.id === newItem.id);
       if (oldItem) {
@@ -890,12 +1206,31 @@ export default function SerahTerima() {
       }
     });
 
+    // Check for deleted details
+    oldDetails.forEach(oldItem => {
+      const newItem = newDetails.find(n => n.id === oldItem.id);
+      if (!newItem) {
+        const name = getLinenNameById(oldItem.hospital_linen_id);
+        descriptions.push(`Menghapus linen ${name} (sebelumnya ${oldItem.qty_kotor || 0} Pcs kotor)`);
+      }
+    });
+
     if (descriptions.length === 0) {
       descriptions.push("Melakukan pembaruan data transaksi");
     }
 
     return descriptions;
   };
+
+  // Get unique rooms from roomLinensList
+  const uniqueRooms = [];
+  const roomMap = new Map();
+  roomLinensList.forEach(rl => {
+    if (rl.room_id && !roomMap.has(rl.room_id)) {
+      roomMap.set(rl.room_id, rl.room_name);
+      uniqueRooms.push({ id: rl.room_id, name: rl.room_name });
+    }
+  });
 
   return (
     <div className="min-h-full py-6 bg-slate-50/50">
@@ -1347,9 +1682,27 @@ export default function SerahTerima() {
               {/* Table of items */}
               <div className="border border-slate-150 rounded-2xl overflow-hidden shadow-sm">
 
-                {/* Search bar above linen table */}
-                <div className="p-3 border-b border-slate-100 bg-slate-50/70">
-                  <div className="relative">
+                {/* Search bar & Room Selector above linen table */}
+                <div className="flex flex-col sm:flex-row gap-3 p-3 border-b border-slate-100 bg-slate-50/70">
+                  {/* Room Selector */}
+                  <div className="relative min-w-[200px]">
+                    <select
+                      value={selectedRoomId}
+                      onChange={e => setSelectedRoomId(e.target.value)}
+                      className="w-full pl-3 pr-9 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] cursor-pointer appearance-none"
+                    >
+                      <option value="">Semua Ruangan</option>
+                      {uniqueRooms.map(room => (
+                        <option key={room.id} value={room.id}>{room.name}</option>
+                      ))}
+                    </select>
+                    <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-slate-400">
+                      <ChevronDown className="w-4 h-4" />
+                    </div>
+                  </div>
+
+                  {/* Search bar */}
+                  <div className="relative flex-1">
                     <Search className="absolute inset-y-0 left-3 my-auto h-3.5 w-3.5 text-slate-400" />
                     <input
                       type="text"
@@ -1362,7 +1715,7 @@ export default function SerahTerima() {
                       <button
                         type="button"
                         onClick={() => setLinenSearch('')}
-                        className="absolute inset-y-0 right-3 my-auto text-slate-400 hover:text-slate-600 text-base leading-none cursor-pointer"
+                        className="absolute inset-y-0 right-3 my-auto text-slate-400 hover:text-slate-650 text-base leading-none cursor-pointer"
                       >✕</button>
                     )}
                   </div>
@@ -1373,7 +1726,9 @@ export default function SerahTerima() {
                     <thead>
                       <tr className="bg-slate-50 text-slate-400 font-semibold uppercase tracking-wider text-xs border-b border-slate-150">
                         <th className="py-3.5 px-4 w-12 text-center">No</th>
-                        <th className="py-3.5 px-4 text-center">Nama Linen</th>
+                        <th className="py-3.5 px-4">Nama Linen</th>
+                        <th className="py-3.5 px-4 text-center">Ruangan</th>
+                        <th className="py-3.5 px-4 text-center">Stok</th>
                         <th className="py-3.5 px-4 w-28 text-center">Kotor</th>
                         <th className="py-3.5 px-4 text-center">Keterangan</th>
                       </tr>
@@ -1395,6 +1750,7 @@ export default function SerahTerima() {
                       ) : (
                         filteredLinensList.map((item, index) => {
                           const isFilled = (kotorQuantities[item.id] || 0) > 0;
+                          const roomInfo = getRoomAndStockInfo(item.id);
                           return (
                             <tr
                               key={item.id}
@@ -1407,16 +1763,28 @@ export default function SerahTerima() {
                               <td className="py-3 px-4">
                                 <p className="font-semibold text-slate-800 text-sm">{getLinenDisplayName(item)}</p>
                               </td>
+                              <td className="py-3 px-4 text-center">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-650 border border-slate-200">
+                                  {roomInfo.roomName}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4 text-center">
+                                {roomInfo.isRoomSelected ? (
+                                  <div>
+                                    <div className="font-bold text-slate-700">{roomInfo.roomStock} Pcs</div>
+                                    <div className="text-[10px] text-slate-400 font-semibold mt-0.5">Total RS: {roomInfo.totalStock} Pcs</div>
+                                  </div>
+                                ) : (
+                                  <div className="font-bold text-slate-700">{roomInfo.totalStock} Pcs</div>
+                                )}
+                              </td>
                               <td className="py-3 px-4">
                                 <div className="flex items-center justify-center">
                                   <input
                                     type="number"
                                     min="0"
-                                    value={kotorQuantities[item.id] || ''}
-                                    onChange={e => {
-                                      const val = parseInt(e.target.value) || 0;
-                                      setKotorQuantities(prev => ({ ...prev, [item.id]: val >= 0 ? val : 0 }));
-                                    }}
+                                    value={getKotorQty(item.id)}
+                                    onChange={e => handleKotorQtyChange(item.id, e.target.value)}
                                     className="w-16 text-center py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] focus:bg-white transition"
                                   />
                                 </div>
@@ -1425,11 +1793,8 @@ export default function SerahTerima() {
                                 <input
                                   type="text"
                                   placeholder="Catatan item..."
-                                  value={itemNotes[item.id] || ''}
-                                  onChange={e => {
-                                    const val = e.target.value;
-                                    setItemNotes(prev => ({ ...prev, [item.id]: val }));
-                                  }}
+                                  value={getNoteVal(item.id)}
+                                  onChange={e => handleNoteValChange(item.id, e.target.value)}
                                   className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] focus:bg-white transition"
                                 />
                               </td>
@@ -1783,9 +2148,27 @@ export default function SerahTerima() {
               {/* Table of detail quantities */}
               <div className="border border-slate-150 rounded-2xl overflow-hidden shadow-sm">
 
-                {/* Search bar above bersih linen table */}
-                <div className="p-3 border-b border-slate-100 bg-slate-50/70">
-                  <div className="relative">
+                 {/* Search bar & Room Selector above bersih linen table */}
+                <div className="flex flex-col sm:flex-row gap-3 p-3 border-b border-slate-100 bg-slate-50/70">
+                  {/* Room Selector */}
+                  <div className="relative min-w-[200px]">
+                    <select
+                      value={selectedRoomId}
+                      onChange={e => setSelectedRoomId(e.target.value)}
+                      className="w-full pl-3 pr-9 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] cursor-pointer appearance-none"
+                    >
+                      <option value="">Semua Ruangan</option>
+                      {uniqueRooms.map(room => (
+                        <option key={room.id} value={room.id}>{room.name}</option>
+                      ))}
+                    </select>
+                    <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-slate-400">
+                      <ChevronDown className="w-4 h-4" />
+                    </div>
+                  </div>
+
+                  {/* Search bar */}
+                  <div className="relative flex-1">
                     <Search className="absolute inset-y-0 left-3 my-auto h-3.5 w-3.5 text-slate-400" />
                     <input
                       type="text"
@@ -1798,7 +2181,7 @@ export default function SerahTerima() {
                       <button
                         type="button"
                         onClick={() => setEditLinenSearch('')}
-                        className="absolute inset-y-0 right-3 my-auto text-slate-400 hover:text-slate-600 text-base leading-none cursor-pointer"
+                        className="absolute inset-y-0 right-3 my-auto text-slate-400 hover:text-slate-650 text-base leading-none cursor-pointer"
                       >✕</button>
                     )}
                   </div>
@@ -1809,7 +2192,9 @@ export default function SerahTerima() {
                     <thead>
                       <tr className="bg-slate-50 text-slate-400 font-semibold uppercase tracking-wider text-xs border-b border-slate-150">
                         <th className="py-3 px-4 w-12 text-center">No</th>
-                        <th className="py-3 px-4 text-center">Nama Linen</th>
+                        <th className="py-3 px-4">Nama Linen</th>
+                        <th className="py-3 px-4 text-center">Ruangan</th>
+                        <th className="py-3 px-4 text-center">Stok</th>
                         <th className="py-3 px-4 text-center w-24">Kotor</th>
                         <th className="py-3 px-4 text-center w-24">Bersih</th>
                         <th className="py-3 px-4 text-center">Catatan Selisih & Keterangan</th>
@@ -1818,19 +2203,43 @@ export default function SerahTerima() {
                     <tbody className="divide-y divide-slate-100 text-slate-700">
                       {filteredEditDetails.length === 0 ? (
                         <tr>
-                          <td colSpan="5" className="py-12 text-center text-slate-400 font-semibold text-xs">
+                          <td colSpan="7" className="py-12 text-center text-slate-400 font-semibold text-xs">
                             {editLinenSearch ? `Tidak ada linen yang cocok dengan "${editLinenSearch}"` : 'Tidak ada data linen.'}
                           </td>
                         </tr>
                       ) : filteredEditDetails.map((item, index) => {
-                        const kotor = editKotorQuantities[item.id] !== undefined ? editKotorQuantities[item.id] : item.qty_kotor;
-                        const bersih = bersihQuantities[item.id] !== undefined ? bersihQuantities[item.id] : (item.qty_bersih !== null ? item.qty_bersih : '');
+                        const isRowEditable = isEditable && (!item.isGrouped || (item.originalItemIds.length === 1 && editingTransaction.details.find(d => d.id === item.originalItemIds[0])?.room_id === null));
+                        const inputKey = item.isGrouped ? (item.originalItemIds?.[0] || item.id) : item.id;
+
+                        let kotor = 0;
+                        let bersih = 0;
+                        if (item.isGrouped) {
+                          item.originalItemIds.forEach(subId => {
+                            const kVal = editKotorQuantities[subId];
+                            kotor += kVal !== undefined && kVal !== '' ? parseInt(kVal) : 0;
+                            
+                            const bVal = bersihQuantities[subId];
+                            if (bVal !== undefined && bVal !== '') {
+                              bersih += parseInt(bVal) || 0;
+                            } else {
+                              const origDetail = editingTransaction.details.find(d => d.id === subId);
+                              if (origDetail && origDetail.qty_bersih !== null) {
+                                bersih += parseInt(origDetail.qty_bersih) || 0;
+                              }
+                            }
+                          });
+                        } else {
+                          kotor = editKotorQuantities[item.id] !== undefined ? editKotorQuantities[item.id] : item.qty_kotor;
+                          bersih = bersihQuantities[item.id] !== undefined ? bersihQuantities[item.id] : (item.qty_bersih !== null && item.qty_bersih !== undefined ? item.qty_bersih : '');
+                        }
+
                         const isDiff = parseInt(kotor || 0) !== parseInt(bersih || 0);
+                        const roomInfo = getRoomAndStockInfo(item.hospital_linen_id);
 
                         return (
                           <tr
                             key={item.id}
-                            className={`transition-colors duration-150 ${isDiff && isEditable
+                            className={`transition-colors duration-150 ${isDiff && isRowEditable
                               ? 'bg-amber-500/[0.03] border-l-4 border-l-amber-400'
                               : 'hover:bg-slate-50/40'
                               }`}
@@ -1839,66 +2248,71 @@ export default function SerahTerima() {
                             <td className="py-3 px-4">
                               <p className="font-semibold text-slate-800 text-sm">{getLinenDisplayName(item)}</p>
                             </td>
+                            <td className="py-3 px-4 text-center">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-650 border border-slate-200">
+                                {item.room_name || 'Semua Ruangan'}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                              {roomInfo.isRoomSelected ? (
+                                <div>
+                                  <div className="font-bold text-slate-700">{roomInfo.roomStock} Pcs</div>
+                                  <div className="text-[10px] text-slate-400 font-semibold mt-0.5">Total RS: {roomInfo.totalStock} Pcs</div>
+                                </div>
+                              ) : (
+                                <div className="font-bold text-slate-700">{roomInfo.totalStock} Pcs</div>
+                              )}
+                            </td>
                             <td className="py-3 px-4">
-                              {isEditable ? (
+                              {isRowEditable ? (
                                 <div className="flex items-center justify-center">
                                   <input
                                     type="number"
                                     min="0"
-                                    value={editKotorQuantities[item.id] !== undefined ? editKotorQuantities[item.id] : ''}
+                                    value={editKotorQuantities[inputKey] !== undefined ? editKotorQuantities[inputKey] : ''}
                                     onChange={e => {
-                                      const valStr = e.target.value;
-                                      if (valStr === '') {
-                                        setEditKotorQuantities(prev => ({ ...prev, [item.id]: '' }));
-                                      } else {
-                                        const val = parseInt(valStr);
-                                        setEditKotorQuantities(prev => ({ ...prev, [item.id]: isNaN(val) ? 0 : (val >= 0 ? val : 0) }));
-                                      }
+                                      const val = e.target.value;
+                                      setEditKotorQuantities(prev => ({ ...prev, [inputKey]: val === '' ? '' : (parseInt(val) || 0) }));
                                     }}
                                     className="w-16 text-center py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] focus:bg-white transition"
                                   />
                                 </div>
                               ) : (
-                                <div className="text-center font-semibold text-slate-700 text-sm">
+                                <div className="text-center font-bold text-slate-700 text-sm">
                                   {formatNumber(kotor)}
                                 </div>
                               )}
                             </td>
                             <td className="py-3 px-4">
-                              {isEditable ? (
+                              {isRowEditable ? (
                                 <div className="flex items-center justify-center">
                                   <input
                                     type="number"
                                     min="0"
-                                    value={bersihQuantities[item.id] !== undefined ? bersihQuantities[item.id] : ''}
+                                    value={bersihQuantities[inputKey] !== undefined ? bersihQuantities[inputKey] : ''}
                                     onChange={e => {
-                                      const valStr = e.target.value;
-                                      if (valStr === '') {
-                                        setBersihQuantities(prev => ({ ...prev, [item.id]: '' }));
-                                      } else {
-                                        const val = parseInt(valStr);
-                                        setBersihQuantities(prev => ({ ...prev, [item.id]: isNaN(val) ? 0 : (val >= 0 ? val : 0) }));
-                                      }
+                                      const val = e.target.value;
+                                      setBersihQuantities(prev => ({ ...prev, [inputKey]: val === '' ? '' : (parseInt(val) || 0) }));
                                     }}
                                     className="w-16 text-center py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] focus:bg-white transition"
                                   />
                                 </div>
                               ) : (
-                                <div className="text-center font-semibold text-teal-700 text-sm">
-                                  {formatNumber(bersih)}
+                                <div className="text-center font-bold text-teal-750 text-sm">
+                                  {bersih !== '' ? `${formatNumber(bersih)} Pcs` : '—'}
                                 </div>
                               )}
                             </td>
                             <td className="py-3 px-4">
-                              {isEditable ? (
+                              {isRowEditable ? (
                                 <div className="space-y-1.5">
                                   <input
                                     type="text"
                                     placeholder="Tambahkan alasan/catatan selisih..."
-                                    value={editItemNotes[item.id] || ''}
+                                    value={editItemNotes[inputKey] || ''}
                                     onChange={e => {
                                       const val = e.target.value;
-                                      setEditItemNotes(prev => ({ ...prev, [item.id]: val }));
+                                      setEditItemNotes(prev => ({ ...prev, [inputKey]: val }));
                                     }}
                                     className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] focus:bg-white transition"
                                   />
@@ -1910,11 +2324,15 @@ export default function SerahTerima() {
                                   )}
                                 </div>
                               ) : (
-                                <div className="flex items-center gap-1.5">
-                                  {isDiff && <AlertTriangle className="h-3.5 w-3.5 text-red-500 shrink-0" />}
+                                <div className="flex flex-col gap-1">
                                   <span className="font-medium text-slate-650 text-xs">
                                     {item.notes || '—'}
                                   </span>
+                                  {item.isGrouped && item.originalItemIds.length > 1 && (
+                                    <span className="text-[10px] text-amber-600 font-bold italic">
+                                      * Pilih ruangan untuk mengisi jumlah bersih.
+                                    </span>
+                                  )}
                                 </div>
                               )}
                             </td>
@@ -2036,7 +2454,32 @@ export default function SerahTerima() {
                         </div>
                       )}
 
-                      {/* Section 4: Perubahan Oleh Admin */}
+                      {/* Section 4: Perubahan Oleh Rumah Sakit */}
+                      {editingTransaction.audits.some(a => a.action === 'RUMAH_SAKIT') && (
+                        <div className="space-y-2 pt-3">
+                          <h5 className="text-[10px] font-extrabold text-teal-600 uppercase tracking-wider block">
+                            Perubahan Oleh Rumah Sakit
+                          </h5>
+                          <div className="space-y-1.5 pl-1.5">
+                            {editingTransaction.audits
+                              .filter(a => a.action === 'RUMAH_SAKIT')
+                              .map(audit => {
+                                const descriptions = generateAuditLogDescriptions(audit);
+                                return descriptions.map((desc, idx) => (
+                                  <div key={`${audit.id}-${idx}`} className="text-xs font-semibold text-slate-600 flex items-start gap-1.5">
+                                    <span className="text-slate-400 font-bold shrink-0">{formatAuditTime(audit.created_at)}</span>
+                                    <span className="text-slate-400 font-bold shrink-0">•</span>
+                                    <span className="text-teal-650 font-bold shrink-0">{audit.full_name || audit.username}</span>
+                                    <span className="text-slate-400 font-bold shrink-0">•</span>
+                                    <span className="text-slate-700 font-medium">{desc}</span>
+                                  </div>
+                                ));
+                              })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Section 5: Perubahan Oleh Admin */}
                       {editingTransaction.audits.some(a => a.action === 'ADMIN') && (
                         <div className="space-y-2 pt-3">
                           <h5 className="text-[10px] font-extrabold text-violet-600 uppercase tracking-wider block">

@@ -210,9 +210,35 @@ export default async function exportSerahTerimaLinen(transaction, details) {
     cell.border = thinBorder;
   });
 
+  // Group details by hospital_linen_id to avoid double rows for the same linen
+  const groupedDetailsMap = {};
+  details.forEach(item => {
+    const lid = item.hospital_linen_id;
+    if (!groupedDetailsMap[lid]) {
+      groupedDetailsMap[lid] = {
+        ...item,
+        qty_kotor: 0,
+        qty_bersih: 0,
+        notesList: []
+      };
+    }
+    groupedDetailsMap[lid].qty_kotor += parseInt(item.qty_kotor || 0);
+    if (item.qty_bersih !== null && item.qty_bersih !== undefined) {
+      groupedDetailsMap[lid].qty_bersih += parseInt(item.qty_bersih || 0);
+    }
+    if (item.notes && item.notes.trim() !== '') {
+      groupedDetailsMap[lid].notesList.push(item.notes.trim());
+    }
+  });
+
+  const aggregatedDetails = Object.values(groupedDetailsMap).map(group => ({
+    ...group,
+    notes: group.notesList.join('; ')
+  }));
+
   // 4. Data rows (Height: 28px each for comfortable line item spacing)
   let currentRow = 6;
-  details.forEach((item, index) => {
+  aggregatedDetails.forEach((item, index) => {
     const kotor = parseInt(item.qty_kotor || 0);
     const bersih = parseInt(item.qty_bersih || 0);
     const notes = item.notes || '';

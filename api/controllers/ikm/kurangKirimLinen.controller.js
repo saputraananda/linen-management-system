@@ -109,14 +109,18 @@ export const getShortageTransactionDetails = async (req, res) => {
                 SELECT SUM(dd.qty_delivered) 
                 FROM tr_kurang_kirim_delivery_detail dd
                 INNER JOIN tr_kurang_kirim_delivery d ON dd.delivery_id = d.id
-                WHERE d.transaction_id = td.transaction_id AND dd.hospital_linen_id = td.hospital_linen_id
-              ), 0) AS qty_delivered_so_far
+                WHERE d.transaction_id = td.transaction_id 
+                  AND dd.hospital_linen_id = td.hospital_linen_id
+                  AND COALESCE(dd.room_id, 0) = COALESCE(td.room_id, 0)
+              ), 0) AS qty_delivered_so_far,
+              r.room_name
        FROM tr_linen_transaction_detail td
        INNER JOIN mst_hospital_linen hl ON td.hospital_linen_id = hl.id
        INNER JOIN mst_linen l ON hl.linen_id = l.id
        LEFT JOIN mst_size s ON l.size_id = s.id
        LEFT JOIN mst_color c ON l.color_id = c.id
        LEFT JOIN mst_material m ON l.material_id = m.id
+       LEFT JOIN mst_rooms_rs r ON td.room_id = r.id
        WHERE td.transaction_id = ?
          AND td.qty_kotor > COALESCE(td.qty_bersih, 0)
        ORDER BY l.linen_name ASC`,
@@ -255,11 +259,12 @@ export const createShortageDelivery = async (req, res) => {
 
             await connection.query(
                 `INSERT INTO tr_kurang_kirim_delivery_detail
-          (delivery_id, hospital_linen_id, qty_delivered, grammage, total_weight, notes)
-          VALUES (?, ?, ?, ?, ?, ?)`,
+          (delivery_id, hospital_linen_id, room_id, qty_delivered, grammage, total_weight, notes)
+          VALUES (?, ?, ?, ?, ?, ?, ?)`,
                 [
                     deliveryId,
                     item.hospitalLinenId,
+                    item.roomId || null,
                     parseInt(item.qtyDelivered),
                     grammage,
                     totalWeight,
@@ -271,11 +276,14 @@ export const createShortageDelivery = async (req, res) => {
             await connection.query(
                 `UPDATE tr_linen_transaction_detail
                  SET qty_bersih = COALESCE(qty_bersih, 0) + ?
-                 WHERE transaction_id = ? AND hospital_linen_id = ?`,
+                 WHERE transaction_id = ? 
+                   AND hospital_linen_id = ? 
+                   AND COALESCE(room_id, 0) = COALESCE(?, 0)`,
                 [
                     parseInt(item.qtyDelivered),
                     transactionId,
-                    item.hospitalLinenId
+                    item.hospitalLinenId,
+                    item.roomId || null
                 ]
             );
         }

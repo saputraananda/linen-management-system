@@ -147,13 +147,15 @@ export const getTransactionDetail = async (req, res) => {
       `SELECT td.*,
               l.linen_name, l.linen_code,
               hl.unit, hl.hospital_linen_name,
-              s.size_name, c.color_name, m.material_name
+              s.size_name, c.color_name, m.material_name,
+              r.room_name
        FROM tr_linen_transaction_detail td
        INNER JOIN mst_hospital_linen hl ON td.hospital_linen_id = hl.id
        INNER JOIN mst_linen l ON hl.linen_id = l.id
        LEFT JOIN mst_size s ON l.size_id = s.id
        LEFT JOIN mst_color c ON l.color_id = c.id
        LEFT JOIN mst_material m ON l.material_id = m.id
+       LEFT JOIN mst_rooms_rs r ON td.room_id = r.id
        WHERE td.transaction_id = ?
        ORDER BY l.linen_name ASC`,
       [id]
@@ -185,7 +187,10 @@ export const getTransactionDetail = async (req, res) => {
       [id]
     );
 
-    const auditUserIds = audits.map(a => a.user_id).filter(uid => uid !== null && uid !== undefined);
+    const auditUserIds = audits
+      .filter(a => a.action !== 'RUMAH_SAKIT')
+      .map(a => a.user_id)
+      .filter(uid => uid !== null && uid !== undefined);
     if (auditUserIds.length > 0) {
       const [auditEmployees] = await mainPool.query(
         `SELECT employee_id, full_name as employee_name 
@@ -195,8 +200,16 @@ export const getTransactionDetail = async (req, res) => {
       );
       const auditEmpMap = new Map(auditEmployees.map(emp => [emp.employee_id, emp.employee_name]));
       audits.forEach(a => {
-        if (a.user_id && auditEmpMap.has(a.user_id)) {
+        if (a.action !== 'RUMAH_SAKIT' && a.user_id && auditEmpMap.has(a.user_id)) {
           a.full_name = toTitleCase(auditEmpMap.get(a.user_id));
+        } else if (a.action === 'RUMAH_SAKIT') {
+          a.full_name = toTitleCase(a.full_name || 'Rumah Sakit');
+        }
+      });
+    } else {
+      audits.forEach(a => {
+        if (a.action === 'RUMAH_SAKIT') {
+          a.full_name = toTitleCase(a.full_name || 'Rumah Sakit');
         }
       });
     }
@@ -315,5 +328,203 @@ export const getShortageDeliveryDetail = async (req, res) => {
       message: "Gagal memuat rincian Surat Jalan",
       error: error.message
     });
+  }
+};
+
+/**
+ * Update quantity kotor of a transaction detail item
+ */
+export const updateTransactionDetail = async (req, res) => {
+  const connection = await ikmPool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const { id, detailId } = req.params;
+    const { qty_kotor, notes } = req.body;
+    const hospitalId = req.user.id;
+
+    if (!hospitalId) {
+      await connection.rollback();
+      return res.status(400).json({ success: false, message: "ID Rumah Sakit tidak valid" });
+    }
+
+    // 1. Fetch transaction header and verify ownership
+    const [transactions] = await connection.query(
+      `SELECT * FROM tr_linen_transaction WHERE id = ? AND hospital_id = ?`,
+      [id, hospitalId]
+    );
+
+    if (transactions.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({ success: false, message: "Transaksi tidak ditemukan" });
+    }
+
+    const transaction = transactions[0];
+
+    // 2. Validate signatures: if valet and hospital staff have signed for delivery (finalized), editing is blocked
+    if (transaction.status === 'SELESAI' && transaction.signature_valet_delivery && transaction.signature_hospital_delivery) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "Transaksi sudah selesai dan ditandatangani lengkap, tidak dapat diubah."
+      });
+    }
+
+    // 3. Fetch old snapshot for audit log
+    const [oldDetails] = await connection.query(
+      `SELECT * FROM tr_linen_transaction_detail WHERE transaction_id = ?`,
+      [id]
+    );
+    const oldSnapshot = {
+      transaction,
+      details: oldDetails
+    };
+
+    // 4. Update the item
+    await connection.query(
+      `UPDATE tr_linen_transaction_detail 
+       SET qty_kotor = ?, notes = ? 
+       WHERE id = ? AND transaction_id = ?`,
+      [parseInt(qty_kotor || 0), notes || null, detailId, id]
+    );
+
+    // 5. Fetch new snapshot for audit log
+    const [newDetails] = await connection.query(
+      `SELECT * FROM tr_linen_transaction_detail WHERE transaction_id = ?`,
+      [id]
+    );
+    const newSnapshot = {
+      transaction,
+      details: newDetails
+    };
+
+    // 6. Log to audit trail
+    await connection.query(
+      `INSERT INTO tr_linen_transaction_audit 
+       (transaction_id, action, user_id, username, full_name, role, old_values, new_values)
+       VALUES (?, 'RUMAH_SAKIT', ?, ?, ?, 'RS', ?, ?)`,
+      [
+        id,
+        req.user.id,
+        req.user.username || 'rs_user',
+        req.user.fullName || 'Rumah Sakit',
+        JSON.stringify(oldSnapshot),
+        JSON.stringify(newSnapshot)
+      ]
+    );
+
+    await connection.commit();
+    return res.status(200).json({
+      success: true,
+      message: "Data kotor linen berhasil diperbarui"
+    });
+  } catch (error) {
+    await connection.rollback();
+    console.error("Error updating transaction detail:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Gagal memperbarui kuantitas kotor linen",
+      error: error.message
+    });
+  } finally {
+    connection.release();
+  }
+};
+
+/**
+ * Delete a transaction detail item
+ */
+export const deleteTransactionDetail = async (req, res) => {
+  const connection = await ikmPool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const { id, detailId } = req.params;
+    const hospitalId = req.user.id;
+
+    if (!hospitalId) {
+      await connection.rollback();
+      return res.status(400).json({ success: false, message: "ID Rumah Sakit tidak valid" });
+    }
+
+    // 1. Fetch transaction header and verify ownership
+    const [transactions] = await connection.query(
+      `SELECT * FROM tr_linen_transaction WHERE id = ? AND hospital_id = ?`,
+      [id, hospitalId]
+    );
+
+    if (transactions.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({ success: false, message: "Transaksi tidak ditemukan" });
+    }
+
+    const transaction = transactions[0];
+
+    // 2. Validate signatures: if valet and hospital staff have signed for delivery (finalized), deletion is blocked
+    if (transaction.status === 'SELESAI' && transaction.signature_valet_delivery && transaction.signature_hospital_delivery) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "Transaksi sudah selesai dan ditandatangani lengkap, tidak dapat dihapus."
+      });
+    }
+
+    // 3. Fetch old snapshot for audit log
+    const [oldDetails] = await connection.query(
+      `SELECT * FROM tr_linen_transaction_detail WHERE transaction_id = ?`,
+      [id]
+    );
+    const oldSnapshot = {
+      transaction,
+      details: oldDetails
+    };
+
+    // 4. Delete the item
+    await connection.query(
+      `DELETE FROM tr_linen_transaction_detail 
+       WHERE id = ? AND transaction_id = ?`,
+      [detailId, id]
+    );
+
+    // 5. Fetch new snapshot for audit log
+    const [newDetails] = await connection.query(
+      `SELECT * FROM tr_linen_transaction_detail WHERE transaction_id = ?`,
+      [id]
+    );
+    const newSnapshot = {
+      transaction,
+      details: newDetails
+    };
+
+    // 6. Log to audit trail
+    await connection.query(
+      `INSERT INTO tr_linen_transaction_audit 
+       (transaction_id, action, user_id, username, full_name, role, old_values, new_values)
+       VALUES (?, 'RUMAH_SAKIT', ?, ?, ?, 'RS', ?, ?)`,
+      [
+        id,
+        req.user.id,
+        req.user.username || 'rs_user',
+        req.user.fullName || 'Rumah Sakit',
+        JSON.stringify(oldSnapshot),
+        JSON.stringify(newSnapshot)
+      ]
+    );
+
+    await connection.commit();
+    return res.status(200).json({
+      success: true,
+      message: "Linen berhasil dihapus dari daftar"
+    });
+  } catch (error) {
+    await connection.rollback();
+    console.error("Error deleting transaction detail:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Gagal menghapus linen dari daftar",
+      error: error.message
+    });
+  } finally {
+    connection.release();
   }
 };

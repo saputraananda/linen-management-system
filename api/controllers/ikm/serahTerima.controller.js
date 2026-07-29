@@ -133,15 +133,18 @@ export const getTransactionDetail = async (req, res) => {
 
     const [details] = await ikmPool.query(
       `SELECT td.*,
+              hl.stock_in_rs,
               l.linen_name, l.linen_code,
               hl.unit, hl.hospital_linen_name,
-              s.size_name, c.color_name, m.material_name
+              s.size_name, c.color_name, m.material_name,
+              r.room_name
        FROM tr_linen_transaction_detail td
        INNER JOIN mst_hospital_linen hl ON td.hospital_linen_id = hl.id
        INNER JOIN mst_linen l ON hl.linen_id = l.id
        LEFT JOIN mst_size s ON l.size_id = s.id
        LEFT JOIN mst_color c ON l.color_id = c.id
        LEFT JOIN mst_material m ON l.material_id = m.id
+       LEFT JOIN mst_rooms_rs r ON td.room_id = r.id
        WHERE td.transaction_id = ?
        ORDER BY l.linen_name ASC`,
       [id]
@@ -192,8 +195,12 @@ export const getTransactionDetail = async (req, res) => {
       [id]
     );
 
-    // Fetch names of users in audits from mainPool.mst_employee
-    const auditUserIds = audits.map(a => a.user_id).filter(uid => uid !== null && uid !== undefined);
+    // Fetch names of users in audits from mainPool.mst_employee (excluding RUMAH_SAKIT action logs)
+    const auditUserIds = audits
+      .filter(a => a.action !== 'RUMAH_SAKIT')
+      .map(a => a.user_id)
+      .filter(uid => uid !== null && uid !== undefined);
+
     if (auditUserIds.length > 0) {
       const [employees] = await mainPool.query(
         `SELECT employee_id, full_name as employee_name 
@@ -203,8 +210,29 @@ export const getTransactionDetail = async (req, res) => {
       );
       const empMap = new Map(employees.map(emp => [emp.employee_id, emp.employee_name]));
       audits.forEach(a => {
-        if (a.user_id && empMap.has(a.user_id)) {
+        if (a.action === 'RUMAH_SAKIT') {
+          if (a.full_name) {
+            a.full_name = toTitleCase(a.full_name);
+          } else if (a.username) {
+            a.full_name = toTitleCase(a.username);
+          } else {
+            a.full_name = 'Rumah Sakit';
+          }
+        } else if (a.user_id && empMap.has(a.user_id)) {
           a.full_name = toTitleCase(empMap.get(a.user_id));
+        }
+      });
+    } else {
+      // Format RUMAH_SAKIT full_name directly even if no employee IDs are looked up
+      audits.forEach(a => {
+        if (a.action === 'RUMAH_SAKIT') {
+          if (a.full_name) {
+            a.full_name = toTitleCase(a.full_name);
+          } else if (a.username) {
+            a.full_name = toTitleCase(a.username);
+          } else {
+            a.full_name = 'Rumah Sakit';
+          }
         }
       });
     }
@@ -361,9 +389,9 @@ export const createTransaction = async (req, res) => {
     for (const item of details) {
       await connection.query(
         `INSERT INTO tr_linen_transaction_detail 
-         (transaction_id, hospital_linen_id, qty_kotor, qty_bersih, notes)
-         VALUES (?, ?, ?, NULL, ?)`,
-        [transactionId, item.hospitalLinenId, parseInt(item.qtyKotor || 0), item.notes || null]
+         (transaction_id, hospital_linen_id, room_id, qty_kotor, qty_bersih, notes)
+         VALUES (?, ?, ?, ?, NULL, ?)`,
+        [transactionId, item.hospitalLinenId, item.roomId || null, parseInt(item.qtyKotor || 0), item.notes || null]
       );
     }
 
