@@ -31,22 +31,29 @@ export const getHospitals = async (req, res) => {
  */
 export const verifyHospital = async (req, res) => {
   try {
-    const { hospitalId, password } = req.body;
+    const { password } = req.body;
     
-    if (!hospitalId || !password) {
+    if (!password) {
       return res.status(400).json({
         success: false,
-        message: "ID Rumah Sakit dan password wajib diisi"
+        message: "Kata sandi wajib diisi"
       });
     }
 
-    // Expected password format: valet{hospitalId}
-    const expectedPassword = `valet${hospitalId}`;
+    // Ambil dari tabel mst_hospital pada kolom password_to_valet
+    const [hospitals] = await ikmPool.query(
+      "SELECT id, hospital_name FROM mst_hospital WHERE password_to_valet = ?",
+      [password]
+    );
     
-    if (password === expectedPassword) {
+    if (hospitals.length > 0) {
       return res.status(200).json({
         success: true,
-        message: "Verifikasi Rumah Sakit berhasil"
+        message: "Verifikasi Rumah Sakit berhasil",
+        data: {
+          hospitalId: hospitals[0].id,
+          hospitalName: hospitals[0].hospital_name
+        }
       });
     } else {
       return res.status(401).json({

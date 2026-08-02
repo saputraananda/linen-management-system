@@ -128,8 +128,8 @@ export default function ValetDashboard() {
   // Verify password handler
   const handleVerify = async (e) => {
     e.preventDefault();
-    if (!selectedHospitalId || !password) {
-      setVerifyError('Pilih rumah sakit dan masukkan kata sandi.');
+    if (!password) {
+      setVerifyError('Masukkan kata sandi.');
       return;
     }
     setVerifyError('');
@@ -138,16 +138,17 @@ export default function ValetDashboard() {
     try {
       const token = localStorage.getItem('token');
       const response = await axios.post('/api/ikm/verify-hospital', {
-        hospitalId: selectedHospitalId,
         password
       }, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
       if (response.data && response.data.success) {
+        const hospitalId = response.data.data.hospitalId;
         // Save state to sessionStorage
-        sessionStorage.setItem('valet_hospital_id', selectedHospitalId);
+        sessionStorage.setItem('valet_hospital_id', hospitalId);
         sessionStorage.setItem('valet_hospital_verified', 'true');
+        setSelectedHospitalId(hospitalId);
         setIsVerified(true);
         setPassword('');
       }
@@ -253,7 +254,7 @@ export default function ValetDashboard() {
                   </div>
                   <h2 className="text-xl font-bold tracking-tight">Portal Distribusi Valet</h2>
                   <p className="text-xs text-white/80 mt-1.5 font-medium leading-relaxed">
-                    Silakan pilih Rumah Sakit tujuan dan verifikasi PIN akses.
+                    Silakan masukkan kata sandi valet untuk membuka portal.
                   </p>
                 </div>
 
@@ -266,82 +267,42 @@ export default function ValetDashboard() {
                     </div>
                   )}
 
-                  {/* Dropdown Hospital */}
+                  {/* Password Field */}
                   <div className="space-y-1.5">
-                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest" htmlFor="hospital-select">
-                      Rumah Sakit Tujuan
+                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest" htmlFor="verify-pass">
+                      Kata Sandi Valet
                     </label>
                     <div className="relative">
-                      <select
-                        id="hospital-select"
-                        value={selectedHospitalId}
-                        onChange={(e) => {
-                          setSelectedHospitalId(e.target.value);
-                          setVerifyError('');
-                        }}
-                        className="block w-full pl-11 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-slate-800 font-semibold focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] focus:bg-white transition-all appearance-none text-sm cursor-pointer"
+                      <input
+                        id="verify-pass"
+                        type={showPassword ? 'text' : 'password'}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="Masukkan sandi valet..."
+                        className="block w-full pl-11 pr-11 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-slate-800 font-semibold focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] focus:bg-white transition-all text-sm"
                         required
-                      >
-                        <option value="" disabled className="text-slate-400">Pilih Rumah Sakit...</option>
-                        {hospitals.map((hosp) => (
-                          <option key={hosp.id} value={hosp.id}>
-                            {hosp.hospital_name}
-                          </option>
-                        ))}
-                      </select>
+                        autoFocus
+                      />
                       <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400">
-                        <Building className="h-4 w-4" />
+                        <Lock className="h-4 w-4" />
                       </div>
-                      <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none text-slate-400">
-                        <ChevronRight className="h-4 w-4 transform rotate-90" />
+                      <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center">
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="text-slate-400 hover:text-slate-600 transition-colors p-1"
+                          tabIndex={-1}
+                        >
+                          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
                       </div>
                     </div>
                   </div>
 
-                  {/* Password Field (only shown if a hospital is selected) */}
-                  {selectedHospitalId && (
-                    <div className="space-y-1.5 animate-[fadeIn_0.3s_cubic-bezier(0.16,1,0.3,1)_forwards]">
-                      <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest" htmlFor="verify-pass">
-                        Kata Sandi Valet
-                      </label>
-                      <div className="relative">
-                        <input
-                          id="verify-pass"
-                          type={showPassword ? 'text' : 'password'}
-                          value={password}
-                          onChange={(e) => setPassword(e.target.value)}
-                          placeholder="Masukkan sandi valet..."
-                          className="block w-full pl-11 pr-11 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-slate-800 font-semibold focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] focus:bg-white transition-all text-sm"
-                          required
-                          autoFocus
-                        />
-                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400">
-                          <Lock className="h-4 w-4" />
-                        </div>
-                        <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center">
-                          <button
-                            type="button"
-                            onClick={() => setShowPassword(!showPassword)}
-                            className="text-slate-400 hover:text-slate-600 transition-colors p-1"
-                            tabIndex={-1}
-                          >
-                            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Hint for demo */}
-                      <p className="text-xs text-slate-400 mt-1 font-medium flex items-center gap-1">
-                        <HelpCircle className="h-3.5 w-3.5" />
-                        Kata sandi valet default: <code className="bg-slate-100 px-1 py-0.5 rounded text-[#126776] font-bold">valet{selectedHospitalId}</code>
-                      </p>
-                    </div>
-                  )}
-
                   {/* Submit Button */}
                   <button
                     type="submit"
-                    disabled={verifying || !selectedHospitalId}
+                    disabled={verifying || !password}
                     className="w-full relative flex items-center justify-center gap-2 py-3.5 bg-gradient-to-r from-[#126776] to-[#1ea59e] hover:from-[#0e5562] hover:to-[#188b85] disabled:from-slate-200 disabled:to-slate-200 text-white disabled:text-slate-400 rounded-2xl font-bold text-sm shadow-lg shadow-[#126776]/10 hover:shadow-xl active:scale-[0.99] transition-all overflow-hidden cursor-pointer"
                   >
                     {verifying ? (
@@ -381,7 +342,7 @@ export default function ValetDashboard() {
                     className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs font-bold shadow-sm transition active:scale-95 cursor-pointer"
                   >
                     <ArrowLeft className="h-3.5 w-3.5" />
-                    Ganti Rumah Sakit
+                    Kunci Portal
                   </button>
 
                   <button
