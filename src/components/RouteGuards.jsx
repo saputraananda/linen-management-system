@@ -14,7 +14,7 @@ export function ProtectedRoute({ allowedRoles }) {
   }
 
   if (allowedRoles && !allowedRoles.includes(role)) {
-    const redirectPath = role === 'valet' ? '/valet' : role === 'rs' ? '/rs' : '/login';
+    const redirectPath = role === 'valet' ? '/valet' : role === 'rs' ? '/rs' : role === 'unit' ? '/unit' : '/login';
     return <Navigate to={redirectPath} replace />;
   }
 
@@ -30,7 +30,7 @@ export function GuestRoute() {
   const role = localStorage.getItem('userRole');
 
   if (token && role) {
-    const redirectPath = role === 'valet' ? '/valet' : role === 'rs' ? '/rs' : '/login';
+    const redirectPath = role === 'valet' ? '/valet' : role === 'rs' ? '/rs' : role === 'unit' ? '/unit' : '/login';
     if (redirectPath !== '/login') {
       return <Navigate to={redirectPath} replace />;
     }

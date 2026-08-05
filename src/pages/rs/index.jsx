@@ -23,8 +23,8 @@ export default function RSPage() {
       menuItems={MENU_ITEMS}
       moduleName="Hospital Portal"
       brandIcon={HeartPulse}
-      brandTitle="Hospital Linen System"
-      brandSub="By IKM"
+      brandTitle="Tim Linen Hospital"
+      brandSub="By IKM Laundry"
     />
   );
 }

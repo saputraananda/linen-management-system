@@ -14,6 +14,7 @@ import ikmKurangKirimCustomRoutes from './api/routes/ikm/kurangKirimCustom.route
 import rsDashboardRoutes from './api/routes/rs/rs-dashboard.routes.js';
 import rsSerahTerimaRoutes from './api/routes/rs/rs-serahTerima.routes.js';
 import rsSerahTerimaCustomRoutes from './api/routes/rs/rs-SerahTerimaCustom.routes.js';
+import unitDashboardRoutes from './api/routes/unit/unit.dashboard.routes.js';
 
 // Resolve directory paths
 const __filename = fileURLToPath(import.meta.url);
@@ -77,6 +78,7 @@ app.use('/api/ikm', ikmKurangKirimCustomRoutes);
 app.use('/api/rs', rsDashboardRoutes);
 app.use('/api/rs', rsSerahTerimaRoutes);
 app.use('/api/rs', rsSerahTerimaCustomRoutes);
+app.use('/api/unit', unitDashboardRoutes);
 
 // ==========================
 // Frontend

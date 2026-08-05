@@ -117,6 +117,53 @@ export const login = async (req, res) => {
       }
     }
 
+    // 3. Cek di ikmPool untuk Unit Rumah Sakit (mst_hospital)
+    const unitQuery = `
+      SELECT id, hospital_name, hospital_id, username_unit, password_unit
+      FROM mst_hospital
+      WHERE username_unit = ?
+      LIMIT 1
+    `;
+
+    const [units] = await ikmPool.query(unitQuery, [username]);
+
+    if (units.length > 0) {
+      const u = units[0];
+      // Bandingkan password plain-text
+      if (password === u.password_unit) {
+        const token = jwt.sign(
+          {
+            id: u.id,
+            username: u.username_unit,
+            role: "unit",
+            fullName: u.hospital_name,
+            hospitalId: u.hospital_id
+          },
+          process.env.SESSION_SECRET || 'ikmsecret',
+          { expiresIn: '24h' }
+        );
+
+        return res.status(200).json({
+          success: true,
+          message: "Login berhasil sebagai Unit Rumah Sakit",
+          role: "unit",
+          redirect: "/unit",
+          token,
+          user: {
+            id: u.id,
+            username: u.username_unit,
+            fullName: u.hospital_name,
+            hospitalId: u.hospital_id
+          }
+        });
+      } else {
+        return res.status(401).json({
+          success: false,
+          message: "Username atau password salah"
+        });
+      }
+    }
+
     // Jika tidak ditemukan di manapun
     return res.status(401).json({
       success: false,

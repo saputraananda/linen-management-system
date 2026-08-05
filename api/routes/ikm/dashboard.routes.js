@@ -1,5 +1,5 @@
 import express from 'express';
-import { getHospitals, verifyHospital, getDashboardData } from '../../controllers/ikm/dashboard.controller.js';
+import { getHospitals, verifyHospital, getDashboardData, updateTerpakai, updateGudang, updateRoomStock } from '../../controllers/ikm/dashboard.controller.js';
 import { authenticateToken } from '../../middleware/auth.js';
 
 const router = express.Router();
@@ -15,5 +15,14 @@ router.post('/verify-hospital', verifyHospital);
 
 // GET /api/ikm/dashboard-data
 router.get('/dashboard-data', getDashboardData);
+
+// POST /api/ikm/update-terpakai
+router.post('/update-terpakai', updateTerpakai);
+
+// POST /api/ikm/update-gudang
+router.post('/update-gudang', updateGudang);
+
+// POST /api/ikm/update-room-stock
+router.post('/update-room-stock', updateRoomStock);
 
 export default router;

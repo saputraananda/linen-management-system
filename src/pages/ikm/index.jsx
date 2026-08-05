@@ -25,8 +25,8 @@ export default function ValetPage() {
       menuItems={MENU_ITEMS}
       moduleName="IKM Portal"
       brandIcon={Truck}
-      brandTitle="Valet Management"
-      brandSub="PT Intersolusi Karya Mandiri"
+      brandTitle="Tim Valet IKM"
+      brandSub="By IKM Laundry"
     />
   );
 }

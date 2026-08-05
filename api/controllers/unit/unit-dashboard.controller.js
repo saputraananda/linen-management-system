@@ -1,12 +1,13 @@
 import { ikmPool } from '../../db/pool.js';
 
 /**
- * Fetch linen inventory and rooms stock data for a hospital
+ * Fetch linen inventory and rooms stock data for the hospital unit
  */
 export const getDashboardData = async (req, res) => {
   try {
-    // Get hospitalId from authenticated user token (role 'rs')
+    // Get hospitalId from authenticated user token (role 'unit')
     const hospitalId = req.user.id;
+    const { roomId } = req.query;
     
     if (!hospitalId) {
       return res.status(400).json({
@@ -78,7 +79,7 @@ export const getDashboardData = async (req, res) => {
     `;
     const [linens] = await ikmPool.query(inventoryQuery, [hospitalId]);
 
-    // 3. Fetch Rooms Inventory (from mst_hospital_linen_rooms join mst_rooms_rs and mst_linen)
+    // 3. Fetch Rooms Inventory
     const roomsQuery = `
       SELECT hlr.*, hl.linen_id, l.linen_name, r.room_name, r.is_gudang_linen
       FROM mst_hospital_linen_rooms hlr
@@ -134,6 +135,16 @@ export const getDashboardData = async (req, res) => {
       }
     });
 
+    // 6. Fetch recent unique nurse names for the selected room
+    let recentNurses = [];
+    if (roomId) {
+      const [nurses] = await ikmPool.query(
+        "SELECT nurse_name FROM tr_unit_activity_log WHERE room_id = ? GROUP BY nurse_name ORDER BY MAX(id) DESC LIMIT 5",
+        [roomId]
+      );
+      recentNurses = nurses.map(n => n.nurse_name);
+    }
+
     return res.status(200).json({
       success: true,
       data: {
@@ -149,31 +160,32 @@ export const getDashboardData = async (req, res) => {
         linens,
         roomLinens,
         rooms,
-        history
+        history,
+        recentNurses
       }
     });
   } catch (error) {
-    console.error("Error fetching RS dashboard data:", error);
+    console.error("Error fetching unit dashboard data:", error);
     return res.status(500).json({
       success: false,
-      message: "Gagal memuat data linen rumah sakit",
+      message: "Gagal memuat data linen unit",
       error: error.message
     });
   }
 };
 
 /**
- * Update Terpakai stock for a specific room and linen (RS-scoped)
+ * Update Terpakai stock for a specific room and linen with activity logging
  */
 export const updateTerpakai = async (req, res) => {
   try {
     const hospitalId = req.user.id;
-    const { hospitalLinenId, roomId, qtyTerpakai } = req.body;
+    const { hospitalLinenId, roomId, qtyTerpakai, nurseName } = req.body;
 
-    if (!hospitalLinenId || !roomId || qtyTerpakai === undefined) {
+    if (!hospitalLinenId || !roomId || qtyTerpakai === undefined || !nurseName) {
       return res.status(400).json({
         success: false,
-        message: "hospitalLinenId, roomId, dan qtyTerpakai wajib diisi"
+        message: "hospitalLinenId, roomId, qtyTerpakai, dan nama perawat wajib diisi"
       });
     }
 
@@ -231,7 +243,13 @@ export const updateTerpakai = async (req, res) => {
       [hospitalLinenId, roomId]
     );
 
+    let oldTerpakai = 0;
+    let newStockInRs = 0;
+
     if (existing.length > 0) {
+      const record = existing[0];
+      oldTerpakai = parseInt(record.qty_terpakai || 0);
+
       await ikmPool.query(
         "UPDATE mst_hospital_linen_rooms SET qty_terpakai = ? WHERE hospital_linen_id = ? AND room_id = ?",
         [valTerpakai, hospitalLinenId, roomId]
@@ -244,12 +262,19 @@ export const updateTerpakai = async (req, res) => {
       );
     }
 
+    // Log the unit stock change action in tr_unit_activity_log
+    await ikmPool.query(
+      `INSERT INTO tr_unit_activity_log (hospital_linen_id, room_id, nurse_name, action_type, old_value, new_value)
+       VALUES (?, ?, ?, 'UPDATE_TERPAKAI', ?, ?)`,
+      [hospitalLinenId, roomId, nurseName, oldTerpakai, valTerpakai]
+    );
+
     return res.status(200).json({
       success: true,
       message: "Data terpakai berhasil diperbarui"
     });
   } catch (error) {
-    console.error("Error updating RS terpakai:", error);
+    console.error("Error updating unit terpakai:", error);
     return res.status(500).json({
       success: false,
       message: "Gagal memperbarui data terpakai",
@@ -259,137 +284,17 @@ export const updateTerpakai = async (req, res) => {
 };
 
 /**
- * Update Gudang stock for a specific linen (RS-scoped)
+ * Fetch activity logs for a specific linen in a room
  */
-export const updateGudang = async (req, res) => {
+export const getLinenLogs = async (req, res) => {
   try {
     const hospitalId = req.user.id;
-    const { hospitalLinenId, qtyGudang } = req.body;
+    const { hospitalLinenId, roomId } = req.query;
 
-    if (!hospitalLinenId || qtyGudang === undefined) {
+    if (!hospitalLinenId || !roomId) {
       return res.status(400).json({
         success: false,
-        message: "hospitalLinenId dan qtyGudang wajib diisi"
-      });
-    }
-
-    const valGudang = parseInt(qtyGudang || 0);
-    if (valGudang < 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Jumlah gudang tidak boleh negatif"
-      });
-    }
-
-    // Security check & get Stok Awal (stock_in_rs in mst_hospital_linen)
-    const [linens] = await ikmPool.query(
-      "SELECT hospital_id, stock_in_rs FROM mst_hospital_linen WHERE id = ?",
-      [hospitalLinenId]
-    );
-
-    if (linens.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "Linen rumah sakit tidak ditemukan"
-      });
-    }
-
-    const linen = linens[0];
-
-    if (linen.hospital_id !== hospitalId) {
-      return res.status(403).json({
-        success: false,
-        message: "Akses ditolak. Linen tidak terdaftar untuk rumah sakit Anda."
-      });
-    }
-
-    const stokAwal = parseInt(linen.stock_in_rs || 0);
-
-    // Validation: cannot exceed Stok Awal
-    if (valGudang > stokAwal) {
-      return res.status(400).json({
-        success: false,
-        message: `Jumlah gudang (${valGudang} Pcs) tidak boleh melebihi Stok Awal (${stokAwal} Pcs)`
-      });
-    }
-
-    // Find the room ID where is_gudang_linen = 1
-    const [gudangRooms] = await ikmPool.query(
-      "SELECT id FROM mst_rooms_rs WHERE hospital_id = ? AND is_gudang_linen = 1 LIMIT 1",
-      [hospitalId]
-    );
-
-    if (gudangRooms.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Gudang linen tidak dikonfigurasi untuk rumah sakit ini. Silakan buat/tandai ruangan sebagai gudang terlebih dahulu."
-      });
-    }
-
-    const gudangRoomId = gudangRooms[0].id;
-
-    // Upsert into mst_hospital_linen_rooms for this gudangRoomId and hospitalLinenId
-    await ikmPool.query(
-      `INSERT INTO mst_hospital_linen_rooms (hospital_linen_id, room_id, stock_in_rs) 
-       VALUES (?, ?, ?) 
-       ON DUPLICATE KEY UPDATE stock_in_rs = VALUES(stock_in_rs)`,
-      [hospitalLinenId, gudangRoomId, valGudang]
-    );
-
-    return res.status(200).json({
-      success: true,
-      message: "Data gudang berhasil diperbarui"
-    });
-  } catch (error) {
-    console.error("Error updating RS gudang:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Gagal memperbarui data gudang",
-      error: error.message
-    });
-  }
-};
-
-/**
- * Update Room Stock directly (stock_in_rs) for a specific room and linen (RS-scoped)
- */
-export const updateRoomStock = async (req, res) => {
-  try {
-    const hospitalId = req.user.id;
-    const { hospitalLinenId, roomId, stockInRs } = req.body;
-
-    if (!hospitalLinenId || !roomId || stockInRs === undefined) {
-      return res.status(400).json({
-        success: false,
-        message: "hospitalLinenId, roomId, dan stockInRs wajib diisi"
-      });
-    }
-
-    const valStock = parseInt(stockInRs || 0);
-    if (valStock < 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Jumlah stok tidak boleh negatif"
-      });
-    }
-
-    // Security check: Verify that hospitalLinenId belongs to the authenticated hospital
-    const [linens] = await ikmPool.query(
-      "SELECT hospital_id FROM mst_hospital_linen WHERE id = ?",
-      [hospitalLinenId]
-    );
-
-    if (linens.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "Linen rumah sakit tidak ditemukan"
-      });
-    }
-
-    if (linens[0].hospital_id !== hospitalId) {
-      return res.status(403).json({
-        success: false,
-        message: "Akses ditolak. Linen tidak terdaftar untuk rumah sakit Anda."
+        message: "hospitalLinenId dan roomId wajib diisi"
       });
     }
 
@@ -399,53 +304,31 @@ export const updateRoomStock = async (req, res) => {
       [roomId]
     );
 
-    if (rooms.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "Ruangan tidak ditemukan"
-      });
-    }
-
-    if (rooms[0].hospital_id !== hospitalId) {
+    if (rooms.length === 0 || rooms[0].hospital_id !== hospitalId) {
       return res.status(403).json({
         success: false,
-        message: "Akses ditolak. Ruangan tidak terdaftar untuk rumah sakit Anda."
+        message: "Akses ditolak. Ruangan tidak valid."
       });
     }
 
-    const isGudang = rooms.length > 0 && rooms[0].is_gudang_linen === 1;
-    let finalStockInRs = valStock;
-
-    if (!isGudang) {
-      // Query the current qty_terpakai of that room to calculate Stok Awal (Alokasi)
-      const [existing] = await ikmPool.query(
-        "SELECT qty_terpakai FROM mst_hospital_linen_rooms WHERE hospital_linen_id = ? AND room_id = ?",
-        [hospitalLinenId, roomId]
-      );
-      const qtyTerpakai = existing.length > 0 ? parseInt(existing[0].qty_terpakai || 0) : 0;
-      finalStockInRs = valStock + qtyTerpakai;
-    }
-
-    // Upsert into mst_hospital_linen_rooms
-    await ikmPool.query(
-      `INSERT INTO mst_hospital_linen_rooms (hospital_linen_id, room_id, stock_in_rs) 
-       VALUES (?, ?, ?) 
-       ON DUPLICATE KEY UPDATE stock_in_rs = VALUES(stock_in_rs)`,
-      [hospitalLinenId, roomId, finalStockInRs]
+    const [logs] = await ikmPool.query(
+      `SELECT id, nurse_name, action_type, old_value, new_value, created_at 
+       FROM tr_unit_activity_log 
+       WHERE hospital_linen_id = ? AND room_id = ? 
+       ORDER BY created_at DESC LIMIT 50`,
+      [hospitalLinenId, roomId]
     );
 
     return res.status(200).json({
       success: true,
-      message: "Stok ruangan berhasil diperbarui"
+      data: logs
     });
   } catch (error) {
-    console.error("Error updating RS room stock:", error);
+    console.error("Error getting linen logs:", error);
     return res.status(500).json({
       success: false,
-      message: "Gagal memperbarui stok ruangan",
+      message: "Gagal memuat log aktivitas linen",
       error: error.message
     });
   }
 };
-
-

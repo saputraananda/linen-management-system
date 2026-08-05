@@ -13,6 +13,8 @@ import RSSerahTerima from './pages/rs/components/RS-SerahTerima.jsx';
 import RSSerahTerimaCustom from './pages/rs/components/RS-SerahTerimaCustom.jsx';
 // import RSKurangKirimCustom from './pages/rs/components/RS-KurangKirimCustom.jsx';
 import { ProtectedRoute, GuestRoute } from './components/RouteGuards.jsx';
+import UnitPage from './pages/unit/index.jsx';
+import UnitDashboard from './pages/unit/components/Unit-Dashboard.jsx';
 
 function App() {
   return (
@@ -44,6 +46,13 @@ function App() {
             <Route path="serah-terima-linen" element={<RSSerahTerima />} />
             <Route path="serah-terima-custom" element={<RSSerahTerimaCustom />} />
             {/* <Route path="kurang-kirim-custom" element={<RSKurangKirimCustom />} /> */}
+          </Route>
+        </Route>
+
+        {/* Hospital Unit Portal protected routes */}
+        <Route element={<ProtectedRoute allowedRoles={['unit']} />}>
+          <Route path="/unit" element={<UnitPage />}>
+            <Route index element={<UnitDashboard />} />
           </Route>
         </Route>
 
