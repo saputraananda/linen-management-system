@@ -437,6 +437,15 @@ export const createTransaction = async (req, res) => {
 
     await connection.commit();
 
+    // Emit real-time socket.io event
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`hospital_${hospitalId}`).emit('data_changed', {
+        type: 'TRANSACTION_PICKUP',
+        message: 'Transaksi pengambilan linen kotor telah dicatat'
+      });
+    }
+
     return res.status(201).json({
       success: true,
       message: isTemporary ? "Berhasil Tersimpan Sementara" : "Transaksi serah terima linen (Kotor) berhasil dicatat",
@@ -666,6 +675,17 @@ export const updateTransactionDelivery = async (req, res) => {
     );
 
     await connection.commit();
+
+    const hospitalId = oldHeader.hospital_id;
+
+    // Emit real-time socket.io event
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`hospital_${hospitalId}`).emit('data_changed', {
+        type: 'TRANSACTION_DELIVERY',
+        message: 'Transaksi pengiriman linen bersih telah dicatat'
+      });
+    }
 
     return res.status(200).json({
       success: true,

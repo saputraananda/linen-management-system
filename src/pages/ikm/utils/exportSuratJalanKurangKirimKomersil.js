@@ -1,10 +1,10 @@
 import ikmLogo from '../../../assets/images/ikm.png';
 
 /**
- * Utility to print/export Surat Jalan Kurang Kirim Custom to PDF / printer
+ * Utility to print/export Surat Jalan Kurang Kirim Komersil to PDF / printer
  * Formatted to match the UI modal preview exactly.
  */
-export default function exportSuratJalanKurangKirimCustom(delivery, details) {
+export default function exportSuratJalanKurangKirimKomersil(delivery, details) {
   const printWindow = window.open('', '_blank', 'width=950,height=1200');
   if (!printWindow) {
     const toast = document.createElement('div');
@@ -94,7 +94,7 @@ export default function exportSuratJalanKurangKirimCustom(delivery, details) {
     <html lang="id">
     <head>
       <meta charset="UTF-8">
-      <title>Surat Jalan Custom - ${delivery.surat_jalan_number || 'Kurang Kirim'}</title>
+      <title>Surat Jalan Komersil - ${delivery.surat_jalan_number || 'Kurang Kirim'}</title>
       <link rel="preconnect" href="https://fonts.googleapis.com">
       <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
       <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">

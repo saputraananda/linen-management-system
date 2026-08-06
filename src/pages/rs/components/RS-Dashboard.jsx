@@ -8,6 +8,7 @@ import {
   Building, Search, Shirt, Database, AlertTriangle,
   CheckCircle2, ChevronRight, Layers, RefreshCw, Warehouse, HelpCircle
 } from 'lucide-react';
+import { socket } from '../../../utils/socket';
 
 export default function RSDashboard() {
   const navigate = useNavigate();
@@ -46,6 +47,7 @@ export default function RSDashboard() {
   const [ownershipFilter, setOwnershipFilter] = useState('all');
   const [showOnlyShortage, setShowOnlyShortage] = useState(false);
   const [selectedLinenDetail, setSelectedLinenDetail] = useState(null);
+  const [detailModalTab, setDetailModalTab] = useState('shortage');
 
   // Inline Editing States
   const [editingCell, setEditingCell] = useState(null); // { itemId, type: 'terpakai' | 'gudang' }
@@ -61,6 +63,7 @@ export default function RSDashboard() {
   const [selectedUpdateLinen, setSelectedUpdateLinen] = useState(null);
   const [updateMode, setUpdateMode] = useState('out'); // 'out', 'in', or 'override'
   const [updateValue, setUpdateValue] = useState('');
+  const [updateTarget, setUpdateTarget] = useState('terpakai'); // 'terpakai' or 'dirty'
 
   // Smart Gudang Modal States
   const [showGudangModal, setShowGudangModal] = useState(false);
@@ -78,9 +81,30 @@ export default function RSDashboard() {
     fetchDashboardData();
   }, [navigate]);
 
+  useEffect(() => {
+    const hospitalId = localStorage.getItem('employeeId');
+    if (!hospitalId) return;
+
+    // Connect to websocket and join hospital room
+    socket.connect();
+    socket.emit('join_hospital', hospitalId);
+
+    const handleDataChanged = (event) => {
+      console.log('Realtime socket update:', event);
+      fetchDashboardData(true);
+    };
+
+    socket.on('data_changed', handleDataChanged);
+
+    return () => {
+      socket.off('data_changed', handleDataChanged);
+      socket.disconnect();
+    };
+  }, []);
+
   // Fetch detailed dashboard data for the hospital
-  const fetchDashboardData = async () => {
-    setLoadingData(true);
+  const fetchDashboardData = async (silent = false) => {
+    if (!silent) setLoadingData(true);
     setFetchError('');
     try {
       const token = localStorage.getItem('token');
@@ -97,7 +121,7 @@ export default function RSDashboard() {
       console.error('Error fetching dashboard data:', err);
       setFetchError(err.response?.data?.message || 'Terjadi kesalahan saat memuat data');
     } finally {
-      setLoadingData(false);
+      if (!silent) setLoadingData(false);
     }
     return null;
   };
@@ -185,40 +209,62 @@ export default function RSDashboard() {
   const handleSaveModalTerpakai = async () => {
     if (!selectedUpdateLinen || updating) return;
     
-    // Resolve current terpakai
+    // Resolve current terpakai and dirty
     const roomRecord = dashboardData?.roomLinens?.find(
       rl => rl.hospital_linen_id === selectedUpdateLinen.id && rl.room_id.toString() === selectedRoomFilter.toString()
     );
     const currentTerpakai = roomRecord ? parseInt(roomRecord.qty_terpakai || 0) : 0;
+    const currentDirty = roomRecord ? parseInt(roomRecord.qty_dirty || 0) : 0;
     const currentStokAwal = roomRecord ? parseInt(roomRecord.stock_in_rs || 0) : 0;
-    const currentLemari = Math.max(0, currentStokAwal - currentTerpakai);
+    const currentLemari = Math.max(0, currentStokAwal - currentTerpakai - currentDirty);
     
     const inputVal = parseInt(updateValue || 0);
-    let finalTerpakai = currentTerpakai;
+    let finalValue = 0;
     
-    if (updateMode === 'out') {
-      if (inputVal > currentLemari) {
-        alert("Jumlah yang diambil melebihi stok Lemari!");
-        return;
+    if (updateTarget === 'terpakai') {
+      let finalTerpakai = currentTerpakai;
+      if (updateMode === 'out') {
+        if (inputVal > currentLemari) {
+          alert("Jumlah yang diambil melebihi stok Lemari Bersih!");
+          return;
+        }
+        finalTerpakai = currentTerpakai + inputVal;
+      } else if (updateMode === 'in') {
+        if (inputVal > currentTerpakai) {
+          alert("Jumlah yang dimasukkan melebihi stok Terpakai!");
+          return;
+        }
+        finalTerpakai = currentTerpakai - inputVal;
+      } else {
+        if (inputVal + currentDirty > currentStokAwal) {
+          alert("Jumlah terpakai + dirty utility tidak boleh melebihi Stok Awal Ruangan!");
+          return;
+        }
+        finalTerpakai = inputVal;
       }
-      finalTerpakai = currentTerpakai + inputVal;
-    } else if (updateMode === 'in') {
-      if (inputVal > currentTerpakai) {
-        alert("Jumlah yang dimasukkan melebihi stok Terpakai!");
-        return;
-      }
-      finalTerpakai = currentTerpakai - inputVal;
+      finalValue = finalTerpakai;
     } else {
-      if (inputVal > currentStokAwal) {
-        alert("Jumlah terpakai tidak boleh melebihi Stok Awal Ruangan!");
-        return;
+      let finalDirty = currentDirty;
+      if (updateMode === 'out') {
+        if (inputVal > currentLemari) {
+          alert("Jumlah kotor melebihi stok Lemari Bersih!");
+          return;
+        }
+        finalDirty = currentDirty + inputVal;
+      } else if (updateMode === 'in') {
+        if (inputVal > currentDirty) {
+          alert("Jumlah yang dikurangi melebihi stok Dirty Utility!");
+          return;
+        }
+        finalDirty = currentDirty - inputVal;
+      } else {
+        if (inputVal + currentTerpakai > currentStokAwal) {
+          alert("Jumlah terpakai + dirty utility tidak boleh melebihi Stok Awal Ruangan!");
+          return;
+        }
+        finalDirty = inputVal;
       }
-      finalTerpakai = inputVal;
-    }
-    
-    if (finalTerpakai < 0 || finalTerpakai > currentStokAwal) {
-      alert("Pembaruan jumlah terpakai tidak valid.");
-      return;
+      finalValue = finalDirty;
     }
     
     setUpdating(true);
@@ -227,7 +273,8 @@ export default function RSDashboard() {
       await axiosInstance.post('/api/rs/update-terpakai', {
         hospitalLinenId: selectedUpdateLinen.id,
         roomId: selectedRoomFilter,
-        qtyTerpakai: finalTerpakai
+        qtyTerpakai: finalValue,
+        type: updateTarget
       }, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -236,8 +283,8 @@ export default function RSDashboard() {
       setSelectedUpdateLinen(null);
       setUpdateValue('');
     } catch (err) {
-      console.error('Error updating terpakai:', err);
-      alert(err.response?.data?.message || 'Gagal memperbarui data terpakai');
+      console.error('Error updating stock:', err);
+      alert(err.response?.data?.message || 'Gagal memperbarui data stok');
     } finally {
       setUpdating(false);
     }
@@ -330,7 +377,7 @@ export default function RSDashboard() {
   let totalLinenTypes = 0;
   let totalLemariStock = 0;
   let totalTerpakaiStock = 0;
-  let totalKurangKirimRoom = 0;
+  let totalDirtyStock = 0;
 
   if (selectedRoomFilter !== 'all' && dashboardData) {
     const roomLinenItems = dashboardData?.linens?.filter(item => {
@@ -347,9 +394,10 @@ export default function RSDashboard() {
       );
       const stockInRs = parseInt(roomRecord?.stock_in_rs || 0);
       const terpakai = parseInt(roomRecord?.qty_terpakai || 0);
-      totalLemariStock += Math.max(0, stockInRs - terpakai);
+      const dirty = parseInt(roomRecord?.qty_dirty || 0);
+      totalLemariStock += Math.max(0, stockInRs - terpakai - dirty);
       totalTerpakaiStock += terpakai;
-      totalKurangKirimRoom += parseInt(item.total_kurang || 0);
+      totalDirtyStock += dirty;
     });
   }
 
@@ -540,19 +588,19 @@ export default function RSDashboard() {
                   <p className="text-xs text-white/60 font-semibold mt-0.5">sedang digunakan unit</p>
                 </div>
 
-                {/* Card 4: KURANG KIRIM RUANGAN */}
-                <div className="relative overflow-hidden p-5 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-sm border border-emerald-500/25">
+                {/* Card 4: DIRTY UTILITY */}
+                <div className="relative overflow-hidden p-5 rounded-2xl bg-gradient-to-br from-rose-600 to-red-700 text-white shadow-sm border border-rose-500/25">
                   <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full translate-x-10 -translate-y-10 pointer-events-none" />
                   <div className="flex items-center gap-1.5">
                     <div className="p-1 bg-white/10 text-white border border-white/20 rounded-lg">
-                      <Layers className="h-4 w-4" />
+                      <AlertTriangle className="h-4 w-4" />
                     </div>
-                    <span className="text-xs font-bold tracking-widest uppercase text-white/90">KURANG KIRIM RUANGAN</span>
+                    <span className="text-xs font-bold tracking-widest uppercase text-white/90">DIRTY UTILITY</span>
                   </div>
                   <h3 className="text-2xl font-black mt-2">
-                    {loadingData ? '...' : formatNumber(totalKurangKirimRoom)}
+                    {loadingData ? '...' : formatNumber(totalDirtyStock)}
                   </h3>
-                  <p className="text-xs text-white/60 font-semibold mt-0.5 font-medium">kurang kirim ruangan ini</p>
+                  <p className="text-xs text-white/60 font-semibold mt-0.5 font-medium">kotor siap dicuci</p>
                 </div>
               </div>
             )}
@@ -607,39 +655,41 @@ export default function RSDashboard() {
                     </div>
 
                   </div>
-
                 </div>
               </div>
 
               {/* Unified Table Content */}
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm md:text-base border-collapse text-slate-600">
+              <table className="w-full text-left text-sm md:text-base border-collapse text-slate-600">
                   <thead>
                     <tr className="bg-slate-50/50 text-slate-400 font-semibold uppercase tracking-wider text-xs md:text-sm border-b border-slate-100">
                       <th className="py-4 px-6 text-center">No</th>
                       <th className="py-4 px-6">Nama Linen</th>
                       <th className="py-4 px-6 text-center">Kepemilikan</th>
-                      <th className="py-4 px-6 text-center">Stok Awal</th>
+                      <th className="py-4 px-6 text-center">Stok Awal Ruangan</th>
                       <th className="py-4 px-6 text-center">Terpakai</th>
                       <th className="py-4 px-6 text-center">
-                        {selectedRoomFilter === 'all' ? 'Lemari All Unit' : `Lemari (${getSelectedRoomName()})`}
+                        {selectedRoomFilter === 'all' ? 'Dirty Utility' : 'Dirty Utility'}
                       </th>
-                      <th className="py-4 px-6 text-center">Cuci</th>
+                      <th className="py-4 px-6 text-center">
+                        {selectedRoomFilter === 'all' ? 'Lemari Bersih' : `Lemari (${getSelectedRoomName()})`}
+                      </th>
+                      <th className="py-4 px-6 text-center">Cuci IKM</th>
                       <th className="py-4 px-6 text-center">Gudang Linen</th>
-                      <th className="py-4 px-6 text-center">Kurang Kirim</th>
+                      <th className="py-4 px-6 text-center">Kurang Kirim IKM</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {loadingData ? (
                       <tr>
-                        <td colSpan="9" className="py-12 text-center text-slate-400 text-sm font-semibold">
+                        <td colSpan="10" className="py-12 text-center text-slate-400 text-sm font-semibold">
                           <RefreshCw className="h-6 w-6 animate-spin mx-auto text-teal-500 mb-2" />
                           Memuat data inventaris...
                         </td>
                       </tr>
                     ) : filteredLinens.length === 0 ? (
                       <tr>
-                        <td colSpan="9" className="py-12 text-center text-slate-400 text-sm font-semibold">
+                        <td colSpan="10" className="py-12 text-center text-slate-400 text-sm font-semibold">
                           Tidak ada data linen yang cocok dengan kriteria pencarian/ruangan Anda.
                         </td>
                       </tr>
@@ -656,15 +706,17 @@ export default function RSDashboard() {
                           ? parseInt(item.stock_in_rs || 0)
                           : parseInt(roomRecord?.stock_in_rs || 0);
 
-                        const itemStokAwal = parseInt(item.stock_in_rs || 0);
-
                         const terpakai = selectedRoomFilter === 'all'
                           ? parseInt(item.total_terpakai || 0)
                           : parseInt(roomRecord?.qty_terpakai || 0);
+
+                        const dirty = selectedRoomFilter === 'all'
+                          ? parseInt(item.total_dirty || 0)
+                          : roomRecord ? parseInt(roomRecord.qty_dirty || 0) : 0;
                           
                         const lemari = selectedRoomFilter === 'all'
                           ? parseInt(item.total_lemari || 0)
-                          : Math.max(0, displayStokAwal - terpakai);
+                          : Math.max(0, displayStokAwal - terpakai - dirty);
                           
                         const cuci = parseInt(item.total_cuci || 0);
                         const gudang = parseInt(item.total_gudang || 0);
@@ -701,6 +753,7 @@ export default function RSDashboard() {
                                 if (selectedRoomFilter !== 'all') {
                                   e.stopPropagation();
                                   setSelectedUpdateLinen(item);
+                                  setUpdateTarget('terpakai');
                                   setUpdateMode('out');
                                   setUpdateValue('1');
                                   setShowUpdateModal(true);
@@ -711,6 +764,30 @@ export default function RSDashboard() {
                                 {formatNumber(terpakai)}
                                 {selectedRoomFilter !== 'all' && (
                                   <svg className="w-3.5 h-3.5 text-teal-400 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                  </svg>
+                                )}
+                              </span>
+                            </td>
+
+                            {/* Dirty Utility Column (Editable only if a room is selected) */}
+                            <td 
+                              className="py-4 px-6 text-center"
+                              onClick={(e) => {
+                                if (selectedRoomFilter !== 'all') {
+                                  e.stopPropagation();
+                                  setSelectedUpdateLinen(item);
+                                  setUpdateTarget('dirty');
+                                  setUpdateMode('out');
+                                  setUpdateValue('1');
+                                  setShowUpdateModal(true);
+                                }
+                              }}
+                            >
+                              <span className={`inline-flex items-center gap-1 font-bold ${selectedRoomFilter !== 'all' ? 'text-rose-600 hover:bg-slate-100 px-2 py-1 rounded-lg cursor-pointer border border-dashed border-rose-200' : 'text-slate-600'}`}>
+                                {formatNumber(dirty)}
+                                {selectedRoomFilter !== 'all' && (
+                                  <svg className="w-3.5 h-3.5 text-rose-400 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                                   </svg>
                                 )}
@@ -808,145 +885,179 @@ export default function RSDashboard() {
                 </span>
               </div>
 
-              {/* Distribusi Stok per Ruangan/Unit */}
-              <div className="space-y-3">
-                <h4 className="text-sm font-semibold text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
-                  <Building className="h-4 w-4 text-slate-400" />
-                  Distribusi Stok per Ruangan / Unit
-                </h4>
-
-                <div className="border border-slate-150 rounded-2xl overflow-hidden shadow-sm bg-white">
-                  <table className="w-full text-left text-xs border-collapse">
-                    <thead>
-                      <tr className="bg-slate-50 text-slate-400 font-semibold uppercase tracking-wider text-[10px] border-b border-slate-150">
-                        <th className="py-2.5 px-3">Nama Ruangan</th>
-                        <th className="py-2.5 px-3 text-center">Jenis</th>
-                        <th className="py-2.5 px-3 text-center">Terpakai</th>
-                        <th className="py-2.5 px-3 text-center">Stok Lemari / Gudang</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 text-slate-700">
-                      {dashboardData?.rooms?.map((room) => {
-                        const roomLinen = dashboardData?.roomLinens?.find(
-                          rl => rl.hospital_linen_id === selectedLinenDetail.id && rl.room_id.toString() === room.id.toString()
-                        );
-                        const stockInRs = roomLinen ? parseInt(roomLinen.stock_in_rs || 0) : 0;
-                        const qtyTerpakai = roomLinen ? parseInt(roomLinen.qty_terpakai || 0) : 0;
-                        const lemariStock = room.is_gudang_linen === 1 ? stockInRs : Math.max(0, stockInRs - qtyTerpakai);
-
-                        return (
-                          <tr key={room.id} className="hover:bg-slate-50/50 transition-colors">
-                            <td className="py-2.5 px-3 font-semibold text-slate-800">
-                              {room.room_name}
-                            </td>
-                            <td className="py-2.5 px-3 text-center">
-                              <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-bold ${
-                                room.is_gudang_linen === 1
-                                  ? 'bg-amber-50 text-amber-700 border border-amber-100'
-                                  : 'bg-teal-50 text-teal-700 border border-teal-100'
-                              }`}>
-                                {room.is_gudang_linen === 1 ? 'Gudang' : 'Unit'}
-                              </span>
-                            </td>
-                            <td className="py-2.5 px-3 text-center font-medium text-slate-500">
-                              {formatNumber(qtyTerpakai)} Pcs
-                            </td>
-                            <td 
-                              className="py-2.5 px-3 text-center"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setModalEditingCell({ roomId: room.id });
-                                setModalEditValue(lemariStock.toString());
-                              }}
-                            >
-                              {modalEditingCell?.roomId === room.id ? (
-                                <input
-                                  type="number"
-                                  min="0"
-                                  value={modalEditValue}
-                                  onChange={(e) => setModalEditValue(e.target.value)}
-                                  onBlur={() => handleUpdateModalRoomStock(room.id, modalEditValue)}
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Enter') handleUpdateModalRoomStock(room.id, modalEditValue);
-                                    if (e.key === 'Escape') setModalEditingCell(null);
-                                  }}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="w-16 px-1.5 py-0.5 text-center bg-white border border-teal-500 rounded-md text-slate-800 font-bold focus:outline-none focus:ring-1 focus:ring-teal-500"
-                                  autoFocus
-                                  disabled={updating}
-                                />
-                              ) : (
-                                <span className="inline-flex items-center gap-1 font-bold text-teal-600 hover:bg-slate-100 px-2 py-0.5 rounded-md cursor-pointer border border-dashed border-teal-200">
-                                  {formatNumber(lemariStock)} Pcs
-                                  <svg className="w-3 h-3 text-teal-400 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                                  </svg>
-                                </span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* History of kurang kirim list */}
-              <div className="space-y-3">
-                <h4 className="text-sm font-semibold text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
-                  <Layers className="h-4 w-4 text-slate-400" />
+              {/* Breadcrumb Navigation Tabs */}
+              <nav className="flex items-center gap-2 px-1 text-xs font-bold text-slate-400 select-none pb-2 border-b border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setDetailModalTab('shortage')}
+                  className={`transition-colors cursor-pointer pb-1 ${
+                    detailModalTab === 'shortage'
+                      ? 'text-teal-600 font-extrabold border-b-2 border-teal-500'
+                      : 'hover:text-slate-600'
+                  }`}
+                >
                   Riwayat & Catatan Kurang Kirim
-                </h4>
+                </button>
+                <span className="pb-1">/</span>
+                <button
+                  type="button"
+                  onClick={() => setDetailModalTab('distribution')}
+                  className={`transition-colors cursor-pointer pb-1 ${
+                    detailModalTab === 'distribution'
+                      ? 'text-teal-600 font-extrabold border-b-2 border-teal-500'
+                      : 'hover:text-slate-600'
+                  }`}
+                >
+                  Distribusi Stok per Ruangan / Unit
+                </button>
+              </nav>
 
-                {dashboardData?.history?.filter(h => h.hospital_linen_id === selectedLinenDetail.id).length > 0 ? (
-                  <div className="border border-slate-150 rounded-2xl overflow-hidden shadow-sm">
-                    <table className="w-full text-left text-xs border-collapse">
+              {detailModalTab === 'shortage' ? (
+                /* Riwayat & Catatan Kurang Kirim Section */
+                <div className="space-y-3 animate-[fadeIn_0.2s_ease-out]">
+                  <h4 className="text-sm font-semibold text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
+                    <Layers className="h-4 w-4 text-slate-400" />
+                    Riwayat & Catatan Kurang Kirim
+                  </h4>
+
+                  {dashboardData?.history?.filter(h => h.hospital_linen_id === selectedLinenDetail.id).length > 0 ? (
+                    <div className="border border-slate-150 rounded-2xl overflow-x-auto shadow-sm">
+                      <table className="w-full text-left text-xs border-collapse min-w-[650px]">
+                        <thead>
+                          <tr className="bg-slate-50 text-slate-400 font-semibold uppercase tracking-wider text-[10px] border-b border-slate-150">
+                            <th className="py-2.5 px-3 text-center">Tanggal</th>
+                            <th className="py-2.5 px-3">No. Formulir</th>
+                            <th className="py-2.5 px-3 text-center">Kotor</th>
+                            <th className="py-2.5 px-3 text-center">Bersih</th>
+                            <th className="py-2.5 px-3 text-center">Selisih</th>
+                            <th className="py-2.5 px-3">Keterangan</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 text-slate-700">
+                          {dashboardData.history
+                            .filter(h => h.hospital_linen_id === selectedLinenDetail.id)
+                            .map((h, i) => (
+                              <tr key={i} className="hover:bg-slate-50/50 transition-colors">
+                                <td className="py-2.5 px-3 font-medium text-slate-550 text-center whitespace-nowrap">
+                                  {formatDate(h.delivery_date || h.pickup_date)}
+                                </td>
+                                <td className="py-2.5 px-3 font-semibold text-slate-800">
+                                  {h.form_number}
+                                </td>
+                                <td className="py-2.5 px-3 text-center font-medium text-slate-650">
+                                  {formatNumber(h.qty_kotor)}
+                                </td>
+                                <td className="py-2.5 px-3 text-center font-medium text-slate-650">
+                                  {formatNumber(h.qty_bersih)}
+                                </td>
+                                <td className="py-2.5 px-3 text-center font-bold text-rose-600">
+                                  {formatNumber(h.qty_kurang)}
+                                </td>
+                                <td className="py-2.5 px-3 text-slate-500 italic max-w-[150px] truncate" title={h.notes || ''}>
+                                  {h.notes || '—'}
+                                </td>
+                              </tr>
+                            ))
+                          }
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="py-10 text-center text-slate-400 bg-slate-50 border border-dashed border-slate-200 rounded-2xl text-xs font-semibold">
+                      Tidak ada riwayat kekurangan kirim untuk linen ini.
+                    </div>
+                  )}
+                </div>
+              ) : (
+                /* Distribusi Stok per Ruangan/Unit Section */
+                <div className="space-y-3 animate-[fadeIn_0.2s_ease-out]">
+                  <h4 className="text-sm font-semibold text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
+                    <Building className="h-4 w-4 text-slate-400" />
+                    Distribusi Stok per Ruangan / Unit
+                  </h4>
+
+                  <div className="border border-slate-150 rounded-2xl overflow-x-auto shadow-sm bg-white">
+                    <table className="w-full text-left text-xs border-collapse min-w-[650px]">
                       <thead>
                         <tr className="bg-slate-50 text-slate-400 font-semibold uppercase tracking-wider text-[10px] border-b border-slate-150">
-                          <th className="py-2.5 px-3 text-center">Tanggal</th>
-                          <th className="py-2.5 px-3">No. Formulir</th>
-                          <th className="py-2.5 px-3 text-center">Kotor</th>
-                          <th className="py-2.5 px-3 text-center">Bersih</th>
-                          <th className="py-2.5 px-3 text-center">Selisih</th>
-                          <th className="py-2.5 px-3">Keterangan</th>
+                          <th className="py-2.5 px-3">Nama Ruangan</th>
+                          <th className="py-2.5 px-3 text-center">Jenis</th>
+                          <th className="py-2.5 px-3 text-center">Terpakai</th>
+                          <th className="py-2.5 px-3 text-center">Dirty Utility</th>
+                          <th className="py-2.5 px-3 text-center">Stok Lemari / Gudang</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 text-slate-700">
-                        {dashboardData.history
-                          .filter(h => h.hospital_linen_id === selectedLinenDetail.id)
-                          .map((h, i) => (
-                            <tr key={i} className="hover:bg-slate-50/50 transition-colors">
-                              <td className="py-2.5 px-3 font-medium text-slate-500 text-center whitespace-nowrap">
-                                {formatDate(h.delivery_date || h.pickup_date)}
-                              </td>
+                        {dashboardData?.rooms?.map((room) => {
+                          const roomLinen = dashboardData?.roomLinens?.find(
+                            rl => rl.hospital_linen_id === selectedLinenDetail.id && rl.room_id.toString() === room.id.toString()
+                          );
+                          const stockInRs = roomLinen ? parseInt(roomLinen.stock_in_rs || 0) : 0;
+                          const qtyTerpakai = roomLinen ? parseInt(roomLinen.qty_terpakai || 0) : 0;
+                          const qtyDirty = roomLinen ? parseInt(roomLinen.qty_dirty || 0) : 0;
+                          const lemariStock = room.is_gudang_linen === 1 ? stockInRs : Math.max(0, stockInRs - qtyTerpakai - qtyDirty);
+
+                          return (
+                            <tr key={room.id} className="hover:bg-slate-50/50 transition-colors">
                               <td className="py-2.5 px-3 font-semibold text-slate-800">
-                                {h.form_number}
+                                {room.room_name}
                               </td>
-                              <td className="py-2.5 px-3 text-center font-medium text-slate-650">
-                                {formatNumber(h.qty_kotor)}
+                              <td className="py-2.5 px-3 text-center">
+                                <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-bold ${
+                                  room.is_gudang_linen === 1
+                                    ? 'bg-amber-50 text-amber-700 border border-amber-100'
+                                    : 'bg-teal-50 text-teal-700 border border-teal-100'
+                                }`}>
+                                  {room.is_gudang_linen === 1 ? 'Gudang' : 'Unit'}
+                                </span>
                               </td>
-                              <td className="py-2.5 px-3 text-center font-medium text-slate-650">
-                                {formatNumber(h.qty_bersih)}
+                              <td className="py-2.5 px-3 text-center font-medium text-slate-500">
+                                {formatNumber(qtyTerpakai)} Pcs
                               </td>
-                              <td className="py-2.5 px-3 text-center font-bold text-rose-600">
-                                {formatNumber(h.qty_kurang)}
+                              <td className="py-2.5 px-3 text-center font-medium text-slate-500">
+                                {formatNumber(qtyDirty)} Pcs
                               </td>
-                              <td className="py-2.5 px-3 text-slate-500 italic max-w-[150px] truncate" title={h.notes || ''}>
-                                {h.notes || '—'}
+                              <td 
+                                className="py-2.5 px-3 text-center"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setModalEditingCell({ roomId: room.id });
+                                  setModalEditValue(lemariStock.toString());
+                                }}
+                              >
+                                {modalEditingCell?.roomId === room.id ? (
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={modalEditValue}
+                                    onChange={(e) => setModalEditValue(e.target.value)}
+                                    onBlur={() => handleUpdateModalRoomStock(room.id, modalEditValue)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') handleUpdateModalRoomStock(room.id, modalEditValue);
+                                      if (e.key === 'Escape') setModalEditingCell(null);
+                                    }}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="w-16 px-1.5 py-0.5 text-center bg-white border border-teal-500 rounded-md text-slate-800 font-bold focus:outline-none focus:ring-1 focus:ring-teal-500"
+                                    autoFocus
+                                    disabled={updating}
+                                  />
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 font-bold text-teal-600 hover:bg-slate-100 px-2 py-0.5 rounded-md cursor-pointer border border-dashed border-teal-200">
+                                    {formatNumber(lemariStock)} Pcs
+                                    <svg className="w-3.5 h-3.5 text-teal-400 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                    </svg>
+                                  </span>
+                                )}
                               </td>
                             </tr>
-                          ))
-                        }
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
-                ) : (
-                  <div className="py-10 text-center text-slate-400 bg-slate-50 border border-dashed border-slate-200 rounded-2xl text-xs font-semibold">
-                    Tidak ada riwayat kekurangan kirim untuk linen ini.
-                  </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
 
             {/* Modal Footer */}
@@ -968,49 +1079,81 @@ export default function RSDashboard() {
         const roomRecord = dashboardData?.roomLinens?.find(
           rl => rl.hospital_linen_id === selectedUpdateLinen.id && rl.room_id.toString() === selectedRoomFilter.toString()
         );
-        const currentTerpakai = roomRecord ? parseInt(roomRecord.qty_terpakai || 0) : 0;
         const currentStokAwal = roomRecord ? parseInt(roomRecord.stock_in_rs || 0) : 0;
-        const currentLemari = Math.max(0, currentStokAwal - currentTerpakai);
+        const currentTerpakai = roomRecord ? parseInt(roomRecord.qty_terpakai || 0) : 0;
+        const currentDirty = roomRecord ? parseInt(roomRecord.qty_dirty || 0) : 0;
+        const currentLemari = Math.max(0, currentStokAwal - currentTerpakai - currentDirty);
         
         const numericVal = parseInt(updateValue || 0);
         let previewTerpakai = currentTerpakai;
+        let previewDirty = currentDirty;
         
-        if (updateMode === 'out') {
-          previewTerpakai = currentTerpakai + numericVal;
-        } else if (updateMode === 'in') {
-          previewTerpakai = Math.max(0, currentTerpakai - numericVal);
+        if (updateTarget === 'terpakai') {
+          if (updateMode === 'out') {
+            previewTerpakai = currentTerpakai + numericVal;
+          } else if (updateMode === 'in') {
+            previewTerpakai = Math.max(0, currentTerpakai - numericVal);
+          } else {
+            previewTerpakai = numericVal;
+          }
         } else {
-          previewTerpakai = numericVal;
+          if (updateMode === 'out') {
+            previewDirty = currentDirty + numericVal;
+          } else if (updateMode === 'in') {
+            previewDirty = Math.max(0, currentDirty - numericVal);
+          } else {
+            previewDirty = numericVal;
+          }
         }
         
-        const previewLemari = Math.max(0, currentStokAwal - previewTerpakai);
+        const previewLemari = Math.max(0, currentStokAwal - previewTerpakai - previewDirty);
         
-        let isValid = previewTerpakai >= 0 && previewTerpakai <= currentStokAwal;
+        let isValid = true;
         let errorMessage = '';
         
-        if (updateMode === 'out' && numericVal > currentLemari) {
-          isValid = false;
-          errorMessage = 'Jumlah yang diambil melebihi stok Lemari!';
-        } else if (updateMode === 'in' && numericVal > currentTerpakai) {
-          isValid = false;
-          errorMessage = 'Jumlah yang dimasukkan melebihi stok Terpakai!';
-        } else if (previewTerpakai < 0) {
-          isValid = false;
-          errorMessage = 'Jumlah terpakai tidak boleh kurang dari 0!';
-        } else if (previewTerpakai > currentStokAwal) {
-          isValid = false;
-          errorMessage = 'Jumlah terpakai melebihi Stok Awal Ruangan!';
+        if (updateTarget === 'terpakai') {
+          isValid = previewTerpakai >= 0 && previewTerpakai + currentDirty <= currentStokAwal;
+          if (updateMode === 'out' && numericVal > currentLemari) {
+            isValid = false;
+            errorMessage = 'Jumlah yang diambil melebihi stok Lemari Bersih!';
+          } else if (updateMode === 'in' && numericVal > currentTerpakai) {
+            isValid = false;
+            errorMessage = 'Jumlah yang dimasukkan melebihi stok Terpakai!';
+          } else if (previewTerpakai < 0) {
+            isValid = false;
+            errorMessage = 'Jumlah terpakai tidak boleh kurang dari 0!';
+          } else if (previewTerpakai + currentDirty > currentStokAwal) {
+            isValid = false;
+            errorMessage = 'Jumlah terpakai + kotor melebihi Stok Awal Ruangan!';
+          }
+        } else {
+          isValid = previewDirty >= 0 && previewDirty + currentTerpakai <= currentStokAwal;
+          if (updateMode === 'out' && numericVal > currentLemari) {
+            isValid = false;
+            errorMessage = 'Jumlah kotor melebihi stok Lemari Bersih!';
+          } else if (updateMode === 'in' && numericVal > currentDirty) {
+            isValid = false;
+            errorMessage = 'Jumlah yang dikurangi melebihi stok Dirty Utility!';
+          } else if (previewDirty < 0) {
+            isValid = false;
+            errorMessage = 'Jumlah kotor tidak boleh kurang dari 0!';
+          } else if (previewDirty + currentTerpakai > currentStokAwal) {
+            isValid = false;
+            errorMessage = 'Jumlah terpakai + kotor melebihi Stok Awal Ruangan!';
+          }
         }
+
+        const isDirtyTarget = updateTarget === 'dirty';
 
         return (
           <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-100 flex flex-col animate-[fadeIn_0.2s_ease-out]">
               
               {/* Header */}
-              <div className="p-5 bg-gradient-to-br from-[#126776] to-[#1ea59e] text-white flex justify-between items-center">
+              <div className={`p-5 bg-gradient-to-br ${isDirtyTarget ? 'from-rose-600 to-red-700' : 'from-[#126776] to-[#1ea59e]'} text-white flex justify-between items-center`}>
                 <div>
                   <span className="text-[10px] font-bold tracking-widest uppercase bg-white/15 px-2.5 py-0.5 rounded-full border border-white/10">
-                    Pembaruan Stok Terpakai RS
+                    Pembaruan Stok {isDirtyTarget ? 'Dirty Utility' : 'Terpakai'} RS
                   </span>
                   <h3 className="text-base font-bold mt-1 tracking-tight">
                     {getLinenDisplayName(selectedUpdateLinen)}
@@ -1034,18 +1177,22 @@ export default function RSDashboard() {
               <div className="p-5 space-y-4">
                 
                 {/* Info Box */}
-                <div className="grid grid-cols-3 gap-3 p-3 bg-slate-50 border border-slate-100 rounded-2xl text-center">
+                <div className="grid grid-cols-4 gap-2 p-3 bg-slate-50 border border-slate-100 rounded-2xl text-center">
                   <div>
                     <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Stok Awal</span>
-                    <span className="text-sm font-extrabold text-slate-700 mt-0.5 block">{currentStokAwal} Pcs</span>
+                    <span className="text-xs font-extrabold text-slate-700 mt-0.5 block">{currentStokAwal} Pcs</span>
                   </div>
                   <div>
                     <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Terpakai</span>
-                    <span className="text-sm font-extrabold text-slate-700 mt-0.5 block">{currentTerpakai} Pcs</span>
+                    <span className="text-xs font-extrabold text-slate-700 mt-0.5 block">{currentTerpakai} Pcs</span>
+                  </div>
+                  <div>
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Kotor</span>
+                    <span className="text-xs font-extrabold text-slate-700 mt-0.5 block">{currentDirty} Pcs</span>
                   </div>
                   <div>
                     <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Lemari</span>
-                    <span className="text-sm font-extrabold text-slate-700 mt-0.5 block">{currentLemari} Pcs</span>
+                    <span className="text-xs font-extrabold text-slate-700 mt-0.5 block">{currentLemari} Pcs</span>
                   </div>
                 </div>
 
@@ -1063,7 +1210,7 @@ export default function RSDashboard() {
                         : 'text-slate-800 hover:text-black font-extrabold border-transparent hover:bg-white/40'
                     }`}
                   >
-                    Keluar (-)
+                    {isDirtyTarget ? 'Kotor (+)' : 'Keluar (-)'}
                   </button>
                   <button
                     type="button"
@@ -1077,13 +1224,13 @@ export default function RSDashboard() {
                         : 'text-slate-800 hover:text-black font-extrabold border-transparent hover:bg-white/40'
                     }`}
                   >
-                    Masuk (+)
+                    {isDirtyTarget ? 'Kurang (-)' : 'Masuk (+)'}
                   </button>
                   <button
                     type="button"
                     onClick={() => {
                       setUpdateMode('override');
-                      setUpdateValue(currentTerpakai.toString());
+                      setUpdateValue(isDirtyTarget ? currentDirty.toString() : currentTerpakai.toString());
                     }}
                     className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer border ${
                       updateMode === 'override'
@@ -1098,9 +1245,19 @@ export default function RSDashboard() {
                 {/* Input Fields */}
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                    {updateMode === 'out' && 'Jumlah linen yang dikeluarkan (diambil dari lemari)'}
-                    {updateMode === 'in' && 'Jumlah linen yang dimasukkan (dikembalikan ke lemari)'}
-                    {updateMode === 'override' && 'Ubah total terpakai menjadi'}
+                    {updateTarget === 'terpakai' ? (
+                      <>
+                        {updateMode === 'out' && 'Jumlah linen yang dikeluarkan (diambil dari lemari)'}
+                        {updateMode === 'in' && 'Jumlah linen yang dimasukkan (dikembalikan ke lemari)'}
+                        {updateMode === 'override' && 'Ubah total terpakai menjadi'}
+                      </>
+                    ) : (
+                      <>
+                        {updateMode === 'out' && 'Jumlah linen kotor (diambil dari lemari)'}
+                        {updateMode === 'in' && 'Jumlah linen yang dikurangi dari kantong kotor'}
+                        {updateMode === 'override' && 'Ubah total kotor (dirty utility) menjadi'}
+                      </>
+                    )}
                   </label>
                   <input
                     type="number"
@@ -1121,12 +1278,22 @@ export default function RSDashboard() {
                   </div>
                   <div className="mt-1.5 space-y-1 pl-5 text-[11px] font-medium text-slate-655">
                     <div>
-                      Terpakai Baru: {updateMode === 'out' && `${currentTerpakai} + ${numericVal} = ${previewTerpakai} Pcs`}
-                      {updateMode === 'in' && `${currentTerpakai} - ${numericVal} = ${previewTerpakai} Pcs`}
-                      {updateMode === 'override' && `${previewTerpakai} Pcs`}
+                      {isDirtyTarget ? (
+                        <>
+                          Dirty Utility Baru: {updateMode === 'out' && `${currentDirty} + ${numericVal} = ${previewDirty} Pcs`}
+                          {updateMode === 'in' && `${currentDirty} - ${numericVal} = ${previewDirty} Pcs`}
+                          {updateMode === 'override' && `${previewDirty} Pcs`}
+                        </>
+                      ) : (
+                        <>
+                          Terpakai Baru: {updateMode === 'out' && `${currentTerpakai} + ${numericVal} = ${previewTerpakai} Pcs`}
+                          {updateMode === 'in' && `${currentTerpakai} - ${numericVal} = ${previewTerpakai} Pcs`}
+                          {updateMode === 'override' && `${previewTerpakai} Pcs`}
+                        </>
+                      )}
                     </div>
                     <div>
-                      Lemari Baru: {currentStokAwal} - {previewTerpakai} = {previewLemari} Pcs
+                      Lemari Baru: {currentStokAwal} - {previewTerpakai} - {previewDirty} = {previewLemari} Pcs
                     </div>
                     {!isValid && (
                       <div className="text-rose-600 font-bold mt-1">
@@ -1139,7 +1306,7 @@ export default function RSDashboard() {
               </div>
 
               {/* Footer */}
-              <div className="p-4 bg-slate-50 border-t border-slate-150 flex items-center justify-end gap-2.5">
+              <div className="p-4 bg-slate-50 border-t border-slate-155 flex items-center justify-end gap-2.5">
                 <button
                   type="button"
                   onClick={() => {

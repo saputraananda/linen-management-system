@@ -198,12 +198,24 @@ const SignatureInput = ({ title, value, onChange, isEditable, name }) => {
   );
 };
 
-export default function SerahTerimaCustom() {
+export default function SerahTerimaKomersil() {
   const [activeTab, setActiveTab] = useState('history'); // 'history' | 'form'
-  const [hospitalId] = useState(sessionStorage.getItem('valet_hospital_id') || '');
-  const [hospitalName, setHospitalName] = useState('');
+  const [hospitalId, setHospitalId] = useState(sessionStorage.getItem('valet_hospital_id') || '');
+  const [hospitalName, setHospitalName] = useState(sessionStorage.getItem('valet_hospital_name') || '');
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
   const [temporaryTxId, setTemporaryTxId] = useState(null);
+
+  // Keep hospitalId and hospitalName in sync with sessionStorage in case of client-side navigation transitions
+  const currentSessionHospitalId = sessionStorage.getItem('valet_hospital_id') || '';
+  const currentSessionHospitalName = sessionStorage.getItem('valet_hospital_name') || '';
+
+  if (currentSessionHospitalId !== hospitalId) {
+    setHospitalId(currentSessionHospitalId);
+    setLoadingHistory(!!currentSessionHospitalId);
+  }
+  if (currentSessionHospitalName !== hospitalName) {
+    setHospitalName(currentSessionHospitalName);
+  }
 
   const showToast = (message, type = 'success') => {
     setToast({ show: true, message, type });
@@ -237,8 +249,8 @@ export default function SerahTerimaCustom() {
   const [signatureHospitalPickup, setSignatureHospitalPickup] = useState('');
   const [signatureAssistantPickup, setSignatureAssistantPickup] = useState('');
   
-  // Dynamic Dynamic Rows State for Custom Linen Items
-  const [customRows, setCustomRows] = useState([]);
+  // Dynamic Dynamic Rows State for Komersil Linen Items
+  const [komersilRows, setKomersilRows] = useState([]);
   const [submittingNew, setSubmittingNew] = useState(false);
 
   // Edit/Completion view state (Day 2 Bersih)
@@ -298,17 +310,17 @@ export default function SerahTerimaCustom() {
     } else {
       viewKey = activeTab;
     }
-    const isFirstLoad = window.history.state?.serahTerimaCustomView == null;
+    const isFirstLoad = window.history.state?.serahTerimaKomersilView == null;
     if (isFirstLoad) {
-      window.history.replaceState({ serahTerimaCustomView: viewKey }, '');
-    } else if (window.history.state?.serahTerimaCustomView !== viewKey) {
-      window.history.pushState({ serahTerimaCustomView: viewKey }, '');
+      window.history.replaceState({ serahTerimaKomersilView: viewKey }, '');
+    } else if (window.history.state?.serahTerimaKomersilView !== viewKey) {
+      window.history.pushState({ serahTerimaKomersilView: viewKey }, '');
     }
   }, [activeTab, editingTransaction]);
 
   useEffect(() => {
     const handlePopState = (event) => {
-      const view = event.state?.serahTerimaCustomView;
+      const view = event.state?.serahTerimaKomersilView;
       if (!view) return;
 
       if (view === 'history') {
@@ -334,7 +346,7 @@ export default function SerahTerimaCustom() {
     setLoadingEmployees(true);
     try {
       const token = localStorage.getItem('token');
-      const { data } = await axios.get('/api/ikm/employees-custom', {
+      const { data } = await axios.get('/api/ikm/employees-komersil', {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (data?.success) {
@@ -363,7 +375,7 @@ export default function SerahTerimaCustom() {
     if (hospitalId) {
       fetchHospitalInfo();
       fetchHistory();
-      fetchHospitalLinensCustom();
+      fetchHospitalLinensKomersil();
     }
   }, [hospitalId]);
 
@@ -416,7 +428,7 @@ export default function SerahTerimaCustom() {
     setLoadingHistory(true);
     try {
       const token = localStorage.getItem('token');
-      let url = `/api/ikm/transactions-custom?hospitalId=${hospitalId}`;
+      let url = `/api/ikm/transactions-komersil?hospitalId=${hospitalId}`;
       if (startDate) url += `&startDate=${startDate}`;
       if (endDate) url += `&endDate=${endDate}`;
       if (filterStatus !== 'all') url += `&status=${filterStatus}`;
@@ -429,45 +441,45 @@ export default function SerahTerimaCustom() {
         setTransactions(data.data);
       }
     } catch (err) {
-      console.error('Error fetching custom history:', err);
+      console.error('Error fetching komersil history:', err);
     } finally {
       setLoadingHistory(false);
     }
   };
 
-  const fetchHospitalLinensCustom = async () => {
+  const fetchHospitalLinensKomersil = async () => {
     setLoadingLinens(true);
     try {
       const token = localStorage.getItem('token');
-      const { data } = await axios.get(`/api/ikm/hospital-linen-custom?hospitalId=${hospitalId}`, {
+      const { data } = await axios.get(`/api/ikm/hospital-linen-komersil?hospitalId=${hospitalId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (data?.success) {
         const fetchedLinens = data.data || [];
         setLinensList(fetchedLinens);
 
-        // Initialize custom rows with 1 row per master item by default if rows are empty
-        if (fetchedLinens.length > 0 && customRows.length === 0) {
+        // Initialize komersil rows with 1 row per master item by default if rows are empty
+        if (fetchedLinens.length > 0 && komersilRows.length === 0) {
           const defaultRows = fetchedLinens.map((item, idx) => ({
             rowId: `row-${Date.now()}-${idx}`,
             hospitalLinenId: item.id,
             qtyKotor: '',
             notes: ''
           }));
-          setCustomRows(defaultRows);
+          setKomersilRows(defaultRows);
         }
       }
     } catch (err) {
-      console.error('Error fetching custom linens:', err);
+      console.error('Error fetching komersil linens:', err);
     } finally {
       setLoadingLinens(false);
     }
   };
 
-  // Dynamic Row Handlers for Custom Items Form
+  // Dynamic Row Handlers for Komersil Items Form
   const handleAddRow = () => {
     const defaultLinenId = linensList[0]?.id || '';
-    setCustomRows(prev => [
+    setKomersilRows(prev => [
       ...prev,
       {
         rowId: `row-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
@@ -479,16 +491,16 @@ export default function SerahTerimaCustom() {
   };
 
   const handleRemoveRow = (rowId) => {
-    setCustomRows(prev => prev.filter(r => r.rowId !== rowId));
+    setKomersilRows(prev => prev.filter(r => r.rowId !== rowId));
   };
 
   const handleRowChange = (rowId, field, value) => {
-    setCustomRows(prev =>
+    setKomersilRows(prev =>
       prev.map(r => (r.rowId === rowId ? { ...r, [field]: value } : r))
     );
   };
 
-  // Dynamic Row Handlers for Custom Items Edit/Delivery View
+  // Dynamic Row Handlers for Komersil Items Edit/Delivery View
   const handleAddEditRow = () => {
     const defaultLinenId = linensList[0]?.id || '';
     setEditDetails(prev => [
@@ -535,7 +547,7 @@ export default function SerahTerimaCustom() {
       return;
     }
 
-    const activeDetails = customRows
+    const activeDetails = komersilRows
       .filter(row => row.hospitalLinenId && parseInt(row.qtyKotor || 0) > 0)
       .map(row => ({
         hospitalLinenId: parseInt(row.hospitalLinenId),
@@ -544,14 +556,14 @@ export default function SerahTerimaCustom() {
       }));
 
     if (activeDetails.length === 0) {
-      setErrorMsg('Harap isi kuantitas "Kotor" minimal untuk 1 baris item custom.');
+      setErrorMsg('Harap isi kuantitas "Kotor" minimal untuk 1 baris item komersil.');
       return;
     }
 
     setSubmittingNew(true);
     try {
       const token = localStorage.getItem('token');
-      const { data } = await axios.post('/api/ikm/transactions-custom', {
+      const { data } = await axios.post('/api/ikm/transactions-komersil', {
         id: temporaryTxId,
         hospitalId: parseInt(hospitalId),
         userPickup: parseInt(userPickup),
@@ -585,7 +597,7 @@ export default function SerahTerimaCustom() {
           
           // Reset rows
           if (linensList.length > 0) {
-            setCustomRows(linensList.map((item, idx) => ({
+            setKomersilRows(linensList.map((item, idx) => ({
               rowId: `row-${Date.now()}-${idx}`,
               hospitalLinenId: item.id,
               qtyKotor: '',
@@ -594,7 +606,7 @@ export default function SerahTerimaCustom() {
           }
           setErrorMsg('');
 
-          showToast("Transaksi serah terima custom item (Kotor) berhasil dicatat");
+          showToast("Transaksi serah terima komersil item (Kotor) berhasil dicatat");
           fetchHistory();
           setActiveTab('history');
         }
@@ -609,7 +621,7 @@ export default function SerahTerimaCustom() {
   const handleOpenEdit = async (tx) => {
     try {
       const token = localStorage.getItem('token');
-      const { data } = await axios.get(`/api/ikm/transactions-custom/${tx.id}`, {
+      const { data } = await axios.get(`/api/ikm/transactions-komersil/${tx.id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (data?.success) {
@@ -632,14 +644,14 @@ export default function SerahTerimaCustom() {
           setSignatureHospitalPickup(fullTx.transaction.signature_hospital_pickup || '');
           setSignatureAssistantPickup(fullTx.transaction.signature_assistant_pickup || '');
 
-          // Map fullTx.details into customRows
+          // Map fullTx.details into komersilRows
           const editRows = fullTx.details.map((detailItem, idx) => ({
             rowId: `row-edit-${detailItem.id}-${idx}`,
             hospitalLinenId: detailItem.hospital_linen_id,
             qtyKotor: detailItem.qty_kotor || 0,
             notes: detailItem.notes || ''
           }));
-          setCustomRows(editRows);
+          setKomersilRows(editRows);
 
           setActiveTab('form');
           window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -715,14 +727,14 @@ export default function SerahTerimaCustom() {
       }));
 
     if (detailsPayload.length === 0) {
-      setErrorMsg('Harap isi kuantitas "Kotor" minimal untuk 1 baris item custom.');
+      setErrorMsg('Harap isi kuantitas "Kotor" minimal untuk 1 baris item komersil.');
       return;
     }
 
     setSubmittingEdit(true);
     try {
       const token = localStorage.getItem('token');
-      const { data } = await axios.put(`/api/ikm/transactions-custom/${editingTransaction.transaction.id}`, {
+      const { data } = await axios.put(`/api/ikm/transactions-komersil/${editingTransaction.transaction.id}`, {
         userDelivery: parseInt(userDelivery),
         hospitalStaffDelivery,
         hospitalAssistantDelivery,
@@ -737,7 +749,7 @@ export default function SerahTerimaCustom() {
       });
 
       if (data?.success) {
-        showToast(data.message || "Pengiriman custom item bersih berhasil disimpan");
+        showToast(data.message || "Pengiriman komersil item bersih berhasil disimpan");
         setEditingTransaction(null);
         fetchHistory();
       }
@@ -802,7 +814,7 @@ export default function SerahTerimaCustom() {
           descriptions.push(`Mencatat pickup kotor ${name} sebanyak ${d.qty_kotor || 0} Pcs ${d.notes ? `(${d.notes})` : ''}`);
         });
       } else {
-        descriptions.push("Membuat transaksi pickup linen custom kotor baru");
+        descriptions.push("Membuat transaksi pickup linen komersil kotor baru");
       }
       return descriptions;
     }
@@ -814,7 +826,7 @@ export default function SerahTerimaCustom() {
         const len = d.length_cm ? parseFloat(d.length_cm) : null;
         const wid = d.width_cm ? parseFloat(d.width_cm) : null;
         const sizeStr = (len && wid) ? `${len}m x ${wid}m ` : '';
-        descriptions.push(`Mengirim linen custom bersih ${name} ${sizeStr}sebanyak ${d.qty_bersih || 0} Pcs ${d.notes ? `(${d.notes})` : ''}`);
+        descriptions.push(`Mengirim linen komersil bersih ${name} ${sizeStr}sebanyak ${d.qty_bersih || 0} Pcs ${d.notes ? `(${d.notes})` : ''}`);
       });
       return descriptions;
     }
@@ -875,7 +887,7 @@ export default function SerahTerimaCustom() {
     emp.employee_name.toLowerCase().includes(editSearchEmployeeQuery.toLowerCase())
   );
 
-  const filteredCustomRows = customRows.filter(row => {
+  const filteredKomersilRows = komersilRows.filter(row => {
     if (!linenSearch.trim()) return true;
     const masterObj = linensList.find(l => l.id === row.hospitalLinenId);
     const name = masterObj ? getLinenDisplayName(masterObj).toLowerCase() : '';
@@ -910,7 +922,7 @@ export default function SerahTerimaCustom() {
               {hospitalName || 'Rumah Sakit'}
             </h2>
             <p className="text-xs text-slate-400 mt-1 font-medium">
-              Portal pencatatan sirkulasi harian linen custom (Gorden/Vitrase/Karpet/PxL).
+              Portal pencatatan sirkulasi harian linen komersil (Gorden/Vitrase/Karpet/PxL).
             </p>
           </div>
 
@@ -938,7 +950,7 @@ export default function SerahTerimaCustom() {
                 setSignatureHospitalPickup('');
                 setSignatureAssistantPickup('');
                 if (linensList.length > 0) {
-                  setCustomRows(linensList.map((item, idx) => ({
+                  setKomersilRows(linensList.map((item, idx) => ({
                     rowId: `row-${Date.now()}-${idx}`,
                     hospitalLinenId: item.id,
                     qtyKotor: '',
@@ -1010,7 +1022,7 @@ export default function SerahTerimaCustom() {
                         />
                       </div>
 
-                      {/* Custom Styled Select Dropdown */}
+                      {/* Komersil Styled Select Dropdown */}
                       <div className="relative">
                         <select
                           value={filterStatus}
@@ -1174,10 +1186,10 @@ export default function SerahTerimaCustom() {
                 <div className="p-6 bg-gradient-to-r from-[#126776] to-[#1ea59e] text-white">
                   <h2 className="text-lg font-bold tracking-tight flex items-center gap-2">
                     <FileText className="h-5 w-5" />
-                    Form Pengisian Serah Terima Linen Custom
+                    Form Pengisian Serah Terima Linen Komersil
                   </h2>
                   <p className="text-xs text-white/80 mt-1 font-medium">
-                    Lakukan pendataan jumlah linen custom kotor yang diambil untuk dicuci dari {hospitalName || 'Rumah Sakit'}.
+                    Lakukan pendataan jumlah linen komersil kotor yang diambil untuk dicuci dari {hospitalName || 'Rumah Sakit'}.
                   </p>
                 </div>
 
@@ -1348,7 +1360,7 @@ export default function SerahTerimaCustom() {
                         <Search className="absolute inset-y-0 left-3 my-auto h-3.5 w-3.5 text-slate-400" />
                         <input
                           type="text"
-                          placeholder="Cari nama item custom..."
+                          placeholder="Cari nama item komersil..."
                           value={linenSearch}
                           onChange={e => setLinenSearch(e.target.value)}
                           className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] transition"
@@ -1391,14 +1403,14 @@ export default function SerahTerimaCustom() {
                                 Memuat data linen...
                               </td>
                             </tr>
-                          ) : filteredCustomRows.length === 0 ? (
+                          ) : filteredKomersilRows.length === 0 ? (
                             <tr>
                               <td colSpan="5" className="py-16 text-center text-slate-400 font-semibold">
-                                Belum ada baris item custom. Klik <strong>"+ Tambah Item"</strong> untuk menambah baris baru.
+                                Belum ada baris item komersil. Klik <strong>"+ Tambah Item"</strong> untuk menambah baris baru.
                               </td>
                             </tr>
                           ) : (
-                            filteredCustomRows.map((row, index) => {
+                            filteredKomersilRows.map((row, index) => {
                               const isFilled = parseInt(row.qtyKotor || 0) > 0;
                               return (
                                 <tr
@@ -1561,7 +1573,7 @@ export default function SerahTerimaCustom() {
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-xs font-semibold tracking-widest uppercase bg-white/20 px-2.5 py-0.5 rounded-full border border-white/10">
-                        Update Pengiriman Bersih Custom
+                        Update Pengiriman Bersih Komersil
                       </span>
                       <span className="text-xs text-white/60 font-medium">Form Transaksi #{editingTransaction.transaction.id}</span>
                     </div>
@@ -1569,7 +1581,7 @@ export default function SerahTerimaCustom() {
                       No. Formulir: {editingTransaction.transaction.form_number}
                     </h2>
                     <p className="text-xs text-white/80 mt-1 font-medium">
-                      Catat pengembalian laundry custom bersih untuk {hospitalName || 'Rumah Sakit'}.
+                      Catat pengembalian laundry komersil bersih untuk {hospitalName || 'Rumah Sakit'}.
                     </p>
                   </div>
 
@@ -1815,7 +1827,7 @@ export default function SerahTerimaCustom() {
                         <Search className="absolute inset-y-0 left-3 my-auto h-3.5 w-3.5 text-slate-400" />
                         <input
                           type="text"
-                          placeholder="Cari nama item custom..."
+                          placeholder="Cari nama item komersil..."
                           value={editLinenSearch}
                           onChange={e => setEditLinenSearch(e.target.value)}
                           className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] transition"
@@ -1860,7 +1872,7 @@ export default function SerahTerimaCustom() {
                           {filteredEditDetails.length === 0 ? (
                             <tr>
                               <td colSpan={isEditable ? 9 : 8} className="py-16 text-center text-slate-400 font-semibold text-xs">
-                                {editLinenSearch ? `Tidak ada item custom yang cocok dengan "${editLinenSearch}"` : 'Tidak ada data item custom.'}
+                                {editLinenSearch ? `Tidak ada item komersil yang cocok dengan "${editLinenSearch}"` : 'Tidak ada data item komersil.'}
                               </td>
                             </tr>
                           ) : filteredEditDetails.map((row, index) => {
@@ -2039,7 +2051,7 @@ export default function SerahTerimaCustom() {
                           </div>
                           <div>
                             <h4 className="text-xs font-bold text-[#126776] uppercase tracking-widest">
-                              Log Aktivitas Transaksi Custom
+                              Log Aktivitas Transaksi Komersil
                             </h4>
                             <p className="text-[10px] text-slate-400 font-medium mt-0.5">
                               Klik untuk melihat riwayat perubahan data kotor & bersih.
@@ -2060,7 +2072,7 @@ export default function SerahTerimaCustom() {
                           {editingTransaction.audits.some(a => a.action === 'CREATE' || a.action === 'PICKUP_KOTOR') && (
                             <div className="space-y-2 pt-3 first:pt-0">
                               <h5 className="text-[10px] font-extrabold text-[#678083] uppercase tracking-wider block">
-                                Pickup Item Custom Kotor
+                                Pickup Item Komersil Kotor
                               </h5>
                               <div className="space-y-1.5 pl-1.5">
                                 {editingTransaction.audits
@@ -2084,7 +2096,7 @@ export default function SerahTerimaCustom() {
                           {editingTransaction.audits.some(a => a.action === 'UPDATE' || a.action === 'DELIVERY_BERSIH') && (
                             <div className="space-y-2 pt-3">
                               <h5 className="text-[10px] font-extrabold text-[#1ea59e] uppercase tracking-wider block">
-                                Pengantaran Item Custom Bersih
+                                Pengantaran Item Komersil Bersih
                               </h5>
                               <div className="space-y-1.5 pl-1.5">
                                 {editingTransaction.audits
@@ -2108,7 +2120,7 @@ export default function SerahTerimaCustom() {
                           {editingTransaction.audits.some(a => a.action === 'KURANG_KIRIM') && (
                             <div className="space-y-2 pt-3">
                               <h5 className="text-[10px] font-extrabold text-rose-500 uppercase tracking-wider block">
-                                Custom Item Kurang Kirim
+                                Komersil Item Kurang Kirim
                               </h5>
                               <div className="space-y-1.5 pl-1.5">
                                 {editingTransaction.audits

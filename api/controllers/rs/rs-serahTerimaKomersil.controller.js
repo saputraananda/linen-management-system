@@ -13,9 +13,9 @@ const toTitleCase = (str) => {
 };
 
 /**
- * Get list of completed and in-progress custom transactions for this hospital
+ * Get list of completed and in-progress komersil transactions for this hospital
  */
-export const getRSCustomTransactions = async (req, res) => {
+export const getRSKomersilTransactions = async (req, res) => {
   try {
     const hospitalId = req.user.id;
     const { startDate, endDate, status, search } = req.query;
@@ -39,10 +39,10 @@ export const getRSCustomTransactions = async (req, res) => {
 
     let query = `
       SELECT t.*, h.hospital_name,
-        (SELECT COUNT(*) FROM tr_custom_linen_transaction_detail d WHERE d.transaction_id = t.id) as total_items,
-        (SELECT COALESCE(SUM(qty_kotor), 0) FROM tr_custom_linen_transaction_detail d WHERE d.transaction_id = t.id) as total_qty_kotor,
-        (SELECT COALESCE(SUM(qty_bersih), 0) FROM tr_custom_linen_transaction_detail d WHERE d.transaction_id = t.id) as total_qty_bersih
-      FROM tr_custom_linen_transaction t
+        (SELECT COUNT(*) FROM tr_komersil_linen_transaction_detail d WHERE d.transaction_id = t.id) as total_items,
+        (SELECT COALESCE(SUM(qty_kotor), 0) FROM tr_komersil_linen_transaction_detail d WHERE d.transaction_id = t.id) as total_qty_kotor,
+        (SELECT COALESCE(SUM(qty_bersih), 0) FROM tr_komersil_linen_transaction_detail d WHERE d.transaction_id = t.id) as total_qty_bersih
+      FROM tr_komersil_linen_transaction t
       INNER JOIN mst_hospital h ON t.hospital_id = h.id
       WHERE t.hospital_id = ?
     `;
@@ -101,7 +101,7 @@ export const getRSCustomTransactions = async (req, res) => {
       data: formattedTransactions
     });
   } catch (error) {
-    console.error("Error getting RS custom transactions:", error);
+    console.error("Error getting RS komersil transactions:", error);
     return res.status(500).json({
       success: false,
       message: "Gagal memuat riwayat transaksi khusus",
@@ -111,9 +111,9 @@ export const getRSCustomTransactions = async (req, res) => {
 };
 
 /**
- * Get detailed custom transaction items, audits, and shortage deliveries (Surat Jalan)
+ * Get detailed komersil transaction items, audits, and shortage deliveries (Surat Jalan)
  */
-export const getRSCustomTransactionDetail = async (req, res) => {
+export const getRSKomersilTransactionDetail = async (req, res) => {
   try {
     const { id } = req.params;
     const hospitalId = req.user.id;
@@ -128,7 +128,7 @@ export const getRSCustomTransactionDetail = async (req, res) => {
     // Fetch transaction header, making sure it belongs to the authenticated hospital
     const [transactions] = await ikmPool.query(
       `SELECT t.*, h.hospital_name 
-       FROM tr_custom_linen_transaction t
+       FROM tr_komersil_linen_transaction t
        INNER JOIN mst_hospital h ON t.hospital_id = h.id
        WHERE t.id = ? AND t.hospital_id = ?`,
       [id, hospitalId]
@@ -149,7 +149,7 @@ export const getRSCustomTransactionDetail = async (req, res) => {
               l.linen_code,
               hl.unit, hl.hospital_linen_name,
               s.size_name, c.color_name, m.material_name
-       FROM tr_custom_linen_transaction_detail td
+       FROM tr_komersil_linen_transaction_detail td
        LEFT JOIN mst_hospital_linen hl ON td.hospital_linen_id = hl.id
        LEFT JOIN mst_linen l ON hl.linen_id = l.id
        LEFT JOIN mst_size s ON l.size_id = s.id
@@ -180,7 +180,7 @@ export const getRSCustomTransactionDetail = async (req, res) => {
 
     // Fetch audits
     const [audits] = await ikmPool.query(
-      `SELECT * FROM tr_custom_linen_transaction_audit 
+      `SELECT * FROM tr_komersil_linen_transaction_audit 
        WHERE transaction_id = ? 
        ORDER BY created_at ASC`,
       [id]
@@ -202,11 +202,11 @@ export const getRSCustomTransactionDetail = async (req, res) => {
       });
     }
 
-    // Fetch historical shortage deliveries (Surat Jalan Kurang Kirim Custom)
+    // Fetch historical shortage deliveries (Surat Jalan Kurang Kirim Komersil)
     const queryDeliveries = `
       SELECT d.*, 
-        (SELECT SUM(dd.qty_delivered) FROM tr_custom_kurang_kirim_delivery_detail dd WHERE dd.delivery_id = d.id) as total_qty_delivered
-      FROM tr_custom_kurang_kirim_delivery d
+        (SELECT SUM(dd.qty_delivered) FROM tr_komersil_kurang_kirim_delivery_detail dd WHERE dd.delivery_id = d.id) as total_qty_delivered
+      FROM tr_komersil_kurang_kirim_delivery d
       WHERE d.transaction_id = ?
       ORDER BY d.delivery_date DESC, d.id DESC
     `;
@@ -235,7 +235,7 @@ export const getRSCustomTransactionDetail = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error("Error getting RS custom transaction detail:", error);
+    console.error("Error getting RS komersil transaction detail:", error);
     return res.status(500).json({
       success: false,
       message: "Gagal memuat rincian transaksi khusus",
@@ -245,9 +245,9 @@ export const getRSCustomTransactionDetail = async (req, res) => {
 };
 
 /**
- * Get details of a single custom shortage delivery (Surat Jalan Custom) for hospital view
+ * Get details of a single komersil shortage delivery (Surat Jalan Komersil) for hospital view
  */
-export const getRSCustomShortageDeliveryDetail = async (req, res) => {
+export const getRSKomersilShortageDeliveryDetail = async (req, res) => {
   try {
     const { id } = req.params;
     const hospitalId = req.user.id;
@@ -261,8 +261,8 @@ export const getRSCustomShortageDeliveryDetail = async (req, res) => {
 
     const queryHeader = `
       SELECT d.*, t.form_number as original_form_number, t.pickup_date as original_pickup_date, h.hospital_name, h.address as hospital_address
-      FROM tr_custom_kurang_kirim_delivery d
-      INNER JOIN tr_custom_linen_transaction t ON d.transaction_id = t.id
+      FROM tr_komersil_kurang_kirim_delivery d
+      INNER JOIN tr_komersil_linen_transaction t ON d.transaction_id = t.id
       INNER JOIN mst_hospital h ON t.hospital_id = h.id
       WHERE d.id = ? AND t.hospital_id = ?
     `;
@@ -284,8 +284,8 @@ export const getRSCustomShortageDeliveryDetail = async (req, res) => {
               l.linen_code,
               hl.unit, hl.hospital_linen_name, hl.grammage,
               s.size_name, c.color_name, m.material_name
-       FROM tr_custom_kurang_kirim_delivery_detail dd
-       INNER JOIN tr_custom_linen_transaction_detail td ON dd.custom_detail_id = td.id
+       FROM tr_komersil_kurang_kirim_delivery_detail dd
+       INNER JOIN tr_komersil_linen_transaction_detail td ON dd.komersil_detail_id = td.id
        LEFT JOIN mst_hospital_linen hl ON td.hospital_linen_id = hl.id
        LEFT JOIN mst_linen l ON hl.linen_id = l.id
        LEFT JOIN mst_size s ON l.size_id = s.id
@@ -312,7 +312,7 @@ export const getRSCustomShortageDeliveryDetail = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error("Error getting RS custom shortage delivery details:", error);
+    console.error("Error getting RS komersil shortage delivery details:", error);
     return res.status(500).json({
       success: false,
       message: "Gagal memuat rincian Surat Jalan khusus",

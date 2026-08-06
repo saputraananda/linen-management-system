@@ -201,10 +201,22 @@ const SignatureInput = ({ title, value, onChange, isEditable, name }) => {
 
 export default function SerahTerima() {
   const [activeTab, setActiveTab] = useState('history'); // 'history' | 'form'
-  const [hospitalId] = useState(sessionStorage.getItem('valet_hospital_id') || '');
-  const [hospitalName, setHospitalName] = useState('');
+  const [hospitalId, setHospitalId] = useState(sessionStorage.getItem('valet_hospital_id') || '');
+  const [hospitalName, setHospitalName] = useState(sessionStorage.getItem('valet_hospital_name') || '');
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
   const [temporaryTxId, setTemporaryTxId] = useState(null);
+
+  // Keep hospitalId and hospitalName in sync with sessionStorage in case of client-side navigation transitions
+  const currentSessionHospitalId = sessionStorage.getItem('valet_hospital_id') || '';
+  const currentSessionHospitalName = sessionStorage.getItem('valet_hospital_name') || '';
+
+  if (currentSessionHospitalId !== hospitalId) {
+    setHospitalId(currentSessionHospitalId);
+    setLoadingHistory(!!currentSessionHospitalId);
+  }
+  if (currentSessionHospitalName !== hospitalName) {
+    setHospitalName(currentSessionHospitalName);
+  }
 
   const showToast = (message, type = 'success') => {
     setToast({ show: true, message, type });

@@ -13,8 +13,8 @@ const MENU_ITEMS = [
   {
     category: "Linen Komersil",
     items: [
-      { to: "/valet/serah-terima-custom", icon: FileText, label: "Serah Terima Custom", description: "Form Serah Terima Custom (PxL)", end: false },
-      { to: "/valet/kurang-kirim-custom", icon: ClipboardList, label: "Kurang Kirim Custom", description: "Form Kurang Kirim Custom (PxL)", end: false },
+      { to: "/valet/serah-terima-komersil", icon: FileText, label: "Serah Terima Komersil", description: "Form Serah Terima Komersil (PxL)", end: false },
+      { to: "/valet/kurang-kirim-komersil", icon: ClipboardList, label: "Kurang Kirim Komersil", description: "Form Kurang Kirim Komersil (PxL)", end: false },
     ]
   }
 ];
@@ -25,7 +25,7 @@ export default function ValetPage() {
       menuItems={MENU_ITEMS}
       moduleName="IKM Portal"
       brandIcon={Truck}
-      brandTitle="Tim Valet IKM"
+      brandTitle="Tim Linen IKM"
       brandSub="By IKM Laundry"
     />
   );

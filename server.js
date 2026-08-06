@@ -2,6 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
+import http from 'http';
+import { Server } from 'socket.io';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 
@@ -9,11 +11,11 @@ import authRoutes from './api/routes/auth/auth.routes.js';
 import ikmDashboardRoutes from './api/routes/ikm/dashboard.routes.js';
 import ikmSerahTerimaRoutes from './api/routes/ikm/serahTerima.routes.js';
 import ikmKurangKirimRoutes from './api/routes/ikm/kurangKirimLinen.routes.js';
-import ikmSerahTerimaCustomRoutes from './api/routes/ikm/SerahTerimaCustom.routes.js';
-import ikmKurangKirimCustomRoutes from './api/routes/ikm/kurangKirimCustom.routes.js';
+import ikmSerahTerimaKomersilRoutes from './api/routes/ikm/SerahTerimaKomersil.routes.js';
+import ikmKurangKirimKomersilRoutes from './api/routes/ikm/kurangKirimKomersil.routes.js';
 import rsDashboardRoutes from './api/routes/rs/rs-dashboard.routes.js';
 import rsSerahTerimaRoutes from './api/routes/rs/rs-serahTerima.routes.js';
-import rsSerahTerimaCustomRoutes from './api/routes/rs/rs-SerahTerimaCustom.routes.js';
+import rsSerahTerimaKomersilRoutes from './api/routes/rs/rs-serahTerimaKomersil.routes.js';
 import unitDashboardRoutes from './api/routes/unit/unit.dashboard.routes.js';
 
 // Resolve directory paths
@@ -30,6 +32,25 @@ if (fs.existsSync(envPath)) {
 }
 
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: process.env.CORS_ORIGIN || '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE']
+  }
+});
+
+// Store io in app context for controllers
+app.set('io', io);
+
+io.on('connection', (socket) => {
+  socket.on('join_hospital', (hospitalId) => {
+    if (hospitalId) {
+      socket.join(`hospital_${hospitalId}`);
+    }
+  });
+});
+
 const PORT = process.env.PORT || 5000;
 
 // Middleware
@@ -73,11 +94,11 @@ app.use('/api/auth', authRoutes);
 app.use('/api/ikm', ikmDashboardRoutes);
 app.use('/api/ikm', ikmSerahTerimaRoutes);
 app.use('/api/ikm', ikmKurangKirimRoutes);
-app.use('/api/ikm', ikmSerahTerimaCustomRoutes);
-app.use('/api/ikm', ikmKurangKirimCustomRoutes);
+app.use('/api/ikm', ikmSerahTerimaKomersilRoutes);
+app.use('/api/ikm', ikmKurangKirimKomersilRoutes);
 app.use('/api/rs', rsDashboardRoutes);
 app.use('/api/rs', rsSerahTerimaRoutes);
-app.use('/api/rs', rsSerahTerimaCustomRoutes);
+app.use('/api/rs', rsSerahTerimaKomersilRoutes);
 app.use('/api/unit', unitDashboardRoutes);
 
 // ==========================
@@ -175,6 +196,6 @@ process.on('unhandledRejection', (reason) => {
   }
 });
 
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });

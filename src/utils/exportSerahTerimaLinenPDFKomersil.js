@@ -146,9 +146,9 @@ const fetchAndTrimSignature = async (imgUrl) => {
 };
 
 /**
- * Exports Serah Terima Linen Custom transaction to a beautifully formatted PDF document
+ * Exports Serah Terima Linen Komersil transaction to a beautifully formatted PDF document
  */
-export default async function exportSerahTerimaLinenPDFCustom(transaction, details) {
+export default async function exportSerahTerimaLinenPDFKomersil(transaction, details) {
   // Fetch and trim all 6 signature images concurrently
   const [
     valetPickupSig,

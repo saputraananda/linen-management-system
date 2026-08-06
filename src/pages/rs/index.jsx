@@ -10,9 +10,9 @@ const MENU_ITEMS = [
     ]
   },
   {
-    category: "Linen Khusus",
+    category: "Linen Komersil",
     items: [
-      { to: "/rs/serah-terima-custom", icon: FileText, label: "Serah Terima Khusus", description: "Form Serah Terima Custom (PxL)", end: false },
+      { to: "/rs/serah-terima-komersil", icon: FileText, label: "Serah Terima Komersil", description: "Form Serah Terima Komersil (PxL)", end: false },
     ]
   }
 ];

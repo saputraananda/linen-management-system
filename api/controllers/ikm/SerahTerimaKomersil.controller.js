@@ -12,18 +12,18 @@ const toTitleCase = (str) => {
     .join(' ');
 };
 
-// Ensure tr_custom_linen_transaction_detail has hospital_linen_id column
-const ensureCustomTableColumns = async () => {
+// Ensure tr_komersil_linen_transaction_detail has hospital_linen_id column
+const ensureKomersilTableColumns = async () => {
   try {
     await ikmPool.query(`
-      ALTER TABLE tr_custom_linen_transaction_detail 
+      ALTER TABLE tr_komersil_linen_transaction_detail 
       ADD COLUMN hospital_linen_id BIGINT UNSIGNED NULL AFTER transaction_id
     `);
   } catch (err) {
     // Ignore duplicate column error if it already exists
   }
 };
-ensureCustomTableColumns();
+ensureKomersilTableColumns();
 
 /**
  * Get active IKM employees (company_id = 2 and exit_date IS NULL)
@@ -55,9 +55,9 @@ export const getIkmEmployees = async (req, res) => {
 };
 
 /**
- * Get hospital linen items where category_id IN (32, 33) (Linen Custom / PxL / Gorden / Vitrase / Karpet)
+ * Get hospital linen items where category_id IN (32, 33) (Linen Komersil / PxL / Gorden / Vitrase / Karpet)
  */
-export const getHospitalLinenCustom = async (req, res) => {
+export const getHospitalLinenKomersil = async (req, res) => {
   try {
     const { hospitalId } = req.query;
 
@@ -87,19 +87,19 @@ export const getHospitalLinenCustom = async (req, res) => {
       data: linens
     });
   } catch (error) {
-    console.error("Error getting custom hospital linen:", error);
+    console.error("Error getting komersil hospital linen:", error);
     return res.status(500).json({
       success: false,
-      message: "Gagal memuat master linen custom",
+      message: "Gagal memuat master linen komersil",
       error: error.message
     });
   }
 };
 
 /**
- * Get list of custom transactions (from tr_custom_linen_transaction)
+ * Get list of komersil transactions (from tr_komersil_linen_transaction)
  */
-export const getCustomTransactions = async (req, res) => {
+export const getKomersilTransactions = async (req, res) => {
   try {
     const { hospitalId, startDate, endDate, status, search } = req.query;
 
@@ -121,10 +121,10 @@ export const getCustomTransactions = async (req, res) => {
 
     let query = `
       SELECT t.*, h.hospital_name,
-        (SELECT COUNT(*) FROM tr_custom_linen_transaction_detail d WHERE d.transaction_id = t.id) as total_items,
-        (SELECT COALESCE(SUM(qty_kotor), 0) FROM tr_custom_linen_transaction_detail d WHERE d.transaction_id = t.id) as total_qty_kotor,
-        (SELECT COALESCE(SUM(qty_bersih), 0) FROM tr_custom_linen_transaction_detail d WHERE d.transaction_id = t.id) as total_qty_bersih
-      FROM tr_custom_linen_transaction t
+        (SELECT COUNT(*) FROM tr_komersil_linen_transaction_detail d WHERE d.transaction_id = t.id) as total_items,
+        (SELECT COALESCE(SUM(qty_kotor), 0) FROM tr_komersil_linen_transaction_detail d WHERE d.transaction_id = t.id) as total_qty_kotor,
+        (SELECT COALESCE(SUM(qty_bersih), 0) FROM tr_komersil_linen_transaction_detail d WHERE d.transaction_id = t.id) as total_qty_bersih
+      FROM tr_komersil_linen_transaction t
       INNER JOIN mst_hospital h ON t.hospital_id = h.id
       WHERE t.hospital_id = ?
     `;
@@ -182,25 +182,25 @@ export const getCustomTransactions = async (req, res) => {
       data: formattedTransactions
     });
   } catch (error) {
-    console.error("Error getting custom transactions:", error);
+    console.error("Error getting komersil transactions:", error);
     return res.status(500).json({
       success: false,
-      message: "Gagal memuat riwayat transaksi custom",
+      message: "Gagal memuat riwayat transaksi komersil",
       error: error.message
     });
   }
 };
 
 /**
- * Get detailed transaction items for custom items (from tr_custom_linen_transaction & tr_custom_linen_transaction_detail)
+ * Get detailed transaction items for komersil items (from tr_komersil_linen_transaction & tr_komersil_linen_transaction_detail)
  */
-export const getCustomTransactionDetail = async (req, res) => {
+export const getKomersilTransactionDetail = async (req, res) => {
   try {
     const { id } = req.params;
 
     const [transactions] = await ikmPool.query(
       `SELECT t.*, h.hospital_name 
-       FROM tr_custom_linen_transaction t
+       FROM tr_komersil_linen_transaction t
        INNER JOIN mst_hospital h ON t.hospital_id = h.id
        WHERE t.id = ?`,
       [id]
@@ -219,7 +219,7 @@ export const getCustomTransactionDetail = async (req, res) => {
               l.linen_code, l.category_id,
               hl.unit, hl.hospital_linen_name,
               s.size_name, c.color_name, m.material_name
-       FROM tr_custom_linen_transaction_detail td
+       FROM tr_komersil_linen_transaction_detail td
        LEFT JOIN mst_hospital_linen hl ON td.hospital_linen_id = hl.id
        LEFT JOIN mst_linen l ON hl.linen_id = l.id
        LEFT JOIN mst_size s ON l.size_id = s.id
@@ -267,7 +267,7 @@ export const getCustomTransactionDetail = async (req, res) => {
     }
 
     const [audits] = await ikmPool.query(
-      `SELECT * FROM tr_custom_linen_transaction_audit 
+      `SELECT * FROM tr_komersil_linen_transaction_audit 
        WHERE transaction_id = ? 
        ORDER BY created_at ASC`,
       [id]
@@ -298,19 +298,19 @@ export const getCustomTransactionDetail = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error("Error getting custom transaction detail:", error);
+    console.error("Error getting komersil transaction detail:", error);
     return res.status(500).json({
       success: false,
-      message: "Gagal memuat rincian transaksi custom",
+      message: "Gagal memuat rincian transaksi komersil",
       error: error.message
     });
   }
 };
 
 /**
- * Create custom transaction into tr_custom_linen_transaction & tr_custom_linen_transaction_detail
+ * Create komersil transaction into tr_komersil_linen_transaction & tr_komersil_linen_transaction_detail
  */
-export const createCustomTransaction = async (req, res) => {
+export const createKomersilTransaction = async (req, res) => {
   const connection = await ikmPool.getConnection();
   try {
     await connection.beginTransaction();
@@ -342,7 +342,7 @@ export const createCustomTransaction = async (req, res) => {
     if (transactionId) {
       // Temporary transaction update
       await connection.query(
-        `UPDATE tr_custom_linen_transaction 
+        `UPDATE tr_komersil_linen_transaction 
          SET user_pickup = ?, 
              hospital_staff_pickup = ?, 
              hospital_assistant_pickup = ?, 
@@ -351,7 +351,7 @@ export const createCustomTransaction = async (req, res) => {
          WHERE id = ?`,
         [userPickup, hospitalStaffPickup ? toTitleCase(hospitalStaffPickup) : null, hospitalAssistantPickup ? toTitleCase(hospitalAssistantPickup) : null, pickupDate, notes || null, transactionId]
       );
-      await connection.query(`DELETE FROM tr_custom_linen_transaction_detail WHERE transaction_id = ?`, [transactionId]);
+      await connection.query(`DELETE FROM tr_komersil_linen_transaction_detail WHERE transaction_id = ?`, [transactionId]);
     } else {
       const d = new Date(pickupDate);
       const yyyy = d.getFullYear();
@@ -361,7 +361,7 @@ export const createCustomTransaction = async (req, res) => {
       const ddmmyy = `${dd}${mm}${yy}`;
 
       const [countResult] = await connection.query(
-        `SELECT COUNT(*) as cnt FROM tr_custom_linen_transaction WHERE hospital_id = ? AND DATE(pickup_date) = DATE(?)`,
+        `SELECT COUNT(*) as cnt FROM tr_komersil_linen_transaction WHERE hospital_id = ? AND DATE(pickup_date) = DATE(?)`,
         [hospitalId, pickupDate]
       );
       const nextSeq = (countResult?.[0]?.cnt || 0) + 1;
@@ -371,10 +371,10 @@ export const createCustomTransaction = async (req, res) => {
         [hospitalId]
       );
       const hospitalCode = hospitalRows?.[0]?.hospital_id || hospitalId;
-      formNumber = `${hospitalCode}-CUST-${ddmmyy}-${String(nextSeq).padStart(3, '0')}`;
+      formNumber = `${hospitalCode}-KOM-${ddmmyy}-${String(nextSeq).padStart(3, '0')}`;
 
       const [result] = await connection.query(
-        `INSERT INTO tr_custom_linen_transaction 
+        `INSERT INTO tr_komersil_linen_transaction 
          (form_number, hospital_id, user_pickup, hospital_staff_pickup, hospital_assistant_pickup, pickup_date, status, notes_pickup)
          VALUES (?, ?, ?, ?, ?, ?, 'PROSES', ?)`,
         [formNumber, hospitalId, userPickup, hospitalStaffPickup ? toTitleCase(hospitalStaffPickup) : null, hospitalAssistantPickup ? toTitleCase(hospitalAssistantPickup) : null, pickupDate, notes || null]
@@ -387,7 +387,7 @@ export const createCustomTransaction = async (req, res) => {
     const assistantPickupPath = signatureAssistantPickup ? saveBase64Image(signatureAssistantPickup, 'assistant_pickup', transactionId) : null;
 
     await connection.query(
-      `UPDATE tr_custom_linen_transaction 
+      `UPDATE tr_komersil_linen_transaction 
        SET signature_valet_pickup = COALESCE(?, signature_valet_pickup), 
            signature_hospital_pickup = COALESCE(?, signature_hospital_pickup), 
            signature_assistant_pickup = COALESCE(?, signature_assistant_pickup)
@@ -410,9 +410,9 @@ export const createCustomTransaction = async (req, res) => {
     }
 
     for (const item of details) {
-      const name = linenNameMap.get(item.hospitalLinenId) || item.itemName || 'Linen Custom';
+      const name = linenNameMap.get(item.hospitalLinenId) || item.itemName || 'Linen Komersil';
       await connection.query(
-        `INSERT INTO tr_custom_linen_transaction_detail 
+        `INSERT INTO tr_komersil_linen_transaction_detail 
          (transaction_id, hospital_linen_id, item_name, qty_kotor, qty_bersih, notes)
          VALUES (?, ?, ?, ?, NULL, ?)`,
         [transactionId, item.hospitalLinenId || null, name, parseInt(item.qtyKotor || 0), item.notes || null]
@@ -420,13 +420,13 @@ export const createCustomTransaction = async (req, res) => {
     }
 
     const [newHeaderRows] = await connection.query(
-      `SELECT * FROM tr_custom_linen_transaction WHERE id = ?`,
+      `SELECT * FROM tr_komersil_linen_transaction WHERE id = ?`,
       [transactionId]
     );
     const newHeader = newHeaderRows[0];
 
     const [newDetails] = await connection.query(
-      `SELECT * FROM tr_custom_linen_transaction_detail WHERE transaction_id = ?`,
+      `SELECT * FROM tr_komersil_linen_transaction_detail WHERE transaction_id = ?`,
       [transactionId]
     );
 
@@ -437,7 +437,7 @@ export const createCustomTransaction = async (req, res) => {
     const action = (role?.toLowerCase() === 'admin' || role?.toLowerCase() === 'superadmin' || role?.toLowerCase() === 'administrator') ? 'ADMIN' : 'PICKUP_KOTOR';
 
     await connection.query(
-      `INSERT INTO tr_custom_linen_transaction_audit 
+      `INSERT INTO tr_komersil_linen_transaction_audit 
        (transaction_id, action, user_id, username, full_name, role, old_values, new_values)
        VALUES (?, ?, ?, ?, ?, ?, NULL, ?)`,
       [
@@ -453,20 +453,29 @@ export const createCustomTransaction = async (req, res) => {
 
     await connection.commit();
 
+    // Emit real-time socket.io event
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`hospital_${hospitalId}`).emit('data_changed', {
+        type: 'TRANSACTION_PICKUP',
+        message: 'Transaksi pengambilan linen kotor komersil telah dicatat'
+      });
+    }
+
     const isTemporary = !signatureValetPickup || !signatureHospitalPickup;
 
     return res.status(201).json({
       success: true,
-      message: isTemporary ? "Berhasil Tersimpan Sementara" : "Berhasil menyimpan serah terima kotor custom item",
+      message: isTemporary ? "Berhasil Tersimpan Sementara" : "Berhasil menyimpan serah terima kotor komersil item",
       isTemporary,
       data: { transactionId, formNumber: formNumber || newHeader.form_number }
     });
   } catch (error) {
     await connection.rollback();
-    console.error("Error creating custom transaction:", error);
+    console.error("Error creating komersil transaction:", error);
     return res.status(500).json({
       success: false,
-      message: "Gagal menyimpan serah terima kotor custom item",
+      message: "Gagal menyimpan serah terima kotor komersil item",
       error: error.message
     });
   } finally {
@@ -475,9 +484,9 @@ export const createCustomTransaction = async (req, res) => {
 };
 
 /**
- * Complete Delivery in tr_custom_linen_transaction & tr_custom_linen_transaction_detail
+ * Complete Delivery in tr_komersil_linen_transaction & tr_komersil_linen_transaction_detail
  */
-export const updateCustomTransactionDelivery = async (req, res) => {
+export const updateKomersilTransactionDelivery = async (req, res) => {
   const connection = await ikmPool.getConnection();
   try {
     await connection.beginTransaction();
@@ -496,7 +505,7 @@ export const updateCustomTransactionDelivery = async (req, res) => {
     } = req.body;
 
     const [oldHeaderRows] = await connection.query(
-      `SELECT * FROM tr_custom_linen_transaction WHERE id = ?`,
+      `SELECT * FROM tr_komersil_linen_transaction WHERE id = ?`,
       [id]
     );
     if (oldHeaderRows.length === 0) {
@@ -505,7 +514,7 @@ export const updateCustomTransactionDelivery = async (req, res) => {
     const oldHeader = oldHeaderRows[0];
 
     const [oldDetails] = await connection.query(
-      `SELECT * FROM tr_custom_linen_transaction_detail WHERE transaction_id = ?`,
+      `SELECT * FROM tr_komersil_linen_transaction_detail WHERE transaction_id = ?`,
       [id]
     );
 
@@ -518,7 +527,7 @@ export const updateCustomTransactionDelivery = async (req, res) => {
     const completedAtVal = isTemporary ? null : new Date();
 
     await connection.query(
-      `UPDATE tr_custom_linen_transaction 
+      `UPDATE tr_komersil_linen_transaction 
        SET user_delivery = ?, 
            hospital_staff_delivery = ?, 
            hospital_assistant_delivery = ?, 
@@ -545,7 +554,7 @@ export const updateCustomTransactionDelivery = async (req, res) => {
 
     // Delete all existing detail entries for this transaction
     await connection.query(
-      `DELETE FROM tr_custom_linen_transaction_detail WHERE transaction_id = ?`,
+      `DELETE FROM tr_komersil_linen_transaction_detail WHERE transaction_id = ?`,
       [id]
     );
 
@@ -564,7 +573,7 @@ export const updateCustomTransactionDelivery = async (req, res) => {
     }
 
     for (const item of details) {
-      const name = linenNameMap.get(item.hospitalLinenId) || item.itemName || 'Linen Custom';
+      const name = linenNameMap.get(item.hospitalLinenId) || item.itemName || 'Linen Komersil';
       const length = item.lengthCm ? parseFloat(item.lengthCm) : null;
       const width = item.widthCm ? parseFloat(item.widthCm) : null;
       let area = null;
@@ -573,7 +582,7 @@ export const updateCustomTransactionDelivery = async (req, res) => {
       }
 
       await connection.query(
-        `INSERT INTO tr_custom_linen_transaction_detail 
+        `INSERT INTO tr_komersil_linen_transaction_detail 
          (transaction_id, hospital_linen_id, item_name, qty_kotor, qty_bersih, length_cm, width_cm, area_m2, notes)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
@@ -591,13 +600,13 @@ export const updateCustomTransactionDelivery = async (req, res) => {
     }
 
     const [newHeaderRows] = await connection.query(
-      `SELECT * FROM tr_custom_linen_transaction WHERE id = ?`,
+      `SELECT * FROM tr_komersil_linen_transaction WHERE id = ?`,
       [id]
     );
     const newHeader = newHeaderRows[0];
 
     const [newDetails] = await connection.query(
-      `SELECT * FROM tr_custom_linen_transaction_detail WHERE transaction_id = ?`,
+      `SELECT * FROM tr_komersil_linen_transaction_detail WHERE transaction_id = ?`,
       [id]
     );
 
@@ -608,7 +617,7 @@ export const updateCustomTransactionDelivery = async (req, res) => {
     const action = (role?.toLowerCase() === 'admin' || role?.toLowerCase() === 'superadmin' || role?.toLowerCase() === 'administrator') ? 'ADMIN' : 'DELIVERY_BERSIH';
 
     await connection.query(
-      `INSERT INTO tr_custom_linen_transaction_audit 
+      `INSERT INTO tr_komersil_linen_transaction_audit 
        (transaction_id, action, user_id, username, full_name, role, old_values, new_values)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
@@ -625,17 +634,28 @@ export const updateCustomTransactionDelivery = async (req, res) => {
 
     await connection.commit();
 
+    const hospitalId = oldHeader.hospital_id;
+
+    // Emit real-time socket.io event
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`hospital_${hospitalId}`).emit('data_changed', {
+        type: 'TRANSACTION_DELIVERY',
+        message: 'Transaksi pengiriman linen bersih komersil telah dicatat'
+      });
+    }
+
     return res.status(200).json({
       success: true,
-      message: isTemporary ? "Berhasil Tersimpan Sementara" : "Transaksi serah terima custom item bersih berhasil diselesaikan",
+      message: isTemporary ? "Berhasil Tersimpan Sementara" : "Transaksi serah terima komersil item bersih berhasil diselesaikan",
       isTemporary
     });
   } catch (error) {
     await connection.rollback();
-    console.error("Error updating custom transaction delivery:", error);
+    console.error("Error updating komersil transaction delivery:", error);
     return res.status(500).json({
       success: false,
-      message: "Gagal menyimpan pengiriman custom item bersih",
+      message: "Gagal menyimpan pengiriman komersil item bersih",
       error: error.message
     });
   } finally {

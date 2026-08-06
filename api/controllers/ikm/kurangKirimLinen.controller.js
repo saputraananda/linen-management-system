@@ -326,6 +326,17 @@ export const createShortageDelivery = async (req, res) => {
 
         await connection.commit();
 
+        const hospitalId = oldHeader.hospital_id;
+
+        // Emit real-time socket.io event
+        const io = req.app.get('io');
+        if (io) {
+            io.to(`hospital_${hospitalId}`).emit('data_changed', {
+                type: 'SHORTAGE_DELIVERY',
+                message: 'Surat Jalan Kurang Kirim baru telah diterbitkan'
+            });
+        }
+
         return res.status(200).json({
             success: true,
             message: "Surat Jalan Kurang Kirim berhasil diterbitkan",

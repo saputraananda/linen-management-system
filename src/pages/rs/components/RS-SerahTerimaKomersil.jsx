@@ -6,9 +6,9 @@ import {
     User, Clock, AlertCircle, Warehouse, Building,
     Shirt, Info, X, Printer, ListCollapse
 } from 'lucide-react';
-import exportSuratJalanKurangKirimCustom from '../../ikm/utils/exportSuratJalanKurangKirimCustom.js';
-import exportSerahTerimaLinenCustom from '../../../utils/exportSerahTerimaLinenCustom.js';
-import exportSerahTerimaLinenPDFCustom from '../../../utils/exportSerahTerimaLinenPDFCustom.js';
+import exportSuratJalanKurangKirimKomersil from '../../ikm/utils/exportSuratJalanKurangKirimKomersil.js';
+import exportSerahTerimaLinenKomersil from '../../../utils/exportSerahTerimaLinenKomersil.js';
+import exportSerahTerimaLinenPDFKomersil from '../../../utils/exportSerahTerimaLinenPDFKomersil.js';
 
 // Helper to convert string to Title Case
 const toTitleCase = (str) => {
@@ -20,7 +20,7 @@ const toTitleCase = (str) => {
         .join(' ');
 };
 
-export default function RSSerahTerimaCustom() {
+export default function RSSerahTerimaKomersil() {
     const [transactions, setTransactions] = useState([]);
     const [loadingHistory, setLoadingHistory] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
@@ -85,7 +85,7 @@ export default function RSSerahTerimaCustom() {
             if (filterStatus !== 'all') params.status = filterStatus;
             if (searchQuery.trim()) params.search = searchQuery;
 
-            const { data } = await axios.get('/api/rs/rs-serah-terima-custom/transactions', {
+            const { data } = await axios.get('/api/rs/rs-serah-terima-komersil/transactions', {
                 headers: { Authorization: `Bearer ${token}` },
                 params
             });
@@ -123,7 +123,7 @@ export default function RSSerahTerimaCustom() {
         setSjDetails([]);
         try {
             const token = localStorage.getItem('token');
-            const { data } = await axios.get(`/api/rs/rs-serah-terima-custom/transactions/${txId}`, {
+            const { data } = await axios.get(`/api/rs/rs-serah-terima-komersil/transactions/${txId}`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             if (data?.success) {
@@ -142,7 +142,7 @@ export default function RSSerahTerimaCustom() {
         setLoadingSjDetails(true);
         try {
             const token = localStorage.getItem('token');
-            const { data } = await axios.get(`/api/rs/rs-serah-terima-custom/kurang-kirim/delivery/${sj.id}`, {
+            const { data } = await axios.get(`/api/rs/rs-serah-terima-komersil/kurang-kirim/delivery/${sj.id}`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             if (data?.success) {
@@ -159,7 +159,7 @@ export default function RSSerahTerimaCustom() {
 
     const handlePrintSj = () => {
         if (selectedSj) {
-            exportSuratJalanKurangKirimCustom(selectedSj, sjDetails);
+            exportSuratJalanKurangKirimKomersil(selectedSj, sjDetails);
         }
     };
 
@@ -168,11 +168,11 @@ export default function RSSerahTerimaCustom() {
         setDownloadingTxId(tx.id);
         try {
             const token = localStorage.getItem('token');
-            const { data } = await axios.get(`/api/rs/rs-serah-terima-custom/transactions/${tx.id}`, {
+            const { data } = await axios.get(`/api/rs/rs-serah-terima-komersil/transactions/${tx.id}`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             if (data?.success) {
-                await exportSerahTerimaLinenCustom(data.data.transaction, data.data.details);
+                await exportSerahTerimaLinenKomersil(data.data.transaction, data.data.details);
                 showToast('Berhasil mengunduh dokumen Excel', 'success');
             } else {
                 showToast('Gagal memuat rincian transaksi untuk Excel', 'error');
@@ -190,11 +190,11 @@ export default function RSSerahTerimaCustom() {
         setDownloadingPdfTxId(tx.id);
         try {
             const token = localStorage.getItem('token');
-            const { data } = await axios.get(`/api/rs/rs-serah-terima-custom/transactions/${tx.id}`, {
+            const { data } = await axios.get(`/api/rs/rs-serah-terima-komersil/transactions/${tx.id}`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             if (data?.success) {
-                await exportSerahTerimaLinenPDFCustom(data.data.transaction, data.data.details);
+                await exportSerahTerimaLinenPDFKomersil(data.data.transaction, data.data.details);
                 showToast('Berhasil mengunduh dokumen PDF', 'success');
             } else {
                 showToast('Gagal memuat rincian transaksi untuk PDF', 'error');

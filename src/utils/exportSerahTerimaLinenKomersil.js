@@ -110,9 +110,9 @@ const embedSignature = (workbook, worksheet, base64Data, colStartZero, rowStartZ
 };
 
 /**
- * Exports Serah Terima Linen Custom transaction details to Excel matching the exact reference layout
+ * Exports Serah Terima Linen Komersil transaction details to Excel matching the exact reference layout
  */
-export default async function exportSerahTerimaLinenCustom(transaction, details) {
+export default async function exportSerahTerimaLinenKomersil(transaction, details) {
   // Fetch and resolve all 6 signature images to Base64 Data URLs concurrently
   const [
     valetPickupSig,

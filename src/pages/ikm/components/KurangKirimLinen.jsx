@@ -219,8 +219,21 @@ const SignatureInput = ({ title, value, onChange, isEditable, name }) => {
 
 export default function KurangKirimLinen() {
   const [activeTab, setActiveTab] = useState('history'); // 'history' | 'sjHistory'
-  const [hospitalId] = useState(sessionStorage.getItem('valet_hospital_id') || '');
-  const [hospitalName, setHospitalName] = useState('');
+  const [hospitalId, setHospitalId] = useState(sessionStorage.getItem('valet_hospital_id') || '');
+  const [hospitalName, setHospitalName] = useState(sessionStorage.getItem('valet_hospital_name') || '');
+
+  // Keep hospitalId and hospitalName in sync with sessionStorage in case of client-side navigation transitions
+  const currentSessionHospitalId = sessionStorage.getItem('valet_hospital_id') || '';
+  const currentSessionHospitalName = sessionStorage.getItem('valet_hospital_name') || '';
+
+  if (currentSessionHospitalId !== hospitalId) {
+    setHospitalId(currentSessionHospitalId);
+    setLoadingTransactions(!!currentSessionHospitalId);
+    setLoadingSj(!!currentSessionHospitalId);
+  }
+  if (currentSessionHospitalName !== hospitalName) {
+    setHospitalName(currentSessionHospitalName);
+  }
 
   // Lists
   const [shortageTransactions, setShortageTransactions] = useState([]);
@@ -481,7 +494,7 @@ export default function KurangKirimLinen() {
     } else {
       fetchSjList();
     }
-  }, [activeTab]);
+  }, [activeTab, hospitalId]);
 
   // Load shortage transaction details
   const handleSelectTransaction = async (tx) => {

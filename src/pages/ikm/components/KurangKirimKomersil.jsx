@@ -6,7 +6,7 @@ import {
   AlertTriangle, ArrowLeft, RefreshCw, ChevronDown, Save, User, Clock, AlertCircle,
   Truck, Printer, X, Plus, Info
 } from 'lucide-react';
-import exportSuratJalanKurangKirimCustom from '../utils/exportSuratJalanKurangKirimCustom';
+import exportSuratJalanKurangKirimKomersil from '../utils/exportSuratJalanKurangKirimKomersil';
 import ikmLogo from '../../../assets/images/ikm.png';
 
 // Helper to convert string to Title Case
@@ -217,10 +217,23 @@ const SignatureInput = ({ title, value, onChange, isEditable, name }) => {
   );
 };
 
-export default function KurangKirimCustom() {
+export default function KurangKirimKomersil() {
   const [activeTab, setActiveTab] = useState('history'); // 'history' | 'sjHistory'
-  const [hospitalId] = useState(sessionStorage.getItem('valet_hospital_id') || '');
-  const [hospitalName, setHospitalName] = useState('');
+  const [hospitalId, setHospitalId] = useState(sessionStorage.getItem('valet_hospital_id') || '');
+  const [hospitalName, setHospitalName] = useState(sessionStorage.getItem('valet_hospital_name') || '');
+
+  // Keep hospitalId and hospitalName in sync with sessionStorage in case of client-side navigation transitions
+  const currentSessionHospitalId = sessionStorage.getItem('valet_hospital_id') || '';
+  const currentSessionHospitalName = sessionStorage.getItem('valet_hospital_name') || '';
+
+  if (currentSessionHospitalId !== hospitalId) {
+    setHospitalId(currentSessionHospitalId);
+    setLoadingTransactions(!!currentSessionHospitalId);
+    setLoadingSj(!!currentSessionHospitalId);
+  }
+  if (currentSessionHospitalName !== hospitalName) {
+    setHospitalName(currentSessionHospitalName);
+  }
 
   // Lists
   const [shortageTransactions, setShortageTransactions] = useState([]);
@@ -285,7 +298,7 @@ export default function KurangKirimCustom() {
     setLoadingEmployees(true);
     try {
       const token = localStorage.getItem('token');
-      const { data } = await axios.get('/api/ikm/employees-custom', {
+      const { data } = await axios.get('/api/ikm/employees-komersil', {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (data?.success) {
@@ -330,19 +343,19 @@ export default function KurangKirimCustom() {
     }
   }, [hospitalId, activeTab]);
 
-  // Get completed transactions with custom shortages
+  // Get completed transactions with komersil shortages
   const loadShortageTransactions = async () => {
     setLoadingTransactions(true);
     try {
       const token = localStorage.getItem('token');
-      const { data } = await axios.get(`/api/ikm/kurang-kirim-custom/transactions?hospitalId=${hospitalId}`, {
+      const { data } = await axios.get(`/api/ikm/kurang-kirim-komersil/transactions?hospitalId=${hospitalId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (data?.success) {
         setShortageTransactions(data.data || []);
       }
     } catch (err) {
-      console.error("Error loading custom shortage list:", err);
+      console.error("Error loading komersil shortage list:", err);
     } finally {
       setLoadingTransactions(false);
     }
@@ -353,14 +366,14 @@ export default function KurangKirimCustom() {
     setLoadingSj(true);
     try {
       const token = localStorage.getItem('token');
-      const { data } = await axios.get(`/api/ikm/kurang-kirim-custom/deliveries?hospitalId=${hospitalId}`, {
+      const { data } = await axios.get(`/api/ikm/kurang-kirim-komersil/deliveries?hospitalId=${hospitalId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (data?.success) {
         setSjList(data.data || []);
       }
     } catch (err) {
-      console.error("Error loading custom SJ list:", err);
+      console.error("Error loading komersil SJ list:", err);
     } finally {
       setLoadingSj(false);
     }
@@ -385,7 +398,7 @@ export default function KurangKirimCustom() {
     setLoadingDetails(true);
     try {
       const token = localStorage.getItem('token');
-      const { data } = await axios.get(`/api/ikm/kurang-kirim-custom/transaction/${tx.id}/details`, {
+      const { data } = await axios.get(`/api/ikm/kurang-kirim-komersil/transaction/${tx.id}/details`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (data?.success) {
@@ -413,7 +426,7 @@ export default function KurangKirimCustom() {
     setLoadingSjDetails(true);
     try {
       const token = localStorage.getItem('token');
-      const { data } = await axios.get(`/api/ikm/kurang-kirim-custom/delivery/${sjId}`, {
+      const { data } = await axios.get(`/api/ikm/kurang-kirim-komersil/delivery/${sjId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (data?.success) {
@@ -490,7 +503,7 @@ export default function KurangKirimCustom() {
     setSubmitting(true);
     try {
       const token = localStorage.getItem('token');
-      const { data } = await axios.post('/api/ikm/kurang-kirim-custom/delivery', {
+      const { data } = await axios.post('/api/ikm/kurang-kirim-komersil/delivery', {
         transactionId: selectedTx.id,
         deliveryDate,
         vehicleNumber,
@@ -510,7 +523,7 @@ export default function KurangKirimCustom() {
       }
     } catch (err) {
       console.error("Error submitting shortage delivery:", err);
-      setErrorMsg(err.response?.data?.message || "Gagal menyimpan pengiriman kurang kirim custom.");
+      setErrorMsg(err.response?.data?.message || "Gagal menyimpan pengiriman kurang kirim komersil.");
     } finally {
       setSubmitting(false);
     }
@@ -541,13 +554,13 @@ export default function KurangKirimCustom() {
       original_form_number: selectedTx?.form_number || ''
     };
 
-    exportSuratJalanKurangKirimCustom(deliveryHeader, activeDetails);
+    exportSuratJalanKurangKirimKomersil(deliveryHeader, activeDetails);
   };
 
   // Print historical delivery
   const handlePrintHistory = () => {
     if (viewingSj) {
-      exportSuratJalanKurangKirimCustom(viewingSj, sjDetails);
+      exportSuratJalanKurangKirimKomersil(viewingSj, sjDetails);
     }
   };
 
@@ -621,7 +634,7 @@ export default function KurangKirimCustom() {
               {hospitalName || 'Rumah Sakit'}
             </h2>
             <p className="text-xs text-slate-400 mt-1 font-medium">
-              Portal pencatatan kurang kirim linen khusus (custom) dan penerbitan Surat Jalan.
+              Portal pencatatan kurang kirim linen khusus (komersil) dan penerbitan Surat Jalan.
             </p>
           </div>
 
@@ -637,7 +650,7 @@ export default function KurangKirimCustom() {
                 }`}
               >
                 <AlertTriangle className="h-4 w-4" />
-                Sisa Kurang Kirim Custom
+                Sisa Kurang Kirim Komersil
               </button>
               <button
                 onClick={() => setActiveTab('sjHistory')}
@@ -648,7 +661,7 @@ export default function KurangKirimCustom() {
                 }`}
               >
                 <FileText className="h-4 w-4" />
-                Riwayat Surat Jalan Custom
+                Riwayat Surat Jalan Komersil
               </button>
             </div>
           )}
@@ -678,7 +691,7 @@ export default function KurangKirimCustom() {
                     <ArrowLeft className="h-4 w-4" />
                   </button>
                   <div>
-                    <h2 className="text-md font-bold tracking-tight">Formulir Kirim Kurang Custom</h2>
+                    <h2 className="text-md font-bold tracking-tight">Formulir Kirim Kurang Komersil</h2>
                     <p className="text-[10px] text-white/80 mt-0.5">
                       Menyelesaikan sisa kekurangan kirim untuk formulir: <span className="font-bold">{selectedTx.form_number}</span>
                     </p>
@@ -1033,7 +1046,7 @@ export default function KurangKirimCustom() {
                                 return (
                                   <tr key={item.id} className="text-slate-800">
                                     <td className="px-4 py-3 border-r border-slate-900 text-center font-bold">{idx + 1}</td>
-                                    <td className="px-4 py-3 border-r border-slate-900 font-bold">{item.linen_name || 'Linen Custom'}</td>
+                                    <td className="px-4 py-3 border-r border-slate-900 font-bold">{item.linen_name || 'Linen Komersil'}</td>
                                     <td className="px-4 py-3 border-r border-slate-900 text-center">{len !== null ? len : '—'}</td>
                                     <td className="px-4 py-3 border-r border-slate-900 text-center">{wid !== null ? wid : '—'}</td>
                                     <td className="px-4 py-3 border-r border-slate-900 text-center font-bold">{formattedArea}</td>
@@ -1224,17 +1237,17 @@ export default function KurangKirimCustom() {
                   {loadingTransactions ? (
                     <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center text-slate-400 font-medium flex flex-col items-center gap-3">
                       <RefreshCw className="h-6 w-6 animate-spin text-teal-600" />
-                      <span>Memuat daftar transaksi kurang kirim custom...</span>
+                      <span>Memuat daftar transaksi kurang kirim komersil...</span>
                     </div>
                   ) : filteredShortageTransactions.length === 0 ? (
                     <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center text-slate-400 font-medium flex flex-col items-center gap-2">
                       <CheckCircle2 className="h-8 w-8 text-teal-500 mb-2" />
                       <span className="text-slate-700 font-bold text-sm">
-                        {shortageTransactions.length === 0 ? "Tidak Ada Kurang Kirim Linen Custom" : "Tidak Ada Transaksi Ditemukan"}
+                        {shortageTransactions.length === 0 ? "Tidak Ada Kurang Kirim Linen Komersil" : "Tidak Ada Transaksi Ditemukan"}
                       </span>
                       <span className="text-xs text-slate-400 mt-0.5">
                         {shortageTransactions.length === 0
-                          ? "Semua pengiriman linen kotor custom telah lengkap diselesaikan."
+                          ? "Semua pengiriman linen kotor komersil telah lengkap diselesaikan."
                           : "Tidak ada transaksi yang sesuai dengan filter atau pencarian Anda."}
                       </span>
                     </div>
@@ -1249,7 +1262,7 @@ export default function KurangKirimCustom() {
                             <div className="flex items-center justify-between gap-2">
                               <span className="text-xs font-black text-slate-800 bg-slate-100 px-3 py-1.5 rounded-xl">{tx.form_number}</span>
                               <span className="text-[10px] font-bold text-rose-500 bg-rose-50 border border-rose-100 px-2.5 py-1 rounded-lg">
-                                Shortage Custom
+                                Shortage Komersil
                               </span>
                             </div>
 
@@ -1297,17 +1310,17 @@ export default function KurangKirimCustom() {
                   {loadingSj ? (
                     <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center text-slate-400 font-medium flex flex-col items-center gap-3">
                       <RefreshCw className="h-6 w-6 animate-spin text-teal-600" />
-                      <span>Memuat riwayat Surat Jalan custom...</span>
+                      <span>Memuat riwayat Surat Jalan komersil...</span>
                     </div>
                   ) : filteredSjList.length === 0 ? (
                     <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center text-slate-400 font-medium flex flex-col items-center gap-2">
                       <FileText className="h-8 w-8 text-slate-300 mb-2" />
                       <span className="text-slate-700 font-bold text-sm">
-                        {sjList.length === 0 ? "Belum Ada Surat Jalan Custom" : "Tidak Ada Surat Jalan Ditemukan"}
+                        {sjList.length === 0 ? "Belum Ada Surat Jalan Komersil" : "Tidak Ada Surat Jalan Ditemukan"}
                       </span>
                       <span className="text-xs text-slate-400 mt-0.5">
                         {sjList.length === 0
-                          ? "Surat Jalan pengiriman kurang kirim custom belum pernah dibuat."
+                          ? "Surat Jalan pengiriman kurang kirim komersil belum pernah dibuat."
                           : "Tidak ada Surat Jalan yang sesuai dengan filter atau pencarian Anda."}
                       </span>
                     </div>
@@ -1322,7 +1335,7 @@ export default function KurangKirimCustom() {
                             <div className="flex items-center justify-between gap-2">
                               <span className="text-xs font-black text-slate-800 bg-slate-100 px-3 py-1.5 rounded-xl">{sj.surat_jalan_number}</span>
                               <span className="text-[10px] font-bold text-teal-600 bg-teal-50 border border-teal-100 px-2.5 py-1 rounded-lg">
-                                SJ Kurang Custom
+                                SJ Kurang Komersil
                               </span>
                             </div>
 
@@ -1380,7 +1393,7 @@ export default function KurangKirimCustom() {
             {/* Header */}
             <div className="p-5 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
               <div>
-                <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Detail Surat Jalan Kurang Kirim Custom</h3>
+                <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Detail Surat Jalan Kurang Kirim Komersil</h3>
                 <p className="text-[10px] text-slate-400 font-semibold mt-0.5">{viewingSj.surat_jalan_number}</p>
               </div>
               <button
@@ -1453,7 +1466,7 @@ export default function KurangKirimCustom() {
                           return (
                             <tr key={item.id} className="text-slate-800">
                               <td className="px-4 py-3 border-r border-slate-900 text-center font-bold">{idx + 1}</td>
-                              <td className="px-4 py-3 border-r border-slate-900 font-bold">{item.linen_name || 'Linen Custom'}</td>
+                              <td className="px-4 py-3 border-r border-slate-900 font-bold">{item.linen_name || 'Linen Komersil'}</td>
                               <td className="px-4 py-3 border-r border-slate-900 text-center">{len !== null ? len : '—'}</td>
                               <td className="px-4 py-3 border-r border-slate-900 text-center">{wid !== null ? wid : '—'}</td>
                               <td className="px-4 py-3 border-r border-slate-900 text-center font-bold">{formattedArea}</td>

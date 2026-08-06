@@ -5,13 +5,13 @@ import ValetPage from './pages/ikm/index.jsx';
 import ValetDashboard from './pages/ikm/components/Dashboard.jsx';
 import SerahTerima from './pages/ikm/components/SerahTerima.jsx';
 import KurangKirimLinen from './pages/ikm/components/KurangKirimLinen.jsx';
-import SerahTerimaCustom from './pages/ikm/components/SerahTerimaCustom.jsx';
-import KurangKirimCustom from './pages/ikm/components/KurangKirimCustom.jsx';
+import SerahTerimaKomersil from './pages/ikm/components/SerahTerimaKomersil.jsx';
+import KurangKirimKomersil from './pages/ikm/components/KurangKirimKomersil.jsx';
 import RSPage from './pages/rs/index.jsx';
 import RSDashboard from './pages/rs/components/RS-Dashboard.jsx';
 import RSSerahTerima from './pages/rs/components/RS-SerahTerima.jsx';
-import RSSerahTerimaCustom from './pages/rs/components/RS-SerahTerimaCustom.jsx';
-// import RSKurangKirimCustom from './pages/rs/components/RS-KurangKirimCustom.jsx';
+import RSSerahTerimaKomersil from './pages/rs/components/RS-SerahTerimaKomersil.jsx';
+// import RSKurangKirimKomersil from './pages/rs/components/RS-KurangKirimKomersil.jsx';
 import { ProtectedRoute, GuestRoute } from './components/RouteGuards.jsx';
 import UnitPage from './pages/unit/index.jsx';
 import UnitDashboard from './pages/unit/components/Unit-Dashboard.jsx';
@@ -33,8 +33,8 @@ function App() {
             <Route index element={<ValetDashboard />} />
             <Route path="serah-terima-linen" element={<SerahTerima />} />
             <Route path="kurang-kirim-linen" element={<KurangKirimLinen />} />
-            <Route path="serah-terima-custom" element={<SerahTerimaCustom />} />
-            <Route path="kurang-kirim-custom" element={<KurangKirimCustom />} />
+            <Route path="serah-terima-komersil" element={<SerahTerimaKomersil />} />
+            <Route path="kurang-kirim-komersil" element={<KurangKirimKomersil />} />
           </Route>
         </Route>
 
@@ -44,8 +44,8 @@ function App() {
             <Route index element={<Navigate to="dashboard" replace />} />
             <Route path="dashboard" element={<RSDashboard />} />
             <Route path="serah-terima-linen" element={<RSSerahTerima />} />
-            <Route path="serah-terima-custom" element={<RSSerahTerimaCustom />} />
-            {/* <Route path="kurang-kirim-custom" element={<RSKurangKirimCustom />} /> */}
+            <Route path="serah-terima-komersil" element={<RSSerahTerimaKomersil />} />
+            {/* <Route path="kurang-kirim-komersil" element={<RSKurangKirimKomersil />} /> */}
           </Route>
         </Route>
 

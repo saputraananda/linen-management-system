@@ -63,7 +63,12 @@ export const getDashboardData = async (req, res) => {
                WHERE hlr.hospital_linen_id = hl.id
              ), 0) AS total_terpakai,
              COALESCE((
-               SELECT SUM(hlr.stock_in_rs - hlr.qty_terpakai)
+               SELECT SUM(hlr.qty_dirty)
+               FROM mst_hospital_linen_rooms hlr
+               WHERE hlr.hospital_linen_id = hl.id
+             ), 0) AS total_dirty,
+             COALESCE((
+               SELECT SUM(hlr.stock_in_rs - hlr.qty_terpakai - hlr.qty_dirty)
                FROM mst_hospital_linen_rooms hlr
                INNER JOIN mst_rooms_rs r ON hlr.room_id = r.id
                WHERE hlr.hospital_linen_id = hl.id 
@@ -180,7 +185,7 @@ export const getDashboardData = async (req, res) => {
 export const updateTerpakai = async (req, res) => {
   try {
     const hospitalId = req.user.id;
-    const { hospitalLinenId, roomId, qtyTerpakai, nurseName } = req.body;
+    const { hospitalLinenId, roomId, qtyTerpakai, nurseName, type = 'terpakai' } = req.body;
 
     if (!hospitalLinenId || !roomId || qtyTerpakai === undefined || !nurseName) {
       return res.status(400).json({
@@ -189,11 +194,11 @@ export const updateTerpakai = async (req, res) => {
       });
     }
 
-    const valTerpakai = parseInt(qtyTerpakai || 0);
-    if (valTerpakai < 0) {
+    const valUpdate = parseInt(qtyTerpakai || 0);
+    if (valUpdate < 0) {
       return res.status(400).json({
         success: false,
-        message: "Jumlah terpakai tidak boleh negatif"
+        message: "Jumlah tidak boleh negatif"
       });
     }
 
@@ -243,41 +248,63 @@ export const updateTerpakai = async (req, res) => {
       [hospitalLinenId, roomId]
     );
 
-    let oldTerpakai = 0;
-    let newStockInRs = 0;
+    let oldValue = 0;
+    const actionType = type === 'dirty' ? 'UPDATE_DIRTY' : 'UPDATE_TERPAKAI';
 
     if (existing.length > 0) {
       const record = existing[0];
-      oldTerpakai = parseInt(record.qty_terpakai || 0);
-
-      await ikmPool.query(
-        "UPDATE mst_hospital_linen_rooms SET qty_terpakai = ? WHERE hospital_linen_id = ? AND room_id = ?",
-        [valTerpakai, hospitalLinenId, roomId]
-      );
+      if (type === 'dirty') {
+        oldValue = parseInt(record.qty_dirty || 0);
+        await ikmPool.query(
+          "UPDATE mst_hospital_linen_rooms SET qty_dirty = ? WHERE hospital_linen_id = ? AND room_id = ?",
+          [valUpdate, hospitalLinenId, roomId]
+        );
+      } else {
+        oldValue = parseInt(record.qty_terpakai || 0);
+        await ikmPool.query(
+          "UPDATE mst_hospital_linen_rooms SET qty_terpakai = ? WHERE hospital_linen_id = ? AND room_id = ?",
+          [valUpdate, hospitalLinenId, roomId]
+        );
+      }
     } else {
-      // If it doesn't exist, create it with qty_terpakai and stock_in_rs = 0
-      await ikmPool.query(
-        "INSERT INTO mst_hospital_linen_rooms (hospital_linen_id, room_id, qty_terpakai, stock_in_rs) VALUES (?, ?, ?, 0)",
-        [hospitalLinenId, roomId, valTerpakai]
-      );
+      if (type === 'dirty') {
+        await ikmPool.query(
+          "INSERT INTO mst_hospital_linen_rooms (hospital_linen_id, room_id, qty_dirty, stock_in_rs) VALUES (?, ?, ?, 0)",
+          [hospitalLinenId, roomId, valUpdate]
+        );
+      } else {
+        await ikmPool.query(
+          "INSERT INTO mst_hospital_linen_rooms (hospital_linen_id, room_id, qty_terpakai, stock_in_rs) VALUES (?, ?, ?, 0)",
+          [hospitalLinenId, roomId, valUpdate]
+        );
+      }
     }
 
     // Log the unit stock change action in tr_unit_activity_log
     await ikmPool.query(
       `INSERT INTO tr_unit_activity_log (hospital_linen_id, room_id, nurse_name, action_type, old_value, new_value)
-       VALUES (?, ?, ?, 'UPDATE_TERPAKAI', ?, ?)`,
-      [hospitalLinenId, roomId, nurseName, oldTerpakai, valTerpakai]
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [hospitalLinenId, roomId, nurseName, actionType, oldValue, valUpdate]
     );
+
+    // Emit real-time socket.io event
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`hospital_${hospitalId}`).emit('data_changed', {
+        type: 'STOCK_UPDATE',
+        message: type === 'dirty' ? 'Stok Dirty Utility ruangan telah diperbarui oleh perawat' : 'Stok Terpakai ruangan telah diperbarui oleh perawat'
+      });
+    }
 
     return res.status(200).json({
       success: true,
-      message: "Data terpakai berhasil diperbarui"
+      message: type === 'dirty' ? "Data dirty utility berhasil diperbarui" : "Data terpakai berhasil diperbarui"
     });
   } catch (error) {
-    console.error("Error updating unit terpakai:", error);
+    console.error("Error updating unit stock:", error);
     return res.status(500).json({
       success: false,
-      message: "Gagal memperbarui data terpakai",
+      message: "Gagal memperbarui data stok",
       error: error.message
     });
   }

@@ -30,7 +30,7 @@ export const getShortageTransactions = async (req, res) => {
       SELECT t.*, h.hospital_name,
         (
           SELECT COUNT(*) 
-          FROM tr_custom_linen_transaction_detail td
+          FROM tr_komersil_linen_transaction_detail td
           WHERE td.transaction_id = t.id 
             AND td.qty_kotor > COALESCE(td.qty_bersih, 0)
         ) AS shortage_items_count,
@@ -38,11 +38,11 @@ export const getShortageTransactions = async (req, res) => {
           SELECT COALESCE(SUM(
             td.qty_kotor - COALESCE(td.qty_bersih, 0)
           ), 0)
-          FROM tr_custom_linen_transaction_detail td
+          FROM tr_komersil_linen_transaction_detail td
           WHERE td.transaction_id = t.id 
             AND td.qty_kotor > COALESCE(td.qty_bersih, 0)
         ) AS total_shortage_qty
-      FROM tr_custom_linen_transaction t
+      FROM tr_komersil_linen_transaction t
       INNER JOIN mst_hospital h ON t.hospital_id = h.id
       WHERE t.hospital_id = ? AND t.status = 'SELESAI'
       HAVING shortage_items_count > 0
@@ -71,7 +71,7 @@ export const getShortageTransactions = async (req, res) => {
         console.error("Error getting shortage transactions:", error);
         return res.status(500).json({
             success: false,
-            message: "Gagal memuat daftar kurang kirim custom",
+            message: "Gagal memuat daftar kurang kirim komersil",
             error: error.message
         });
     }
@@ -86,7 +86,7 @@ export const getShortageTransactionDetails = async (req, res) => {
 
         const [transactions] = await ikmPool.query(
             `SELECT t.*, h.hospital_name 
-             FROM tr_custom_linen_transaction t
+             FROM tr_komersil_linen_transaction t
              INNER JOIN mst_hospital h ON t.hospital_id = h.id
              WHERE t.id = ?`,
             [id]
@@ -107,11 +107,11 @@ export const getShortageTransactionDetails = async (req, res) => {
               s.size_name, c.color_name, m.material_name,
               COALESCE((
                 SELECT SUM(dd.qty_delivered) 
-                FROM tr_custom_kurang_kirim_delivery_detail dd
-                INNER JOIN tr_custom_kurang_kirim_delivery d ON dd.delivery_id = d.id
-                WHERE d.transaction_id = td.transaction_id AND dd.custom_detail_id = td.id
+                FROM tr_komersil_kurang_kirim_delivery_detail dd
+                INNER JOIN tr_komersil_kurang_kirim_delivery d ON dd.delivery_id = d.id
+                WHERE d.transaction_id = td.transaction_id AND dd.komersil_detail_id = td.id
               ), 0) AS qty_delivered_so_far
-       FROM tr_custom_linen_transaction_detail td
+       FROM tr_komersil_linen_transaction_detail td
        LEFT JOIN mst_hospital_linen hl ON td.hospital_linen_id = hl.id
        LEFT JOIN mst_linen l ON hl.linen_id = l.id
        LEFT JOIN mst_size s ON l.size_id = s.id
@@ -157,14 +157,14 @@ export const getShortageTransactionDetails = async (req, res) => {
         console.error("Error getting shortage details:", error);
         return res.status(500).json({
             success: false,
-            message: "Gagal memuat rincian kurang kirim custom",
+            message: "Gagal memuat rincian kurang kirim komersil",
             error: error.message
         });
     }
 };
 
 /**
- * Create delivery of shortage items (Surat Jalan Kurang Kirim Custom)
+ * Create delivery of shortage items (Surat Jalan Kurang Kirim Komersil)
  */
 export const createShortageDelivery = async (req, res) => {
     const connection = await ikmPool.getConnection();
@@ -192,12 +192,12 @@ export const createShortageDelivery = async (req, res) => {
 
         // Capture old state for audit logging
         const [oldHeaderRows] = await connection.query(
-            `SELECT * FROM tr_custom_linen_transaction WHERE id = ?`,
+            `SELECT * FROM tr_komersil_linen_transaction WHERE id = ?`,
             [transactionId]
         );
         const oldHeader = oldHeaderRows[0];
         const [oldDetails] = await connection.query(
-            `SELECT * FROM tr_custom_linen_transaction_detail WHERE transaction_id = ?`,
+            `SELECT * FROM tr_komersil_linen_transaction_detail WHERE transaction_id = ?`,
             [transactionId]
         );
         const oldSnapshot = {
@@ -205,7 +205,7 @@ export const createShortageDelivery = async (req, res) => {
             details: oldDetails
         };
 
-        // Generate Surat Jalan number: SJKK-C/ddmmyy/0001
+        // Generate Surat Jalan number: SJKK-K/ddmmyy/0001 (K representing Komersil)
         const d = new Date(deliveryDate);
         const yyyy = d.getFullYear();
         const yy = String(yyyy).slice(-2);
@@ -214,16 +214,16 @@ export const createShortageDelivery = async (req, res) => {
         const ddmmyy = `${dd}${mm}${yy}`;
 
         const [countResult] = await connection.query(
-            `SELECT COUNT(*) as cnt FROM tr_custom_kurang_kirim_delivery
+            `SELECT COUNT(*) as cnt FROM tr_komersil_kurang_kirim_delivery
              WHERE DATE(delivery_date) = DATE(?)`,
             [deliveryDate]
         );
         const nextSeq = (countResult?.[0]?.cnt || 0) + 1;
-        const sjNumber = `SJKK-C/${ddmmyy}/${String(nextSeq).padStart(4, '0')}`;
+        const sjNumber = `SJKK-K/${ddmmyy}/${String(nextSeq).padStart(4, '0')}`;
 
-        // Insert into tr_custom_kurang_kirim_delivery
+        // Insert into tr_komersil_kurang_kirim_delivery
         const [result] = await connection.query(
-            `INSERT INTO tr_custom_kurang_kirim_delivery 
+            `INSERT INTO tr_komersil_kurang_kirim_delivery 
              (transaction_id, surat_jalan_number, delivery_date, vehicle_number, recipient_name, hospital_staff, valet_id)
              VALUES (?, ?, ?, ?, ?, ?, ?)`,
             [transactionId, sjNumber, deliveryDate, vehicleNumber || null, recipientName, toTitleCase(hospitalStaff), valetId]
@@ -231,11 +231,11 @@ export const createShortageDelivery = async (req, res) => {
 
         const deliveryId = result.insertId;
 
-        const signatureValetPath = saveBase64Image(signatureValet, 'kk_c_valet', deliveryId);
-        const signatureHospitalPath = saveBase64Image(signatureHospital, 'kk_c_hospital', deliveryId);
+        const signatureValetPath = saveBase64Image(signatureValet, 'kk_k_valet', deliveryId);
+        const signatureHospitalPath = saveBase64Image(signatureHospital, 'kk_k_hospital', deliveryId);
 
         await connection.query(
-            `UPDATE tr_custom_kurang_kirim_delivery
+            `UPDATE tr_komersil_kurang_kirim_delivery
              SET signature_valet = ?, signature_hospital = ?
              WHERE id = ?`,
             [signatureValetPath, signatureHospitalPath, deliveryId]
@@ -246,8 +246,8 @@ export const createShortageDelivery = async (req, res) => {
             if (!item.qtyDelivered || parseInt(item.qtyDelivered) <= 0) continue;
 
             await connection.query(
-                `INSERT INTO tr_custom_kurang_kirim_delivery_detail
-                 (delivery_id, custom_detail_id, qty_delivered, length_cm, width_cm, area_m2, notes)
+                `INSERT INTO tr_komersil_kurang_kirim_delivery_detail
+                 (delivery_id, komersil_detail_id, qty_delivered, length_cm, width_cm, area_m2, notes)
                  VALUES (?, ?, ?, ?, ?, ?, ?)`,
                 [
                     deliveryId,
@@ -260,9 +260,9 @@ export const createShortageDelivery = async (req, res) => {
                 ]
             );
 
-            // Update tr_custom_linen_transaction_detail to add the delivered quantity to qty_bersih
+            // Update tr_komersil_linen_transaction_detail to add the delivered quantity to qty_bersih
             await connection.query(
-                `UPDATE tr_custom_linen_transaction_detail
+                `UPDATE tr_komersil_linen_transaction_detail
                  SET qty_bersih = COALESCE(qty_bersih, 0) + ?
                  WHERE id = ?`,
                 [
@@ -274,12 +274,12 @@ export const createShortageDelivery = async (req, res) => {
 
         // Capture new state for audit logging
         const [newHeaderRows] = await connection.query(
-            `SELECT * FROM tr_custom_linen_transaction WHERE id = ?`,
+            `SELECT * FROM tr_komersil_linen_transaction WHERE id = ?`,
             [transactionId]
         );
         const newHeader = newHeaderRows[0];
         const [newDetails] = await connection.query(
-            `SELECT * FROM tr_custom_linen_transaction_detail WHERE transaction_id = ?`,
+            `SELECT * FROM tr_komersil_linen_transaction_detail WHERE transaction_id = ?`,
             [transactionId]
         );
         const newSnapshot = {
@@ -294,7 +294,7 @@ export const createShortageDelivery = async (req, res) => {
         const role = req.user?.role || null;
 
         await connection.query(
-            `INSERT INTO tr_custom_linen_transaction_audit 
+            `INSERT INTO tr_komersil_linen_transaction_audit 
              (transaction_id, action, user_id, username, full_name, role, old_values, new_values)
              VALUES (?, 'KURANG_KIRIM', ?, ?, ?, ?, ?, ?)`,
             [
@@ -310,9 +310,20 @@ export const createShortageDelivery = async (req, res) => {
 
         await connection.commit();
 
+        const hospitalId = oldHeader.hospital_id;
+
+        // Emit real-time socket.io event
+        const io = req.app.get('io');
+        if (io) {
+            io.to(`hospital_${hospitalId}`).emit('data_changed', {
+                type: 'SHORTAGE_DELIVERY',
+                message: 'Surat Jalan Kurang Kirim Komersil baru telah diterbitkan'
+            });
+        }
+
         return res.status(200).json({
             success: true,
-            message: "Surat Jalan Kurang Kirim Custom berhasil diterbitkan",
+            message: "Surat Jalan Kurang Kirim Komersil berhasil diterbitkan",
             data: {
                 deliveryId,
                 suratJalanNumber: sjNumber
@@ -320,10 +331,10 @@ export const createShortageDelivery = async (req, res) => {
         });
     } catch (error) {
         await connection.rollback();
-        console.error("Error creating custom shortage delivery:", error);
+        console.error("Error creating komersil shortage delivery:", error);
         return res.status(500).json({
             success: false,
-            message: "Gagal menerbitkan Surat Jalan Kurang Kirim Custom",
+            message: "Gagal menerbitkan Surat Jalan Kurang Kirim Komersil",
             error: error.message
         });
     } finally {
@@ -347,9 +358,9 @@ export const getShortageDeliveries = async (req, res) => {
 
         const query = `
       SELECT d.*, t.form_number as original_form_number, t.pickup_date as original_pickup_date, h.hospital_name,
-        (SELECT SUM(dd.qty_delivered) FROM tr_custom_kurang_kirim_delivery_detail dd WHERE dd.delivery_id = d.id) as total_qty_delivered
-      FROM tr_custom_kurang_kirim_delivery d
-      INNER JOIN tr_custom_linen_transaction t ON d.transaction_id = t.id
+        (SELECT SUM(dd.qty_delivered) FROM tr_komersil_kurang_kirim_delivery_detail dd WHERE dd.delivery_id = d.id) as total_qty_delivered
+      FROM tr_komersil_kurang_kirim_delivery d
+      INNER JOIN tr_komersil_linen_transaction t ON d.transaction_id = t.id
       INNER JOIN mst_hospital h ON t.hospital_id = h.id
       WHERE t.hospital_id = ?
       ORDER BY d.delivery_date DESC, d.id DESC
@@ -374,17 +385,17 @@ export const getShortageDeliveries = async (req, res) => {
             data: formatted
         });
     } catch (error) {
-        console.error("Error getting custom shortage deliveries:", error);
+        console.error("Error getting komersil shortage deliveries:", error);
         return res.status(500).json({
             success: false,
-            message: "Gagal memuat riwayat Surat Jalan Kurang Kirim Custom",
+            message: "Gagal memuat riwayat Surat Jalan Kurang Kirim Komersil",
             error: error.message
         });
     }
 };
 
 /**
- * Get details of a single shortage delivery (Surat Jalan Custom)
+ * Get details of a single shortage delivery (Surat Jalan Komersil)
  */
 export const getShortageDeliveryDetail = async (req, res) => {
     try {
@@ -392,8 +403,8 @@ export const getShortageDeliveryDetail = async (req, res) => {
 
         const queryHeader = `
       SELECT d.*, t.form_number as original_form_number, t.pickup_date as original_pickup_date, h.hospital_name, h.address as hospital_address
-      FROM tr_custom_kurang_kirim_delivery d
-      INNER JOIN tr_custom_linen_transaction t ON d.transaction_id = t.id
+      FROM tr_komersil_kurang_kirim_delivery d
+      INNER JOIN tr_komersil_linen_transaction t ON d.transaction_id = t.id
       INNER JOIN mst_hospital h ON t.hospital_id = h.id
       WHERE d.id = ?
     `;
@@ -415,8 +426,8 @@ export const getShortageDeliveryDetail = async (req, res) => {
               l.linen_code,
               hl.unit, hl.hospital_linen_name, hl.grammage,
               s.size_name, c.color_name, m.material_name
-       FROM tr_custom_kurang_kirim_delivery_detail dd
-       INNER JOIN tr_custom_linen_transaction_detail td ON dd.custom_detail_id = td.id
+       FROM tr_komersil_kurang_kirim_delivery_detail dd
+       INNER JOIN tr_komersil_linen_transaction_detail td ON dd.komersil_detail_id = td.id
        LEFT JOIN mst_hospital_linen hl ON td.hospital_linen_id = hl.id
        LEFT JOIN mst_linen l ON hl.linen_id = l.id
        LEFT JOIN mst_size s ON l.size_id = s.id
@@ -443,10 +454,10 @@ export const getShortageDeliveryDetail = async (req, res) => {
             }
         });
     } catch (error) {
-        console.error("Error getting custom shortage delivery details:", error);
+        console.error("Error getting komersil shortage delivery details:", error);
         return res.status(500).json({
             success: false,
-            message: "Gagal memuat rincian Surat Jalan Custom",
+            message: "Gagal memuat rincian Surat Jalan Komersil",
             error: error.message
         });
     }

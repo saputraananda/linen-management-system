@@ -62,7 +62,12 @@ export const getDashboardData = async (req, res) => {
                WHERE hlr.hospital_linen_id = hl.id
              ), 0) AS total_terpakai,
              COALESCE((
-               SELECT SUM(hlr.stock_in_rs - hlr.qty_terpakai)
+               SELECT SUM(hlr.qty_dirty)
+               FROM mst_hospital_linen_rooms hlr
+               WHERE hlr.hospital_linen_id = hl.id
+             ), 0) AS total_dirty,
+             COALESCE((
+               SELECT SUM(hlr.stock_in_rs - hlr.qty_terpakai - hlr.qty_dirty)
                FROM mst_hospital_linen_rooms hlr
                INNER JOIN mst_rooms_rs r ON hlr.room_id = r.id
                WHERE hlr.hospital_linen_id = hl.id 
@@ -244,6 +249,14 @@ export const updateTerpakai = async (req, res) => {
       );
     }
 
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`hospital_${hospitalId}`).emit('data_changed', {
+        type: 'STOCK_UPDATE',
+        message: 'Stok Terpakai ruangan telah diperbarui'
+      });
+    }
+
     return res.status(200).json({
       success: true,
       message: "Data terpakai berhasil diperbarui"
@@ -335,6 +348,14 @@ export const updateGudang = async (req, res) => {
        ON DUPLICATE KEY UPDATE stock_in_rs = VALUES(stock_in_rs)`,
       [hospitalLinenId, gudangRoomId, valGudang]
     );
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`hospital_${hospitalId}`).emit('data_changed', {
+        type: 'STOCK_UPDATE',
+        message: 'Stok Gudang telah diperbarui'
+      });
+    }
 
     return res.status(200).json({
       success: true,
@@ -433,6 +454,14 @@ export const updateRoomStock = async (req, res) => {
        ON DUPLICATE KEY UPDATE stock_in_rs = VALUES(stock_in_rs)`,
       [hospitalLinenId, roomId, finalStockInRs]
     );
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`hospital_${hospitalId}`).emit('data_changed', {
+        type: 'STOCK_UPDATE',
+        message: 'Stok ruangan telah diperbarui'
+      });
+    }
 
     return res.status(200).json({
       success: true,
