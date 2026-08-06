@@ -12,6 +12,18 @@ const toTitleCase = (str) => {
     .join(' ');
 };
 
+const formatMySQLDateTime = (dateStr) => {
+  if (!dateStr) return null;
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return null;
+    const pad = (n) => n.toString().padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  } catch (e) {
+    return null;
+  }
+};
+
 /**
  * Get list of transactions for a hospital with filters
  */
@@ -364,7 +376,7 @@ export const createTransaction = async (req, res) => {
         `INSERT INTO tr_linen_transaction 
          (form_number, hospital_id, user_pickup, hospital_staff_pickup, hospital_assistant_pickup, pickup_date, status, notes_pickup)
          VALUES (?, ?, ?, ?, ?, ?, 'PROSES', ?)`,
-        [formNumber, hospitalId, userPickup, hospitalStaffPickup ? toTitleCase(hospitalStaffPickup) : null, hospitalAssistantPickup ? toTitleCase(hospitalAssistantPickup) : null, pickupDate, notes || null]
+        [formNumber, hospitalId, userPickup, hospitalStaffPickup ? toTitleCase(hospitalStaffPickup) : null, hospitalAssistantPickup ? toTitleCase(hospitalAssistantPickup) : null, formatMySQLDateTime(pickupDate), notes || null]
       );
 
       transactionId = result.insertId;
@@ -394,6 +406,8 @@ export const createTransaction = async (req, res) => {
         [transactionId, item.hospitalLinenId, item.roomId || null, parseInt(item.qtyKotor || 0), item.notes || null]
       );
     }
+
+
 
     // Capture created state for audit logging
     const [newHeaderRows] = await connection.query(
@@ -592,8 +606,8 @@ export const updateTransactionDelivery = async (req, res) => {
            status = ?
        WHERE id = ?`,
       [
-        deliveryDate,
-        completedAt,
+        formatMySQLDateTime(deliveryDate),
+        formatMySQLDateTime(completedAt),
         userDelivery || null,
         toTitleCase(hospitalStaffPickup) || null,
         toTitleCase(hospitalStaffDelivery) || null,
@@ -628,6 +642,8 @@ export const updateTransactionDelivery = async (req, res) => {
         ]
       );
     }
+
+
 
     // Fetch new values for the audit log
     const [newHeaderRows] = await connection.query(

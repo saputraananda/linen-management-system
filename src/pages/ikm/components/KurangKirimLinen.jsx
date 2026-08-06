@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import exportSuratJalanKurangKirim from '../utils/exportSuratJalanKurangKirim';
 import ikmLogo from '../../../assets/images/ikm.png';
+import kopSuratIkm from '../../../assets/images/kop_surat_ikm.png';
 
 // Helper to convert string to Title Case
 const toTitleCase = (str) => {
@@ -46,7 +47,7 @@ const SignatureInput = ({ title, value, onChange, isEditable, name }) => {
       ctx.lineWidth = 3;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
-      
+
       // Clear canvas if value is empty
       if (!value) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -59,13 +60,13 @@ const SignatureInput = ({ title, value, onChange, isEditable, name }) => {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
     const rect = canvas.getBoundingClientRect();
-    
+
     const clientX = e.touches && e.touches.length > 0 ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches && e.touches.length > 0 ? e.touches[0].clientY : e.clientY;
-    
+
     const x = ((clientX - rect.left) / rect.width) * canvas.width;
     const y = ((clientY - rect.top) / rect.height) * canvas.height;
-    
+
     return { x, y };
   };
 
@@ -96,7 +97,7 @@ const SignatureInput = ({ title, value, onChange, isEditable, name }) => {
   const stopDrawing = () => {
     if (!isDrawing) return;
     setIsDrawing(false);
-    
+
     const canvas = canvasRef.current;
     if (canvas && hasSigned) {
       const dataUrl = canvas.toDataURL('image/png');
@@ -134,22 +135,20 @@ const SignatureInput = ({ title, value, onChange, isEditable, name }) => {
             <button
               type="button"
               onClick={() => { setMode('draw'); clearCanvas(); }}
-              className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-all ${
-                mode === 'draw'
+              className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-all ${mode === 'draw'
                   ? 'bg-teal-600 text-white shadow-sm'
                   : 'bg-white border border-slate-200 text-slate-500 hover:bg-slate-100'
-              }`}
+                }`}
             >
               Gambar
             </button>
             <button
               type="button"
               onClick={() => { setMode('upload'); onChange(''); }}
-              className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-all ${
-                mode === 'upload'
+              className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-all ${mode === 'upload'
                   ? 'bg-teal-600 text-white shadow-sm'
                   : 'bg-white border border-slate-200 text-slate-500 hover:bg-slate-100'
-              }`}
+                }`}
             >
               Unggah Foto
             </button>
@@ -400,7 +399,7 @@ export default function KurangKirimLinen() {
   const getRoomAndStockInfo = (hospitalLinenId) => {
     const totalStock = getHospitalLinenTotalStock(hospitalLinenId);
     if (selectedRoomId) {
-      const roomLinen = roomLinensList.find(rl => 
+      const roomLinen = roomLinensList.find(rl =>
         rl.hospital_linen_id === hospitalLinenId && rl.room_id === parseInt(selectedRoomId)
       );
       const roomName = roomLinen?.room_name || 'Tidak ada di ruangan';
@@ -553,7 +552,7 @@ export default function KurangKirimLinen() {
     const parsed = parseInt(val) || 0;
     const clamped = Math.min(maxLimit, Math.max(0, parsed));
     const activeRoom = selectedRoomId || 'all';
-    
+
     setDeliveriesMap(prev => {
       const delivObj = prev[hospitalLinenId] || {};
       const roomVal = delivObj[activeRoom] || { qtyDelivered: 0, notes: '' };
@@ -572,7 +571,7 @@ export default function KurangKirimLinen() {
 
   const handleNotesChange = (hospitalLinenId, val) => {
     const activeRoom = selectedRoomId || 'all';
-    
+
     setDeliveriesMap(prev => {
       const delivObj = prev[hospitalLinenId] || {};
       const roomVal = delivObj[activeRoom] || { qtyDelivered: 0, notes: '' };
@@ -676,7 +675,9 @@ export default function KurangKirimLinen() {
       valet_name: valetName,
       hospital_address: selectedTx?.hospital_address || '',
       signature_hospital: signatureHospital,
-      signature_valet: signatureValet
+      signature_valet: signatureValet,
+      original_pickup_date: selectedTx?.pickup_date || '',
+      original_form_number: selectedTx?.form_number || ''
     };
 
     exportSuratJalanKurangKirim(deliveryHeader, activeDetails);
@@ -792,456 +793,950 @@ export default function KurangKirimLinen() {
       `}</style>
       <div className="mx-auto max-w-screen-2xl px-4 sm:px-6 lg:px-8 space-y-6">
 
-      {/* Header Banner Card */}
-      <div className="bg-white rounded-2xl border border-slate-150 p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-5 transition-all no-print">
-        <div>
-          <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-[#126776] bg-[#126776]/5 px-3 py-1 rounded-md border border-[#126776]/10">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#1ea59e]" />
-            Rumah Sakit Terpilih
-          </span>
-          <h2 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight mt-2.5">
+        {/* Header Banner Card */}
+        <div className="bg-white rounded-2xl border border-slate-150 p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-5 transition-all no-print">
+          <div>
+            <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-[#126776] bg-[#126776]/5 px-3 py-1 rounded-md border border-[#126776]/10">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#1ea59e]" />
+              Rumah Sakit Terpilih
+            </span>
+            <h2 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight mt-2.5">
               {hospitalName || 'Rumah Sakit'}
             </h2>
-          <p className="text-xs text-slate-400 mt-1 font-medium">
-            Portal pencatatan kurang kirim linen dan penerbitan Surat Jalan.
-          </p>
+            <p className="text-xs text-slate-400 mt-1 font-medium">
+              Portal pencatatan kurang kirim linen dan penerbitan Surat Jalan.
+            </p>
+          </div>
+
+          {/* Tab Toggle buttons */}
+          {!selectedTx && (
+            <div className="flex bg-slate-100 p-1.5 rounded-xl shrink-0 h-fit self-start md:self-center border border-slate-200">
+              <button
+                onClick={() => setActiveTab('history')}
+                className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${activeTab === 'history'
+                    ? 'bg-gradient-to-r from-[#126776] to-[#1ea59e] text-white shadow-md shadow-[#126776]/10'
+                    : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/55'
+                  }`}
+              >
+                <AlertTriangle className="h-4 w-4" />
+                Sisa Kurang Kirim
+              </button>
+              <button
+                onClick={() => setActiveTab('sjHistory')}
+                className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${activeTab === 'sjHistory'
+                    ? 'bg-gradient-to-r from-[#126776] to-[#1ea59e] text-white shadow-md shadow-[#126776]/10'
+                    : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/55'
+                  }`}
+              >
+                <FileText className="h-4 w-4" />
+                Riwayat Surat Jalan
+              </button>
+            </div>
+          )}
         </div>
 
-        {/* Tab Toggle buttons */}
-        {!selectedTx && (
-          <div className="flex bg-slate-100 p-1.5 rounded-xl shrink-0 h-fit self-start md:self-center border border-slate-200">
-            <button
-              onClick={() => setActiveTab('history')}
-              className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                activeTab === 'history'
-                  ? 'bg-gradient-to-r from-[#126776] to-[#1ea59e] text-white shadow-md shadow-[#126776]/10'
-                  : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/55'
-              }`}
-            >
-              <AlertTriangle className="h-4 w-4" />
-              Sisa Kurang Kirim
-            </button>
-            <button
-              onClick={() => setActiveTab('sjHistory')}
-              className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                activeTab === 'sjHistory'
-                  ? 'bg-gradient-to-r from-[#126776] to-[#1ea59e] text-white shadow-md shadow-[#126776]/10'
-                  : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/55'
-              }`}
-            >
-              <FileText className="h-4 w-4" />
-              Riwayat Surat Jalan
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Main Container */}
-      <div className="no-print">
-        {!hospitalId ? (
-          <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-3xl p-6 flex items-start gap-4">
-            <Info className="h-6 w-6 text-amber-500 shrink-0 mt-0.5" />
-            <div>
-              <p className="font-bold text-sm">Rumah Sakit Belum Dipilih</p>
-              <p className="text-xs text-amber-700/90 mt-1 leading-relaxed">
-                Silakan pilih salah satu Rumah Sakit di sidebar atau kembali ke Dashboard terlebih dahulu untuk memproses data.
-              </p>
+        {/* Main Container */}
+        <div className="no-print">
+          {!hospitalId ? (
+            <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-3xl p-6 flex items-start gap-4">
+              <Info className="h-6 w-6 text-amber-500 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold text-sm">Rumah Sakit Belum Dipilih</p>
+                <p className="text-xs text-amber-700/90 mt-1 leading-relaxed">
+                  Silakan pilih salah satu Rumah Sakit di sidebar atau kembali ke Dashboard terlebih dahulu untuk memproses data.
+                </p>
+              </div>
             </div>
-          </div>
-        ) : selectedTx ? (
-          // ════════════════════════ PROCESS DELIVERY / UPDATE VIEW ════════════════════════
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden animate-[fadeIn_0.25s_ease-out]">
-            {/* Header info */}
-            <div className="p-6 bg-gradient-to-r from-[#126776] to-[#1ea59e] text-white flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => setSelectedTx(null)}
-                  className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 text-white hover:bg-white/20 active:scale-95 transition"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                </button>
-                <div>
-                  <h2 className="text-md font-bold tracking-tight">Formulir Kirim Kurang Linen</h2>
-                  <p className="text-[10px] text-white/80 mt-0.5">
-                    Menyelesaikan sisa kekurangan kirim untuk formulir: <span className="font-bold">{selectedTx.form_number}</span>
-                  </p>
+          ) : selectedTx ? (
+            // ════════════════════════ PROCESS DELIVERY / UPDATE VIEW ════════════════════════
+            <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden animate-[fadeIn_0.25s_ease-out]">
+              {/* Header info */}
+              <div className="p-6 bg-gradient-to-r from-[#126776] to-[#1ea59e] text-white flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setSelectedTx(null)}
+                    className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 text-white hover:bg-white/20 active:scale-95 transition"
+                  >
+                    <ArrowLeft className="h-4 w-4" />
+                  </button>
+                  <div>
+                    <h2 className="text-md font-bold tracking-tight">Formulir Kurang Kirim Linen</h2>
+                    <p className="text-[10px] text-white/80 mt-0.5">
+                      Menyelesaikan sisa kekurangan kirim untuk formulir: <span className="font-bold">{selectedTx.form_number}</span>
+                    </p>
+                  </div>
+                </div>
+
+                {/* Sub tabs (Form vs Surat Jalan) */}
+                <div className="flex items-center gap-1.5 bg-black/10 p-1 rounded-xl">
+                  <button
+                    onClick={() => setProcessTab('form')}
+                    className={`px-3 py-1.5 text-[10px] font-bold rounded-lg transition ${processTab === 'form' ? 'bg-white text-[#126776]' : 'text-white hover:bg-white/10'
+                      }`}
+                  >
+                    Form Update
+                  </button>
+                  <button
+                    onClick={() => setProcessTab('sj')}
+                    className={`px-3 py-1.5 text-[10px] font-bold rounded-lg transition ${processTab === 'sj' ? 'bg-white text-[#126776]' : 'text-white hover:bg-white/10'
+                      }`}
+                  >
+                    Preview Surat Jalan
+                  </button>
                 </div>
               </div>
 
-              {/* Sub tabs (Form vs Surat Jalan) */}
-              <div className="flex items-center gap-1.5 bg-black/10 p-1 rounded-xl">
-                <button
-                  onClick={() => setProcessTab('form')}
-                  className={`px-3 py-1.5 text-[10px] font-bold rounded-lg transition ${
-                    processTab === 'form' ? 'bg-white text-[#126776]' : 'text-white hover:bg-white/10'
-                  }`}
-                >
-                  Form Update
-                </button>
-                <button
-                  onClick={() => setProcessTab('sj')}
-                  className={`px-3 py-1.5 text-[10px] font-bold rounded-lg transition ${
-                    processTab === 'sj' ? 'bg-white text-[#126776]' : 'text-white hover:bg-white/10'
-                  }`}
-                >
-                  Preview Surat Jalan
-                </button>
-              </div>
-            </div>
-
-            {loadingDetails ? (
-              <div className="p-12 text-center text-slate-400 font-medium flex flex-col items-center gap-3">
-                <RefreshCw className="h-6 w-6 animate-spin text-teal-600" />
-                <span>Memuat rincian item kotor...</span>
-              </div>
-            ) : (
-              <form onSubmit={handleSubmitDelivery} className="p-6 space-y-6">
-                {processTab === 'form' ? (
-                  // TAB: FORM UPDATE
-                  <div className="space-y-6">
-                    {/* Header Details with Side Badges */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                      {/* Valet Section */}
-                      <div className="flex rounded-2xl border border-slate-150 bg-slate-50/50">
-                        <div className="bg-[#678083] text-white flex items-center justify-center px-4 font-bold text-[10px] uppercase select-none tracking-widest shrink-0 [writing-mode:vertical-lr] rotate-180 rounded-r-2xl">
-                          Valet IKM
-                        </div>
-                        <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-4 p-5">
-                          {/* Searchable Dropdown Select */}
-                          <div className="space-y-1.5" ref={employeeSelectRef}>
-                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                              Petugas Pengirim (IKM)
-                            </label>
-                            <div className="relative">
-                              <div
-                                onClick={() => setIsEmployeeDropdownOpen(!isEmployeeDropdownOpen)}
-                                className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 flex items-center justify-between cursor-pointer focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] select-none min-h-[38px] transition-all"
-                              >
-                                <div className="flex items-center gap-2">
-                                  <User className="absolute inset-y-0 left-3.5 my-auto h-4 w-4 text-slate-400" />
-                                  <span>{toTitleCase(valetName) || 'Pilih Petugas IKM...'}</span>
+              {loadingDetails ? (
+                <div className="p-12 text-center text-slate-400 font-medium flex flex-col items-center gap-3">
+                  <RefreshCw className="h-6 w-6 animate-spin text-teal-600" />
+                  <span>Memuat rincian item kotor...</span>
+                </div>
+              ) : (
+                <form onSubmit={handleSubmitDelivery} className="p-6 space-y-6">
+                  {processTab === 'form' ? (
+                    // TAB: FORM UPDATE
+                    <div className="space-y-6">
+                      {/* Header Details with Side Badges */}
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                        {/* Valet Section */}
+                        <div className="flex rounded-2xl border border-slate-150 bg-slate-50/50">
+                          <div className="bg-[#678083] text-white flex items-center justify-center px-4 font-bold text-[10px] uppercase select-none tracking-widest shrink-0 [writing-mode:vertical-lr] rotate-180 rounded-r-2xl">
+                            Valet IKM
+                          </div>
+                          <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-4 p-5">
+                            {/* Searchable Dropdown Select */}
+                            <div className="space-y-1.5" ref={employeeSelectRef}>
+                              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                                Petugas Pengirim (IKM)
+                              </label>
+                              <div className="relative">
+                                <div
+                                  onClick={() => setIsEmployeeDropdownOpen(!isEmployeeDropdownOpen)}
+                                  className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 flex items-center justify-between cursor-pointer focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] select-none min-h-[38px] transition-all"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <User className="absolute inset-y-0 left-3.5 my-auto h-4 w-4 text-slate-400" />
+                                    <span>{toTitleCase(valetName) || 'Pilih Petugas IKM...'}</span>
+                                  </div>
+                                  <ChevronDown className="h-4 w-4 text-slate-400" />
                                 </div>
-                                <ChevronDown className="h-4 w-4 text-slate-400" />
+
+                                {isEmployeeDropdownOpen && (
+                                  <div className="absolute left-0 right-0 mt-1.5 bg-white border border-slate-200 shadow-xl rounded-2xl p-2.5 z-50 max-h-60 flex flex-col no-print">
+                                    {/* Search Input inside dropdown */}
+                                    <div className="relative mb-2 shrink-0">
+                                      <Search className="absolute inset-y-0 left-2.5 my-auto h-3.5 w-3.5 text-slate-400" />
+                                      <input
+                                        type="text"
+                                        placeholder="Cari petugas..."
+                                        value={searchEmployeeQuery}
+                                        onChange={e => setSearchEmployeeQuery(e.target.value)}
+                                        className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-150 rounded-xl text-xs outline-none focus:ring-2 focus:ring-[#1ea59e]/20 focus:border-[#1ea59e] font-semibold text-slate-700"
+                                        onClick={e => e.stopPropagation()}
+                                      />
+                                    </div>
+
+                                    {/* Employees Scrollable List */}
+                                    <div className="overflow-y-auto flex-1 divide-y divide-slate-50 max-h-40">
+                                      {loadingEmployees ? (
+                                        <div className="p-3 text-center text-slate-400 text-xs font-medium">
+                                          Memuat petugas...
+                                        </div>
+                                      ) : filteredEmployees.length === 0 ? (
+                                        <div className="p-3 text-center text-slate-400 text-xs font-medium">
+                                          Tidak ada petugas ditemukan
+                                        </div>
+                                      ) : (
+                                        filteredEmployees.map(emp => (
+                                          <button
+                                            key={emp.employee_id}
+                                            type="button"
+                                            onClick={() => {
+                                              setValetId(emp.employee_id);
+                                              setValetName(emp.employee_name);
+                                              setIsEmployeeDropdownOpen(false);
+                                              setSearchEmployeeQuery('');
+                                            }}
+                                            className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-[#1ea59e]/5 hover:text-[#126776] rounded-lg transition cursor-pointer"
+                                          >
+                                            {toTitleCase(emp.employee_name)}
+                                          </button>
+                                        ))
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
                               </div>
+                            </div>
 
-                              {isEmployeeDropdownOpen && (
-                                <div className="absolute left-0 right-0 mt-1.5 bg-white border border-slate-200 shadow-xl rounded-2xl p-2.5 z-50 max-h-60 flex flex-col no-print">
-                                  {/* Search Input inside dropdown */}
-                                  <div className="relative mb-2 shrink-0">
-                                    <Search className="absolute inset-y-0 left-2.5 my-auto h-3.5 w-3.5 text-slate-400" />
-                                    <input
-                                      type="text"
-                                      placeholder="Cari petugas..."
-                                      value={searchEmployeeQuery}
-                                      onChange={e => setSearchEmployeeQuery(e.target.value)}
-                                      className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-150 rounded-xl text-xs outline-none focus:ring-2 focus:ring-[#1ea59e]/20 focus:border-[#1ea59e] font-semibold text-slate-700"
-                                      onClick={e => e.stopPropagation()}
-                                    />
-                                  </div>
+                            <div className="space-y-1.5">
+                              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                                No. Kendaraan
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="B 1234 XX..."
+                                value={vehicleNumber}
+                                onChange={e => setVehicleNumber(e.target.value)}
+                                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl text-xs font-semibold focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] transition outline-none"
+                              />
+                            </div>
+                          </div>
+                        </div>
 
-                                  {/* Employees Scrollable List */}
-                                  <div className="overflow-y-auto flex-1 divide-y divide-slate-50 max-h-40">
-                                    {loadingEmployees ? (
-                                      <div className="p-3 text-center text-slate-400 text-xs font-medium">
-                                        Memuat petugas...
-                                      </div>
-                                    ) : filteredEmployees.length === 0 ? (
-                                      <div className="p-3 text-center text-slate-400 text-xs font-medium">
-                                        Tidak ada petugas ditemukan
-                                      </div>
-                                    ) : (
-                                      filteredEmployees.map(emp => (
-                                        <button
-                                          key={emp.employee_id}
-                                          type="button"
-                                          onClick={() => {
-                                            setValetId(emp.employee_id);
-                                            setValetName(emp.employee_name);
-                                            setIsEmployeeDropdownOpen(false);
-                                            setSearchEmployeeQuery('');
-                                          }}
-                                          className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-[#1ea59e]/5 hover:text-[#126776] rounded-lg transition cursor-pointer"
-                                        >
-                                          {toTitleCase(emp.employee_name)}
-                                        </button>
-                                      ))
-                                    )}
-                                  </div>
-                                </div>
+                        {/* Hospital Section */}
+                        <div className="flex rounded-2xl border border-slate-150 bg-slate-50/50">
+                          <div className="bg-[#678083] text-white flex items-center justify-center px-4 font-bold text-[10px] uppercase select-none tracking-widest shrink-0 [writing-mode:vertical-lr] rotate-180 rounded-r-2xl">
+                            Petugas RS
+                          </div>
+                          <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-4 p-5">
+                            <div className="space-y-1.5">
+                              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                                Penerima (Petugas RS)
+                              </label>
+                              <input
+                                type="text"
+                                required
+                                placeholder="Nama petugas Rumah Sakit..."
+                                value={hospitalStaff}
+                                onChange={e => setHospitalStaff(e.target.value)}
+                                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl text-xs font-semibold focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] transition outline-none"
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                                Tanggal & Jam Pengiriman
+                              </label>
+                              <input
+                                type="datetime-local"
+                                required
+                                value={deliveryDate}
+                                onChange={e => setDeliveryDate(e.target.value)}
+                                className="w-full px-3.5 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl text-xs font-semibold focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] transition outline-none"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Shortage Item Table */}
+                      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+                        {/* Room Selector above the table */}
+                        <div className="p-3 border-b border-slate-100 bg-slate-50/70 flex gap-3">
+                          <div className="relative min-w-[200px]">
+                            <select
+                              value={selectedRoomId}
+                              onChange={e => setSelectedRoomId(e.target.value)}
+                              className="w-full pl-3 pr-9 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] cursor-pointer appearance-none"
+                            >
+                              <option value="">Semua Ruangan</option>
+                              {uniqueRooms.map(room => (
+                                <option key={room.id} value={room.id}>{room.name}</option>
+                              ))}
+                            </select>
+                            <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-slate-400">
+                              <ChevronDown className="w-4 h-4" />
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left border-collapse">
+                            <thead>
+                              <tr className="bg-slate-50 text-xs font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-150">
+                                <th className="px-4 py-3.5 text-center w-12">No</th>
+                                <th className="px-4 py-3.5">Nama Linen</th>
+                                <th className="px-4 py-3.5 text-center">Ruangan</th>
+                                <th className="px-4 py-3.5 text-center w-48">Sisa Kurang Kirim</th>
+                                <th className="px-4 py-3.5 text-center w-36">Jumlah Kirim</th>
+                                <th className="px-4 py-3.5 min-w-[200px]">Catatan</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {filteredShortageItems.length === 0 ? (
+                                <tr>
+                                  <td colSpan="6" className="px-4 py-8 text-center text-slate-400 font-semibold text-xs">
+                                    Tidak ada sisa kurang kirim untuk ruangan terpilih.
+                                  </td>
+                                </tr>
+                              ) : (
+                                filteredShortageItems.map((item, idx) => {
+                                  const isRowEditable = !item.isGrouped || (item.originalItemIds.length === 1 && shortageDetails.find(d => d.id === item.originalItemIds[0])?.room_id === null);
+                                  const inputKey = item.isGrouped ? (item.originalItemIds?.[0] || item.id) : item.id;
+                                  const roomInfo = getRoomAndStockInfo(item.hospital_linen_id);
+
+                                  return (
+                                    <tr key={item.id} className="hover:bg-slate-50/50 text-xs font-medium text-slate-700">
+                                      <td className="px-4 py-3 text-center font-bold text-slate-400 text-xs">{idx + 1}</td>
+                                      <td className="px-4 py-3">
+                                        <div className="font-semibold text-slate-800 text-sm">{getLinenDisplayName(item)}</div>
+                                      </td>
+                                      <td className="px-4 py-3 text-center">
+                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-650 border border-slate-200">
+                                          {item.room_name || 'Semua Ruangan'}
+                                        </span>
+                                      </td>
+                                      <td className="px-4 py-3 text-center text-rose-500 font-bold text-sm">{item.remaining_shortage}</td>
+                                      <td className="px-4 py-3 text-center">
+                                        {isRowEditable ? (
+                                          <div className="flex items-center justify-center">
+                                            <input
+                                              type="number"
+                                              min="0"
+                                              max={item.remaining_shortage}
+                                              value={deliveriesMap[inputKey]?.qtyDelivered !== undefined ? deliveriesMap[inputKey].qtyDelivered : ''}
+                                              onChange={e => {
+                                                const val = e.target.value === '' ? '' : Math.min(item.remaining_shortage, Math.max(0, parseInt(e.target.value) || 0));
+                                                setDeliveriesMap(prev => ({ ...prev, [inputKey]: { ...prev[inputKey], qtyDelivered: val } }));
+                                              }}
+                                              className="w-16 text-center py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] focus:bg-white transition"
+                                            />
+                                          </div>
+                                        ) : (
+                                          <div className="text-center font-bold text-slate-700 text-sm">
+                                            {(() => {
+                                              let totalDelivered = 0;
+                                              item.originalItemIds.forEach(subId => {
+                                                totalDelivered += parseInt(deliveriesMap[subId]?.qtyDelivered) || 0;
+                                              });
+                                              return totalDelivered > 0 ? totalDelivered : '—';
+                                            })()}
+                                          </div>
+                                        )}
+                                      </td>
+                                      <td className="px-4 py-3">
+                                        {isRowEditable ? (
+                                          <input
+                                            type="text"
+                                            placeholder="Catatan item..."
+                                            value={deliveriesMap[inputKey]?.notes || ''}
+                                            onChange={e => {
+                                              const val = e.target.value;
+                                              setDeliveriesMap(prev => ({ ...prev, [inputKey]: { ...prev[inputKey], notes: val } }));
+                                            }}
+                                            className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 text-xs font-medium text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] focus:bg-white transition"
+                                          />
+                                        ) : (
+                                          <div className="flex flex-col gap-1">
+                                            <span className="text-slate-400 italic text-[11px]">
+                                              {item.notes || '—'}
+                                            </span>
+                                            {item.isGrouped && item.originalItemIds.length > 1 && (
+                                              <span className="text-[10px] text-amber-600 font-bold italic">
+                                                * Pilih ruangan untuk mengisi jumlah kirim.
+                                              </span>
+                                            )}
+                                          </div>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  );
+                                })
                               )}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+
+                      {/* Dual Signatures */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                        <SignatureInput
+                          title="Tanda Tangan Petugas IKM"
+                          value={signatureValet}
+                          onChange={setSignatureValet}
+                          isEditable={true}
+                        />
+                        <SignatureInput
+                          title="Tanda Tangan Penerima Rumah Sakit"
+                          value={signatureHospital}
+                          onChange={setSignatureHospital}
+                          isEditable={true}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    // TAB: SURAT JALAN PREVIEW (EDITABLE SYNCED VIEW)
+                    <div className="space-y-6">
+                      {/* Paper Document Preview Container */}
+                      <div id="print-document" className="max-w-[800px] mx-auto bg-white border border-slate-200 text-slate-800 font-sans shadow-sm overflow-hidden">
+                        {/* Letterhead Image */}
+                        <img src={kopSuratIkm} alt="Kop Surat IKM" className="w-full object-cover" />
+
+                        <div className="px-8 pb-8 pt-0">
+                          {/* Title and Document Number */}
+                          <div className="text-center mt-[-65px] mb-4">
+                            <h1 className="text-xl sm:text-2xl font-black tracking-widest text-slate-900 leading-none">SURAT JALAN</h1>
+                            <p className="text-xs font-bold text-slate-500 mt-2 uppercase tracking-wider">No. (Otomatis)</p>
+                          </div>
+
+                          {/* Meta Columns */}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 py-6 text-xs border-b border-slate-200">
+                            {/* Left Side */}
+                            <div className="space-y-2.5">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-slate-500 w-36 tracking-wider">Kepada Yth:</span>
+                                <input
+                                  type="text"
+                                  value={recipientName}
+                                  onChange={e => setRecipientName(e.target.value)}
+                                  className="flex-1 px-2.5 py-1.5 border border-slate-200 hover:border-slate-350 focus:border-teal-500 outline-none rounded-lg font-bold text-slate-800 transition"
+                                />
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-slate-500 w-36 tracking-wider">Tanggal Pengambilan:</span>
+                                <input
+                                  type="text"
+                                  disabled
+                                  value={selectedTx?.pickup_date ? new Date(selectedTx.pickup_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '—'}
+                                  className="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 outline-none rounded-lg font-semibold text-slate-500 select-none cursor-not-allowed"
+                                />
+                              </div>
+                            </div>
+
+                            {/* Right Side */}
+                            <div className="space-y-2.5">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-slate-500 w-36 tracking-wider">Tanggal Pengiriman:</span>
+                                <input
+                                  type="datetime-local"
+                                  value={deliveryDate}
+                                  onChange={e => setDeliveryDate(e.target.value)}
+                                  className="flex-1 px-2.5 py-1.5 border border-slate-200 hover:border-slate-350 focus:border-teal-500 outline-none rounded-lg font-semibold text-slate-700 transition"
+                                />
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-slate-500 w-36 tracking-wider">No. Kendaraan:</span>
+                                <input
+                                  type="text"
+                                  placeholder="Ketik No. Kendaraan..."
+                                  value={vehicleNumber}
+                                  onChange={e => setVehicleNumber(e.target.value)}
+                                  className="flex-1 px-2.5 py-1.5 border border-slate-200 hover:border-slate-350 focus:border-teal-500 outline-none rounded-lg font-semibold text-slate-700 transition"
+                                />
+                              </div>
                             </div>
                           </div>
 
-                          <div className="space-y-1.5">
-                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                              No. Kendaraan
-                            </label>
-                            <input
-                              type="text"
-                              placeholder="B 1234 XX..."
-                              value={vehicleNumber}
-                              onChange={e => setVehicleNumber(e.target.value)}
-                              className="w-full px-3.5 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl text-xs font-semibold focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] transition outline-none"
-                            />
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Hospital Section */}
-                      <div className="flex rounded-2xl border border-slate-150 bg-slate-50/50">
-                        <div className="bg-[#678083] text-white flex items-center justify-center px-4 font-bold text-[10px] uppercase select-none tracking-widest shrink-0 [writing-mode:vertical-lr] rotate-180 rounded-r-2xl">
-                          Petugas RS
-                        </div>
-                        <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-4 p-5">
-                          <div className="space-y-1.5">
-                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                              Penerima (Petugas RS)
-                            </label>
-                            <input
-                              type="text"
-                              required
-                              placeholder="Nama petugas Rumah Sakit..."
-                              value={hospitalStaff}
-                              onChange={e => setHospitalStaff(e.target.value)}
-                              className="w-full px-3.5 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl text-xs font-semibold focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] transition outline-none"
-                            />
-                          </div>
-                          <div className="space-y-1.5">
-                            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                              Tanggal & Jam Pengiriman
-                            </label>
-                            <input
-                              type="datetime-local"
-                              required
-                              value={deliveryDate}
-                              onChange={e => setDeliveryDate(e.target.value)}
-                              className="w-full px-3.5 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl text-xs font-semibold focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] transition outline-none"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Shortage Item Table */}
-                    <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-                      {/* Room Selector above the table */}
-                      <div className="p-3 border-b border-slate-100 bg-slate-50/70 flex gap-3">
-                        <div className="relative min-w-[200px]">
-                          <select
-                            value={selectedRoomId}
-                            onChange={e => setSelectedRoomId(e.target.value)}
-                            className="w-full pl-3 pr-9 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] cursor-pointer appearance-none"
-                          >
-                            <option value="">Semua Ruangan</option>
-                            {uniqueRooms.map(room => (
-                              <option key={room.id} value={room.id}>{room.name}</option>
-                            ))}
-                          </select>
-                          <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-slate-400">
-                            <ChevronDown className="w-4 h-4" />
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse">
-                          <thead>
-                            <tr className="bg-slate-50 text-xs font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-150">
-                              <th className="px-4 py-3.5 text-center w-12">No</th>
-                              <th className="px-4 py-3.5">Nama Linen</th>
-                              <th className="px-4 py-3.5 text-center">Ruangan</th>
-                              <th className="px-4 py-3.5 text-center">Stok</th>
-                              <th className="px-4 py-3.5 text-center w-48">Sisa Kurang Kirim</th>
-                              <th className="px-4 py-3.5 text-center w-36">Jumlah Kirim</th>
-                              <th className="px-4 py-3.5 min-w-[200px]">Catatan</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100">
-                            {filteredShortageItems.length === 0 ? (
-                              <tr>
-                                <td colSpan="7" className="px-4 py-8 text-center text-slate-400 font-semibold text-xs">
-                                  Tidak ada sisa kurang kirim untuk ruangan terpilih.
-                                </td>
-                              </tr>
-                            ) : (
-                              filteredShortageItems.map((item, idx) => {
-                                const isRowEditable = !item.isGrouped || (item.originalItemIds.length === 1 && shortageDetails.find(d => d.id === item.originalItemIds[0])?.room_id === null);
-                                const inputKey = item.isGrouped ? (item.originalItemIds?.[0] || item.id) : item.id;
-                                const roomInfo = getRoomAndStockInfo(item.hospital_linen_id);
-
-                                return (
-                                  <tr key={item.id} className="hover:bg-slate-50/50 text-xs font-medium text-slate-700">
-                                    <td className="px-4 py-3 text-center font-bold text-slate-400 text-xs">{idx + 1}</td>
-                                    <td className="px-4 py-3">
-                                      <div className="font-semibold text-slate-800 text-sm">{getLinenDisplayName(item)}</div>
-                                    </td>
-                                    <td className="px-4 py-3 text-center">
-                                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-650 border border-slate-200">
-                                        {item.room_name || 'Semua Ruangan'}
-                                      </span>
-                                    </td>
-                                    <td className="px-4 py-3 text-center">
-                                      {roomInfo.isRoomSelected ? (
-                                        <div>
-                                          <div className="font-bold text-slate-700">{roomInfo.roomStock} Pcs</div>
-                                          <div className="text-[10px] text-slate-400 font-semibold mt-0.5">Total RS: {roomInfo.totalStock} Pcs</div>
-                                        </div>
-                                      ) : (
-                                        <div className="font-bold text-slate-700">{roomInfo.totalStock} Pcs</div>
-                                      )}
-                                    </td>
-                                    <td className="px-4 py-3 text-center text-rose-500 font-bold text-sm">{item.remaining_shortage}</td>
-                                    <td className="px-4 py-3 text-center">
-                                      {isRowEditable ? (
-                                        <div className="flex items-center justify-center">
-                                          <input
-                                            type="number"
-                                            min="0"
-                                            max={item.remaining_shortage}
-                                            value={deliveriesMap[inputKey]?.qtyDelivered !== undefined ? deliveriesMap[inputKey].qtyDelivered : ''}
-                                            onChange={e => {
-                                              const val = e.target.value === '' ? '' : Math.min(item.remaining_shortage, Math.max(0, parseInt(e.target.value) || 0));
-                                              setDeliveriesMap(prev => ({ ...prev, [inputKey]: { ...prev[inputKey], qtyDelivered: val } }));
-                                            }}
-                                            className="w-16 text-center py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] focus:bg-white transition"
-                                          />
-                                        </div>
-                                      ) : (
-                                        <div className="text-center font-bold text-slate-700 text-sm">
-                                          {(() => {
-                                            let totalDelivered = 0;
-                                            item.originalItemIds.forEach(subId => {
-                                              totalDelivered += parseInt(deliveriesMap[subId]?.qtyDelivered) || 0;
-                                            });
-                                            return totalDelivered > 0 ? totalDelivered : '—';
-                                          })()}
-                                        </div>
-                                      )}
-                                    </td>
-                                    <td className="px-4 py-3">
-                                      {isRowEditable ? (
-                                        <input
-                                          type="text"
-                                          placeholder="Catatan item..."
-                                          value={deliveriesMap[inputKey]?.notes || ''}
-                                          onChange={e => {
-                                            const val = e.target.value;
-                                            setDeliveriesMap(prev => ({ ...prev, [inputKey]: { ...prev[inputKey], notes: val } }));
-                                          }}
-                                          className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 text-xs font-medium text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] focus:bg-white transition"
-                                        />
-                                      ) : (
-                                        <div className="flex flex-col gap-1">
-                                          <span className="text-slate-400 italic text-[11px]">
-                                            {item.notes || '—'}
-                                          </span>
-                                          {item.isGrouped && item.originalItemIds.length > 1 && (
-                                            <span className="text-[10px] text-amber-600 font-bold italic">
-                                              * Pilih ruangan untuk mengisi jumlah kirim.
-                                            </span>
-                                          )}
-                                        </div>
-                                      )}
-                                    </td>
+                          {/* Items Tables */}
+                          <div className="py-6 space-y-8">
+                            {/* Section 1: Ringkasan Global */}
+                            <div className="space-y-3">
+                              <h4 className="text-[10px] font-black text-[#126776] uppercase tracking-widest border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
+                                <span className="h-2 w-2 rounded-full bg-[#126776]"></span>
+                                Ringkasan Utama (Halaman 1)
+                              </h4>
+                              <table className="w-full text-left border-collapse border border-slate-900 text-xs font-semibold">
+                                <thead>
+                                  <tr className="bg-slate-100 text-slate-900 uppercase font-black tracking-wider border-b border-slate-900 text-[10px]">
+                                    <th className="px-4 py-2.5 border-r border-slate-900 text-center w-12">No</th>
+                                    <th className="px-4 py-2.5 border-r border-slate-900 text-center">Nama Barang</th>
+                                    <th className="px-4 py-2.5 border-r border-slate-900 text-center w-28">Jumlah Barang</th>
+                                    <th className="px-4 py-2.5 border-r border-slate-900 text-center w-28">Berat (Gram)</th>
+                                    <th className="px-4 py-2.5 text-center">Keterangan</th>
                                   </tr>
-                                );
-                              })
-                            )}
-                          </tbody>
-                        </table>
+                                </thead>
+                                <tbody className="divide-y divide-slate-900 border-b border-slate-900">
+                                  {(() => {
+                                    const summary = {};
+                                    shortageDetails.forEach(item => {
+                                      const delivObj = deliveriesMap[item.id] || { qtyDelivered: '', notes: '' };
+                                      const qtyDelivered = parseInt(delivObj.qtyDelivered) || 0;
+                                      if (qtyDelivered <= 0) return;
+
+                                      const key = item.hospital_linen_id || getLinenDisplayName(item);
+                                      if (!summary[key]) {
+                                        summary[key] = {
+                                          ...item,
+                                          qtyDelivered: 0,
+                                          notesList: []
+                                        };
+                                      }
+                                      summary[key].qtyDelivered += qtyDelivered;
+                                      if (delivObj.notes && delivObj.notes.trim() !== '') {
+                                        summary[key].notesList.push(delivObj.notes.trim());
+                                      }
+                                    });
+
+                                    const globalDetailsList = Object.values(summary).map(item => ({
+                                      ...item,
+                                      notes: item.notesList.length > 0 ? item.notesList.join('; ') : '—'
+                                    }));
+
+                                    if (globalDetailsList.length === 0) {
+                                      return (
+                                        <tr>
+                                          <td colSpan="5" className="px-4 py-8 text-center text-slate-400 italic">
+                                            Belum ada barang yang dikirim. Masukkan jumlah kirim di tab "Form Update".
+                                          </td>
+                                        </tr>
+                                      );
+                                    }
+
+                                    return globalDetailsList.map((item, idx) => {
+                                      const calculatedWeight = parseFloat(item.grammage || 0) * item.qtyDelivered;
+                                      return (
+                                        <tr key={item.id} className="text-slate-800">
+                                          <td className="px-4 py-3 border-r border-slate-900 text-center font-bold">{idx + 1}</td>
+                                          <td className="px-4 py-3 border-r border-slate-900">
+                                            <div>{getLinenDisplayName(item)}</div>
+                                          </td>
+                                          <td className="px-4 py-3 border-r border-slate-900 text-center font-bold">
+                                            {item.qtyDelivered}
+                                          </td>
+                                          <td className="px-4 py-3 border-r border-slate-900 text-center font-bold">
+                                            {calculatedWeight ? calculatedWeight.toLocaleString('id-ID') : '—'}
+                                          </td>
+                                          <td className="px-4 py-3 text-slate-500 italic">
+                                            {item.notes}
+                                          </td>
+                                        </tr>
+                                      );
+                                    });
+                                  })()}
+                                </tbody>
+                              </table>
+                            </div>
+
+                            {/* Section 2: Rincian Unit / Ruangan */}
+                            {(() => {
+                              const roomGroups = {};
+                              shortageDetails.forEach(item => {
+                                const delivObj = deliveriesMap[item.id] || { qtyDelivered: '', notes: '' };
+                                const qtyDelivered = parseInt(delivObj.qtyDelivered) || 0;
+                                if (qtyDelivered <= 0) return;
+
+                                const rName = item.room_name || 'Tanpa Ruangan';
+                                if (!roomGroups[rName]) {
+                                  roomGroups[rName] = [];
+                                }
+                                roomGroups[rName].push({
+                                  ...item,
+                                  qtyDelivered,
+                                  notes: delivObj.notes || ''
+                                });
+                              });
+
+                              return Object.entries(roomGroups).map(([rName, roomItems]) => (
+                                <div key={rName} className="space-y-3 pt-4 border-t border-slate-100">
+                                  <h4 className="text-[10px] font-black text-[#1ea59e] uppercase tracking-widest flex items-center gap-1.5">
+                                    <span className="h-2 w-2 rounded-full bg-[#1ea59e]"></span>
+                                    Rincian Unit: {rName} (Halaman Selanjutnya)
+                                  </h4>
+                                  <table className="w-full text-left border-collapse border border-slate-900 text-xs font-semibold">
+                                    <thead>
+                                      <tr className="bg-slate-100 text-slate-900 uppercase font-black tracking-wider border-b border-slate-900 text-[10px]">
+                                        <th className="px-4 py-2.5 border-r border-slate-900 text-center w-12">No</th>
+                                        <th className="px-4 py-2.5 border-r border-slate-900 text-center">Nama Barang</th>
+                                        <th className="px-4 py-2.5 border-r border-slate-900 text-center w-28">Jumlah Barang</th>
+                                        <th className="px-4 py-2.5 border-r border-slate-900 text-center w-28">Berat (Gram)</th>
+                                        <th className="px-4 py-2.5 text-center">Keterangan</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-900 border-b border-slate-900">
+                                      {roomItems.map((item, idx) => {
+                                        const calculatedWeight = parseFloat(item.grammage || 0) * item.qtyDelivered;
+                                        return (
+                                          <tr key={item.id} className="text-slate-800">
+                                            <td className="px-4 py-3 border-r border-slate-900 text-center font-bold">{idx + 1}</td>
+                                            <td className="px-4 py-3 border-r border-slate-900">
+                                              <div>{getLinenDisplayName(item)}</div>
+                                            </td>
+                                            <td className="px-4 py-3 border-r border-slate-900 text-center">
+                                              <input
+                                                type="number"
+                                                min="0"
+                                                max={item.remaining_shortage}
+                                                value={deliveriesMap[item.id]?.qtyDelivered !== undefined ? deliveriesMap[item.id].qtyDelivered : ''}
+                                                onChange={e => {
+                                                  const val = e.target.value === '' ? '' : Math.min(item.remaining_shortage, Math.max(0, parseInt(e.target.value) || 0));
+                                                  setDeliveriesMap(prev => ({ ...prev, [item.id]: { ...prev[item.id], qtyDelivered: val } }));
+                                                }}
+                                                className="w-16 text-center border border-slate-200 rounded p-1 font-bold inline-block"
+                                              />
+                                            </td>
+                                            <td className="px-4 py-3 border-r border-slate-900 text-center font-bold">
+                                              {calculatedWeight ? calculatedWeight.toLocaleString('id-ID') : '—'}
+                                            </td>
+                                            <td className="px-4 py-3">
+                                              <input
+                                                type="text"
+                                                placeholder="keterangan..."
+                                                value={deliveriesMap[item.id]?.notes || ''}
+                                                onChange={e => {
+                                                  const val = e.target.value;
+                                                  setDeliveriesMap(prev => ({ ...prev, [item.id]: { ...prev[item.id], notes: val } }));
+                                                }}
+                                                className="w-full border border-transparent hover:border-slate-200 focus:border-teal-500 rounded p-1"
+                                              />
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              ));
+                            })()}
+                          </div>
+
+                          {/* Signatures & Notes */}
+                          <div className="grid grid-cols-2 gap-10 pt-10 text-center text-xs font-bold text-slate-900">
+                            {/* Left signature block */}
+                            <div className="space-y-4">
+                              <p>Di Terima Oleh :</p>
+                              <div className="h-28 flex items-center justify-center relative overflow-hidden bg-white">
+                                {signatureHospital ? (
+                                  <img src={signatureHospital} alt="Hospital signature" className="h-full object-contain" />
+                                ) : (
+                                  <span className="text-[10px] text-slate-400 italic font-semibold">Tanda Tangan Belum Ada</span>
+                                )}
+                              </div>
+                              <p className="border-t border-slate-950 pt-1.5 font-bold uppercase tracking-wide">
+                                {hospitalStaff || '(Petugas RS)'}
+                              </p>
+                              <p className="text-[10px] text-slate-500 font-semibold mt-0.5">Tim Linen RS</p>
+                            </div>
+
+                            {/* Right signature block */}
+                            <div className="space-y-4">
+                              <p>Di Serahkan Oleh :</p>
+                              <div className="h-28 flex items-center justify-center relative overflow-hidden bg-white">
+                                {signatureValet ? (
+                                  <img src={signatureValet} alt="Valet signature" className="h-full object-contain" />
+                                ) : (
+                                  <span className="text-[10px] text-slate-400 italic font-semibold">Tanda Tangan Belum Ada</span>
+                                )}
+                              </div>
+                              <p className="border-t border-slate-950 pt-1.5 font-bold uppercase tracking-wide">
+                                {valetName}
+                              </p>
+                              <p className="text-[10px] text-slate-500 font-semibold mt-0.5">Tim Linen IKM</p>
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     </div>
+                  )}
 
-                    {/* Dual Signatures */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                      <SignatureInput
-                        title="Tanda Tangan Petugas IKM"
-                        value={signatureValet}
-                        onChange={setSignatureValet}
-                        isEditable={true}
-                      />
-                      <SignatureInput
-                        title="Tanda Tangan Penerima Rumah Sakit"
-                        value={signatureHospital}
-                        onChange={setSignatureHospital}
-                        isEditable={true}
-                      />
+                  {/* Form Error Message */}
+                  {errorMsg && (
+                    <div className="p-4 bg-rose-50 border border-rose-100 text-rose-700 text-xs font-semibold rounded-xl flex items-start gap-2.5 animate-shake">
+                      <AlertCircle className="h-4 w-4 text-rose-500 shrink-0 mt-0.5" />
+                      <span>{errorMsg}</span>
+                    </div>
+                  )}
+
+                  {/* Actions Footer */}
+                  <div className="flex items-center justify-between border-t border-slate-200 pt-6 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedTx(null)}
+                      className="px-4 py-2.5 bg-slate-100 text-slate-700 hover:bg-slate-250 active:scale-95 font-bold text-xs rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+                    >
+                      Batal
+                    </button>
+
+                    <div className="flex items-center gap-3">
+                      {processTab === 'sj' && (
+                        <button
+                          type="button"
+                          onClick={handlePrintActive}
+                          className="px-4 py-2.5 bg-slate-800 text-white hover:bg-slate-900 active:scale-95 font-bold text-xs rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Printer className="h-4 w-4" />
+                          Cetak Surat Jalan
+                        </button>
+                      )}
+                      <button
+                        type="submit"
+                        disabled={submitting}
+                        className="px-5 py-2.5 bg-[#126776] text-white hover:bg-[#0f5460] active:scale-95 font-bold text-xs rounded-xl transition flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                      >
+                        {submitting ? (
+                          <>
+                            <RefreshCw className="h-4 w-4 animate-spin" />
+                            Menyimpan...
+                          </>
+                        ) : (
+                          <>
+                            <Save className="h-4 w-4" />
+                            Kirim & Simpan
+                          </>
+                        )}
+                      </button>
                     </div>
                   </div>
-                ) : (
-                  // TAB: SURAT JALAN PREVIEW (EDITABLE SYNCED VIEW)
-                  <div className="space-y-6">
-                    {/* Paper Document Preview Container */}
-                    <div id="print-document" className="max-w-[800px] mx-auto bg-white border border-slate-300 rounded-xl p-8 shadow-md text-slate-800 font-sans">
-                      {/* Header */}
-                      <div className="flex flex-row items-center justify-between pb-4 border-b-2 border-slate-900 gap-4">
-                        <div className="flex items-center gap-3">
-                          <img src={ikmLogo} alt="IKM Logo" className="h-14 object-contain" />
-                          <div>
-                            <h2 className="text-md sm:text-lg font-bold uppercase tracking-tight text-slate-900 leading-none">PT. INTERSOLUSI KARYA MANDIRI</h2>
-                            <p className="text-[10px] text-slate-500 font-semibold mt-1">Jl. Pringgondani No. 101, Cimanggis, Depok, Jawa Barat</p>
-                            <p className="text-[10px] text-slate-500 font-semibold mt-0.5">HP: 08118871101 / 08161986580</p>
+                </form>
+              )}
+            </div>
+          ) : (
+            // ════════════════════════ LIST VIEW ════════════════════════
+            <div className="space-y-6">
+              {/* Redesigned Filters Bar */}
+              <div className="bg-white p-5 rounded-2xl border border-slate-150 shadow-sm space-y-4">
+                <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-center justify-between">
+
+                  {/* Search Input */}
+                  <div className="relative flex-1">
+                    <Search className="absolute inset-y-0 left-3.5 my-auto h-4 w-4 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder={
+                        activeTab === 'history'
+                          ? "Cari nomor form, petugas, atau catatan..."
+                          : "Cari nomor SJ, form asal, valet, atau penerima..."
+                      }
+                      value={searchQuery}
+                      onChange={e => setSearchQuery(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] transition-all"
+                    />
+                  </div>
+
+                  {/* Filter Controls Row */}
+                  <div className="flex flex-wrap items-center gap-3">
+
+                    {/* Unified Date Range Group */}
+                    <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-xs">
+                      <Calendar className="h-4 w-4 text-slate-400" />
+                      <input
+                        type="date"
+                        value={startDate}
+                        onChange={e => setStartDate(e.target.value)}
+                        className="bg-transparent border-none text-slate-700 outline-none w-28 text-center cursor-pointer font-medium"
+                      />
+                      <span className="text-slate-400 font-semibold">s/d</span>
+                      <input
+                        type="date"
+                        value={endDate}
+                        onChange={e => setEndDate(e.target.value)}
+                        className="bg-transparent border-none text-slate-700 outline-none w-28 text-center cursor-pointer font-medium"
+                      />
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => { setSearchQuery(''); setStartDate(''); setEndDate(''); }}
+                        className="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-xl transition cursor-pointer active:scale-95 border border-slate-200"
+                        title="Reset Filter"
+                      >
+                        <RefreshCw className="h-4 w-4" />
+                      </button>
+                    </div>
+
+                  </div>
+                </div>
+              </div>
+
+              {activeTab === 'history' ? (
+                // TAB: SHORTAGES LIST
+                <div className="space-y-4">
+                  {loadingTransactions ? (
+                    <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center text-slate-400 font-medium flex flex-col items-center gap-3">
+                      <RefreshCw className="h-6 w-6 animate-spin text-teal-600" />
+                      <span>Memuat daftar transaksi kurang kirim...</span>
+                    </div>
+                  ) : filteredShortageTransactions.length === 0 ? (
+                    <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center text-slate-400 font-medium flex flex-col items-center gap-2">
+                      <CheckCircle2 className="h-8 w-8 text-teal-500 mb-2" />
+                      <span className="text-slate-700 font-bold text-sm">
+                        {shortageTransactions.length === 0 ? "Tidak Ada Kurang Kirim Linen" : "Tidak Ada Transaksi Ditemukan"}
+                      </span>
+                      <span className="text-xs text-slate-400 mt-0.5">
+                        {shortageTransactions.length === 0
+                          ? "Semua pengiriman linen kotor telah lengkap diselesaikan."
+                          : "Tidak ada transaksi yang sesuai dengan filter atau pencarian Anda."}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                      {filteredShortageTransactions.map(tx => (
+                        <div key={tx.id} className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm hover:shadow-md transition flex flex-col justify-between gap-5 relative overflow-hidden group">
+                          {/* Top banner accent */}
+                          <div className="absolute top-0 left-0 right-0 h-1.5 bg-[#126776]" />
+
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-xs font-black text-slate-800 bg-slate-100 px-3 py-1.5 rounded-xl">{tx.form_number}</span>
+                              <span className="text-[10px] font-bold text-rose-500 bg-rose-50 border border-rose-100 px-2.5 py-1 rounded-lg">
+                                Shortage
+                              </span>
+                            </div>
+
+                            <div className="space-y-2 pt-2 border-t border-slate-100">
+                              <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                                <Calendar className="h-4 w-4 text-slate-400" />
+                                <span>{new Date(tx.pickup_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
+                              </div>
+                              <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                                <User className="h-4 w-4 text-slate-400" />
+                                <span>Petugas: {tx.user_pickup_name}</span>
+                              </div>
+                            </div>
                           </div>
+
+                          {/* Shortage info highlight */}
+                          <div className="flex items-center justify-between bg-rose-50/50 border border-rose-100/60 p-3 rounded-2xl">
+                            <div className="text-left">
+                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block">Jenis Linen</span>
+                              <span className="text-sm font-extrabold text-slate-700">{tx.shortage_items_count} item</span>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block">Total Kekurangan</span>
+                              <span className="text-sm font-extrabold text-rose-600">{tx.total_shortage_qty} PCS</span>
+                            </div>
+                          </div>
+
+                          {/* Action */}
+                          <button
+                            onClick={() => handleSelectTransaction(tx)}
+                            className="w-full py-2.5 bg-[#126776] text-white hover:bg-[#0f5460] font-bold text-xs rounded-xl active:scale-[0.98] transition flex items-center justify-center gap-1.5 cursor-pointer"
+                          >
+                            <Truck className="h-4 w-4" />
+                            Proses Pengiriman
+                          </button>
                         </div>
-                        <div className="text-right">
-                          <h1 className="text-xl sm:text-2xl font-black tracking-widest text-slate-900 leading-none">SURAT JALAN</h1>
-                          <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-wider">No. (Otomatis)</p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                // TAB: SJ LIST (HISTORY)
+                <div className="space-y-4">
+                  {loadingSj ? (
+                    <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center text-slate-400 font-medium flex flex-col items-center gap-3">
+                      <RefreshCw className="h-6 w-6 animate-spin text-teal-600" />
+                      <span>Memuat riwayat Surat Jalan...</span>
+                    </div>
+                  ) : filteredSjList.length === 0 ? (
+                    <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center text-slate-400 font-medium flex flex-col items-center gap-2">
+                      <FileText className="h-8 w-8 text-slate-300 mb-2" />
+                      <span className="text-slate-700 font-bold text-sm">
+                        {sjList.length === 0 ? "Belum Ada Surat Jalan" : "Tidak Ada Surat Jalan Ditemukan"}
+                      </span>
+                      <span className="text-xs text-slate-400 mt-0.5">
+                        {sjList.length === 0
+                          ? "Surat Jalan pengiriman kurang kirim belum pernah dibuat."
+                          : "Tidak ada Surat Jalan yang sesuai dengan filter atau pencarian Anda."}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                      {filteredSjList.map(sj => (
+                        <div key={sj.id} className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm hover:shadow-md transition flex flex-col justify-between gap-5 relative overflow-hidden group">
+                          {/* Top accent */}
+                          <div className="absolute top-0 left-0 right-0 h-1.5 bg-[#678083]" />
+
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-xs font-black text-slate-800 bg-slate-100 px-3 py-1.5 rounded-xl">{sj.surat_jalan_number}</span>
+                              <span className="text-[10px] font-bold text-teal-600 bg-teal-50 border border-teal-100 px-2.5 py-1 rounded-lg">
+                                SJ Kurang
+                              </span>
+                            </div>
+
+                            <div className="space-y-2 pt-2 border-t border-slate-100">
+                              <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                                <Calendar className="h-4 w-4 text-slate-400" />
+                                <span>{new Date(sj.delivery_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                              </div>
+                              <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                                <User className="h-4 w-4 text-slate-400" />
+                                <span>Valet: {sj.valet_name}</span>
+                              </div>
+                              <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                                <Truck className="h-4 w-4 text-slate-400" />
+                                <span>No. Kendaraan: {sj.vehicle_number || '—'}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Summary info */}
+                          <div className="flex items-center justify-between bg-slate-50 border border-slate-100 p-3 rounded-2xl">
+                            <div className="text-left">
+                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block">Form Asal</span>
+                              <span className="text-xs font-bold text-slate-700">{sj.original_form_number}</span>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block">Total Kirim</span>
+                              <span className="text-sm font-extrabold text-teal-600">{sj.total_qty_delivered} PCS</span>
+                            </div>
+                          </div>
+
+                          {/* Action */}
+                          <button
+                            onClick={() => handleViewSj(sj.id)}
+                            className="w-full py-2.5 bg-[#678083] hover:bg-[#5f7578] text-white font-bold text-xs rounded-xl active:scale-[0.98] transition flex items-center justify-center gap-1.5 cursor-pointer"
+                          >
+                            <Printer className="h-4 w-4" />
+                            Lihat Surat Jalan
+                          </button>
                         </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ════════════════════════ VIEW SJ MODAL (FULL PRINT-READY PREVIEW) ════════════════════════ */}
+        {viewingSj && createPortal(
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 overflow-y-auto no-print">
+            <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-[840px] flex flex-col overflow-hidden max-h-[90vh] animate-[scaleUp_0.2s_ease-out]">
+              {/* Modal Header */}
+              <div className="p-5 border-b border-slate-150 flex items-center justify-between gap-4 shrink-0">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-800">Detail Surat Jalan Kurang Kirim</h3>
+                  <p className="text-[10px] text-slate-400 font-semibold mt-0.5">{viewingSj.surat_jalan_number}</p>
+                </div>
+                <button
+                  onClick={() => setViewingSj(null)}
+                  className="h-8 w-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-450 hover:text-slate-650 transition active:scale-90"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="p-6 overflow-y-auto flex-1 bg-slate-50">
+                <div id="print-document" className="bg-white border border-slate-200 text-slate-850 shadow-sm overflow-hidden">
+                  {/* Letterhead Image */}
+                  <img src={kopSuratIkm} alt="Kop Surat IKM" className="w-full object-cover" />
+
+                  <div className="px-8 pb-8 pt-0">
+                    {/* Paper Header */}
+                    <div className="text-center mt-[-65px] mb-4">
+                      <h1 className="text-xl font-black tracking-widest text-slate-900 leading-none">SURAT JALAN</h1>
+                      <p className="text-xs font-bold text-slate-500 mt-2 uppercase tracking-wider">No. {viewingSj.surat_jalan_number}</p>
+                    </div>
+
+                    {/* Info block */}
+                    <div className="grid grid-cols-2 gap-4 py-5 border-b border-slate-200 text-[11px] font-semibold text-slate-600">
+                      <div className="space-y-1.5">
+                        <p className="flex"><span className="w-36 font-bold text-slate-400">Kepada Yth:</span> <span className="font-bold text-slate-900">{viewingSj.recipient_name}</span></p>
+                        <p className="flex"><span className="w-36 font-bold text-slate-400">Tanggal Pengambilan:</span> <span className="text-slate-800">{viewingSj.original_pickup_date ? new Date(viewingSj.original_pickup_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '—'}</span></p>
+                        <p className="flex"><span className="w-36 font-bold text-slate-400">Form Transaksi Asal:</span> <span className="text-slate-800">{viewingSj.original_form_number || '—'}</span></p>
                       </div>
-
-                      {/* Meta Columns */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 py-6 text-xs border-b border-slate-200">
-                        {/* Left Side */}
-                        <div className="space-y-2.5">
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-slate-500 w-36 tracking-wider">Kepada Yth:</span>
-                            <input
-                              type="text"
-                              value={recipientName}
-                              onChange={e => setRecipientName(e.target.value)}
-                              className="flex-1 px-2.5 py-1.5 border border-slate-200 hover:border-slate-350 focus:border-teal-500 outline-none rounded-lg font-bold text-slate-800 transition"
-                            />
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-slate-500 w-36 tracking-wider">Tanggal Pengambilan:</span>
-                            <input
-                              type="text"
-                              disabled
-                              value={selectedTx?.pickup_date ? new Date(selectedTx.pickup_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '—'}
-                              className="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-200 outline-none rounded-lg font-semibold text-slate-500 select-none cursor-not-allowed"
-                            />
-                          </div>
-                        </div>
-
-                        {/* Right Side */}
-                        <div className="space-y-2.5">
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-slate-500 w-36 tracking-wider">Tanggal Pengiriman:</span>
-                            <input
-                              type="datetime-local"
-                              value={deliveryDate}
-                              onChange={e => setDeliveryDate(e.target.value)}
-                              className="flex-1 px-2.5 py-1.5 border border-slate-200 hover:border-slate-350 focus:border-teal-500 outline-none rounded-lg font-semibold text-slate-700 transition"
-                            />
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-slate-500 w-36 tracking-wider">No. Kendaraan:</span>
-                            <input
-                              type="text"
-                              placeholder="Ketik No. Kendaraan..."
-                              value={vehicleNumber}
-                              onChange={e => setVehicleNumber(e.target.value)}
-                              className="flex-1 px-2.5 py-1.5 border border-slate-200 hover:border-slate-350 focus:border-teal-500 outline-none rounded-lg font-semibold text-slate-700 transition"
-                            />
-                          </div>
-                        </div>
+                      <div className="space-y-1.5 text-right sm:text-left sm:pl-10">
+                        <p className="flex"><span className="w-36 font-bold text-slate-400">Tanggal Pengiriman:</span> <span className="text-slate-800">{new Date(viewingSj.delivery_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</span></p>
+                        <p className="flex"><span className="w-36 font-bold text-slate-400">Jam:</span> <span className="text-slate-800">{new Date(viewingSj.delivery_date).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB</span></p>
+                        <p className="flex"><span className="w-36 font-bold text-slate-400">No. Kendaraan:</span> <span className="text-slate-800">{viewingSj.vehicle_number || '—'}</span></p>
                       </div>
+                    </div>
 
-                      {/* Items Table */}
-                      <div className="py-6">
+                    {/* Items Tables */}
+                    <div className="py-6 space-y-8">
+                      {/* Section 1: Ringkasan Global */}
+                      <div className="space-y-3">
+                        <h4 className="text-[10px] font-black text-[#126776] uppercase tracking-widest border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
+                          <span className="h-2 w-2 rounded-full bg-[#126776]"></span>
+                          Ringkasan Utama (Halaman 1)
+                        </h4>
                         <table className="w-full text-left border-collapse border border-slate-900 text-xs font-semibold">
                           <thead>
-                            <tr className="bg-slate-100 text-slate-900 uppercase font-black tracking-wider border-b border-slate-900 text-[10px]">
+                            <tr className="bg-slate-100 text-slate-900 uppercase font-black border-b border-slate-900 text-[10px] tracking-wider">
                               <th className="px-4 py-2.5 border-r border-slate-900 text-center w-12">No</th>
                               <th className="px-4 py-2.5 border-r border-slate-900 text-center">Nama Barang</th>
                               <th className="px-4 py-2.5 border-r border-slate-900 text-center w-28">Jumlah Barang</th>
@@ -1250,503 +1745,177 @@ export default function KurangKirimLinen() {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-900 border-b border-slate-900">
-                            {shortageDetails.map((item, idx) => {
-                              const delivObj = deliveriesMap[item.id] || { qtyDelivered: '', notes: '' };
-                              const qtyDelivered = parseInt(delivObj.qtyDelivered) || 0;
-                              const notes = delivObj.notes || '';
-                              const calculatedWeight = parseFloat(item.grammage || 0) * qtyDelivered;
+                            {(() => {
+                              const summary = {};
+                              sjDetails.forEach(item => {
+                                const qty = parseInt(item.qty_delivered || 0);
+                                if (qty <= 0) return;
 
-                              // Only show items with Qty Kirim > 0 in print preview
-                              if (qtyDelivered <= 0) return null;
+                                const key = item.hospital_linen_id || getLinenDisplayName(item);
+                                if (!summary[key]) {
+                                  summary[key] = {
+                                    ...item,
+                                    qty_delivered: 0,
+                                    notesList: []
+                                  };
+                                }
+                                summary[key].qty_delivered += qty;
+                                if (item.notes && item.notes.trim() !== '' && item.notes !== '—') {
+                                  summary[key].notesList.push(item.notes.trim());
+                                }
+                              });
 
-                              return (
-                                <tr key={item.id} className="text-slate-800">
-                                  <td className="px-4 py-3 border-r border-slate-900 text-center font-bold">{idx + 1}</td>
-                                  <td className="px-4 py-3 border-r border-slate-900">
-                                    <div>{getLinenDisplayName(item)}</div>
-                                    {item.room_name && (
-                                      <span className="inline-flex mt-1 items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
-                                        {item.room_name}
-                                      </span>
-                                    )}
-                                  </td>
-                                  <td className="px-4 py-3 border-r border-slate-900 text-center">
-                                    <input
-                                      type="number"
-                                      min="0"
-                                      max={item.remaining_shortage}
-                                      value={deliveriesMap[item.id]?.qtyDelivered !== undefined ? deliveriesMap[item.id].qtyDelivered : ''}
-                                      onChange={e => {
-                                        const val = e.target.value === '' ? '' : Math.min(item.remaining_shortage, Math.max(0, parseInt(e.target.value) || 0));
-                                        setDeliveriesMap(prev => ({ ...prev, [item.id]: { ...prev[item.id], qtyDelivered: val } }));
-                                      }}
-                                      className="w-16 text-center border border-slate-200 rounded p-1 font-bold inline-block"
-                                    />
-                                  </td>
-                                  <td className="px-4 py-3 border-r border-slate-900 text-center font-bold">
-                                    {calculatedWeight ? calculatedWeight.toLocaleString('id-ID') : '—'}
-                                  </td>
-                                  <td className="px-4 py-3">
-                                    <input
-                                      type="text"
-                                      placeholder="keterangan..."
-                                      value={deliveriesMap[item.id]?.notes || ''}
-                                      onChange={e => {
-                                        const val = e.target.value;
-                                        setDeliveriesMap(prev => ({ ...prev, [item.id]: { ...prev[item.id], notes: val } }));
-                                      }}
-                                      className="w-full border border-transparent hover:border-slate-200 focus:border-teal-500 rounded p-1"
-                                    />
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                            
-                            {/* Empty State warning inside tab table */}
-                            {Object.values(deliveriesMap).every(val => (parseInt(val?.qtyDelivered) || 0) <= 0) && (
-                              <tr>
-                                <td colSpan="5" className="px-4 py-8 text-center text-slate-400 italic">
-                                  Belum ada barang yang dikirim. Masukkan jumlah kirim di tab "Form Update" atau di kolom jumlah di atas.
-                                </td>
-                              </tr>
-                            )}
+                              const globalDetailsList = Object.values(summary).map(item => ({
+                                ...item,
+                                notes: item.notesList.length > 0 ? item.notesList.join('; ') : '—'
+                              }));
+
+                              if (globalDetailsList.length === 0) {
+                                return (
+                                  <tr>
+                                    <td colSpan="5" className="px-4 py-8 text-center text-slate-400 italic">
+                                      Tidak ada data pengiriman.
+                                    </td>
+                                  </tr>
+                                );
+                              }
+
+                              return globalDetailsList.map((item, idx) => {
+                                const calculatedWeight = parseFloat(item.grammage || 0) * item.qty_delivered;
+                                return (
+                                  <tr key={item.id} className="text-slate-800">
+                                    <td className="px-4 py-3 border-r border-slate-900 text-center font-bold">{idx + 1}</td>
+                                    <td className="px-4 py-3 border-r border-slate-900">{getLinenDisplayName(item)}</td>
+                                    <td className="px-4 py-3 border-r border-slate-900 text-center font-bold">
+                                      {item.qty_delivered}
+                                    </td>
+                                    <td className="px-4 py-3 border-r border-slate-900 text-center font-bold">
+                                      {calculatedWeight ? calculatedWeight.toLocaleString('id-ID') : '—'}
+                                    </td>
+                                    <td className="px-4 py-3 text-slate-550 italic">
+                                      {item.notes}
+                                    </td>
+                                  </tr>
+                                );
+                              });
+                            })()}
                           </tbody>
                         </table>
                       </div>
 
-                      {/* Signatures & Notes */}
-                      <div className="grid grid-cols-2 gap-10 pt-10 text-center text-xs font-bold text-slate-900">
-                        {/* Left signature block */}
-                        <div className="space-y-4">
-                          <p>Di Terima Oleh :</p>
-                          <div className="h-28 border border-slate-200 rounded-xl bg-slate-50/50 flex items-center justify-center relative overflow-hidden">
-                            {signatureHospital ? (
-                              <img src={signatureHospital} alt="Hospital signature" className="h-full object-contain" />
-                            ) : (
-                              <span className="text-[10px] text-slate-400 italic font-semibold">Tanda Tangan Belum Ada</span>
-                            )}
-                          </div>
-                          <p className="border-t border-slate-950 pt-1.5 font-bold uppercase tracking-wide">
-                            {hospitalStaff || '(Petugas RS)'}
-                          </p>
-                        </div>
+                      {/* Section 2: Rincian Unit / Ruangan */}
+                      {(() => {
+                        const roomGroups = {};
+                        sjDetails.forEach(item => {
+                          const qty = parseInt(item.qty_delivered || 0);
+                          if (qty <= 0) return;
 
-                        {/* Right signature block */}
-                        <div className="space-y-4">
-                          <p>Di Serahkan Oleh :</p>
-                          <div className="h-28 border border-slate-200 rounded-xl bg-slate-50/50 flex items-center justify-center relative overflow-hidden">
-                            {signatureValet ? (
-                              <img src={signatureValet} alt="Valet signature" className="h-full object-contain" />
-                            ) : (
-                              <span className="text-[10px] text-slate-400 italic font-semibold">Tanda Tangan Belum Ada</span>
-                            )}
+                          const rName = item.room_name || 'Tanpa Ruangan';
+                          if (!roomGroups[rName]) {
+                            roomGroups[rName] = [];
+                          }
+                          roomGroups[rName].push(item);
+                        });
+
+                        if (Object.keys(roomGroups).length === 0) return null;
+
+                        return Object.entries(roomGroups).map(([rName, roomItems]) => (
+                          <div key={rName} className="space-y-3 pt-4 border-t border-slate-100">
+                            <h4 className="text-[10px] font-black text-[#1ea59e] uppercase tracking-widest flex items-center gap-1.5">
+                              <span className="h-2 w-2 rounded-full bg-[#1ea59e]"></span>
+                              Rincian Unit: {rName} (Halaman Selanjutnya)
+                            </h4>
+                            <table className="w-full text-left border-collapse border border-slate-900 text-xs font-semibold">
+                              <thead>
+                                <tr className="bg-slate-100 text-slate-900 uppercase font-black tracking-wider border-b border-slate-900 text-[10px]">
+                                  <th className="px-4 py-2.5 border-r border-slate-900 text-center w-12">No</th>
+                                  <th className="px-4 py-2.5 border-r border-slate-900 text-center">Nama Barang</th>
+                                  <th className="px-4 py-2.5 border-r border-slate-900 text-center w-28">Jumlah Barang</th>
+                                  <th className="px-4 py-2.5 border-r border-slate-900 text-center w-28">Berat (Gram)</th>
+                                  <th className="px-4 py-2.5 text-center">Keterangan</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-900 border-b border-slate-900">
+                                {roomItems.map((item, idx) => {
+                                  const calculatedWeight = parseFloat(item.grammage || 0) * (item.qty_delivered || 0);
+                                  return (
+                                    <tr key={item.id} className="text-slate-800">
+                                      <td className="px-4 py-3 border-r border-slate-900 text-center font-bold">{idx + 1}</td>
+                                      <td className="px-4 py-3 border-r border-slate-900">
+                                        <div>{getLinenDisplayName(item)}</div>
+                                      </td>
+                                      <td className="px-4 py-3 border-r border-slate-900 text-center font-bold">
+                                        {item.qty_delivered}
+                                      </td>
+                                      <td className="px-4 py-3 border-r border-slate-900 text-center font-bold">
+                                        {calculatedWeight ? calculatedWeight.toLocaleString('id-ID') : '—'}
+                                      </td>
+                                      <td className="px-4 py-3 text-slate-500 italic">
+                                        {item.notes || '—'}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
                           </div>
-                          <p className="border-t border-slate-950 pt-1.5 font-bold uppercase tracking-wide">
-                            {valetName}
-                          </p>
+                        ));
+                      })()}
+                    </div>
+
+                    {/* Signatures */}
+                    <div className="grid grid-cols-2 gap-10 pt-8 text-center text-[11px] font-bold text-slate-900">
+                      <div className="space-y-3">
+                        <p>Di Terima Oleh :</p>
+                        <div className="h-24 flex items-center justify-center overflow-hidden bg-white">
+                          {viewingSj.signature_hospital ? (
+                            <img src={viewingSj.signature_hospital} alt="Hospital recipient signature" className="h-full object-contain" />
+                          ) : (
+                            <span className="text-[10px] text-slate-400 italic">Tidak ada tanda tangan</span>
+                          )}
                         </div>
+                        <p className="border-t border-slate-950 pt-1.5 font-bold uppercase tracking-wider">{viewingSj.hospital_staff || viewingSj.recipient_name || '(Petugas RS)'}</p>
+                        <p className="text-[10px] text-slate-500 font-semibold mt-0.5">Tim Linen RS</p>
+                      </div>
+                      <div className="space-y-3">
+                        <p>Di Serahkan Oleh :</p>
+                        <div className="h-24 flex items-center justify-center overflow-hidden bg-white">
+                          {viewingSj.signature_valet ? (
+                            <img src={viewingSj.signature_valet} alt="Valet courier signature" className="h-full object-contain" />
+                          ) : (
+                            <span className="text-[10px] text-slate-400 italic">Tidak ada tanda tangan</span>
+                          )}
+                        </div>
+                        <p className="border-t border-slate-950 pt-1.5 font-bold uppercase tracking-wider">{viewingSj.valet_name}</p>
+                        <p className="text-[10px] text-slate-500 font-semibold mt-0.5">Tim Linen IKM</p>
                       </div>
                     </div>
                   </div>
-                )}
-
-                {/* Form Error Message */}
-                {errorMsg && (
-                  <div className="p-4 bg-rose-50 border border-rose-100 text-rose-700 text-xs font-semibold rounded-xl flex items-start gap-2.5 animate-shake">
-                    <AlertCircle className="h-4 w-4 text-rose-500 shrink-0 mt-0.5" />
-                    <span>{errorMsg}</span>
-                  </div>
-                )}
-
-                {/* Actions Footer */}
-                <div className="flex items-center justify-between border-t border-slate-200 pt-6 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedTx(null)}
-                    className="px-4 py-2.5 bg-slate-100 text-slate-700 hover:bg-slate-250 active:scale-95 font-bold text-xs rounded-xl transition flex items-center gap-1.5 cursor-pointer"
-                  >
-                    Batal
-                  </button>
-
-                  <div className="flex items-center gap-3">
-                    {processTab === 'sj' && (
-                      <button
-                        type="button"
-                        onClick={handlePrintActive}
-                        className="px-4 py-2.5 bg-slate-800 text-white hover:bg-slate-900 active:scale-95 font-bold text-xs rounded-xl transition flex items-center gap-1.5 cursor-pointer"
-                      >
-                        <Printer className="h-4 w-4" />
-                        Cetak Surat Jalan
-                      </button>
-                    )}
-                    <button
-                      type="submit"
-                      disabled={submitting}
-                      className="px-5 py-2.5 bg-[#126776] text-white hover:bg-[#0f5460] active:scale-95 font-bold text-xs rounded-xl transition flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
-                    >
-                      {submitting ? (
-                        <>
-                          <RefreshCw className="h-4 w-4 animate-spin" />
-                          Menyimpan...
-                        </>
-                      ) : (
-                        <>
-                          <Save className="h-4 w-4" />
-                          Kirim & Simpan
-                        </>
-                      )}
-                    </button>
-                  </div>
                 </div>
-              </form>
-            )}
-          </div>
-        ) : (
-          // ════════════════════════ LIST VIEW ════════════════════════
-          <div className="space-y-6">
-            {/* Redesigned Filters Bar */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-150 shadow-sm space-y-4">
-              <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-center justify-between">
+              </div>
 
-                {/* Search Input */}
-                <div className="relative flex-1">
-                  <Search className="absolute inset-y-0 left-3.5 my-auto h-4 w-4 text-slate-400" />
-                  <input
-                    type="text"
-                    placeholder={
-                      activeTab === 'history'
-                        ? "Cari nomor form, petugas, atau catatan..."
-                        : "Cari nomor SJ, form asal, valet, atau penerima..."
-                    }
-                    value={searchQuery}
-                    onChange={e => setSearchQuery(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] transition-all"
-                  />
-                </div>
-
-                {/* Filter Controls Row */}
-                <div className="flex flex-wrap items-center gap-3">
-
-                  {/* Unified Date Range Group */}
-                  <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl text-xs">
-                    <Calendar className="h-4 w-4 text-slate-400" />
-                    <input
-                      type="date"
-                      value={startDate}
-                      onChange={e => setStartDate(e.target.value)}
-                      className="bg-transparent border-none text-slate-700 outline-none w-28 text-center cursor-pointer font-medium"
-                    />
-                    <span className="text-slate-400 font-semibold">s/d</span>
-                    <input
-                      type="date"
-                      value={endDate}
-                      onChange={e => setEndDate(e.target.value)}
-                      className="bg-transparent border-none text-slate-700 outline-none w-28 text-center cursor-pointer font-medium"
-                    />
-                  </div>
-
-                  {/* Action Buttons */}
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => { setSearchQuery(''); setStartDate(''); setEndDate(''); }}
-                      className="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-xl transition cursor-pointer active:scale-95 border border-slate-200"
-                      title="Reset Filter"
-                    >
-                      <RefreshCw className="h-4 w-4" />
-                    </button>
-                  </div>
-
-                </div>
+              {/* Modal Footer */}
+              <div className="p-4 border-t border-slate-150 bg-slate-50 flex items-center justify-end gap-3 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setViewingSj(null)}
+                  className="px-4 py-2.5 bg-slate-200 text-slate-700 hover:bg-slate-300 font-bold text-xs rounded-xl active:scale-95 transition cursor-pointer"
+                >
+                  Tutup
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePrintHistory}
+                  className="px-5 py-2.5 bg-[#126776] text-white hover:bg-[#0f5460] font-bold text-xs rounded-xl active:scale-95 transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Printer className="h-4 w-4" />
+                  Cetak Surat Jalan
+                </button>
               </div>
             </div>
-
-            {activeTab === 'history' ? (
-              // TAB: SHORTAGES LIST
-              <div className="space-y-4">
-                {loadingTransactions ? (
-                  <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center text-slate-400 font-medium flex flex-col items-center gap-3">
-                    <RefreshCw className="h-6 w-6 animate-spin text-teal-600" />
-                    <span>Memuat daftar transaksi kurang kirim...</span>
-                  </div>
-                ) : filteredShortageTransactions.length === 0 ? (
-                  <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center text-slate-400 font-medium flex flex-col items-center gap-2">
-                    <CheckCircle2 className="h-8 w-8 text-teal-500 mb-2" />
-                    <span className="text-slate-700 font-bold text-sm">
-                      {shortageTransactions.length === 0 ? "Tidak Ada Kurang Kirim Linen" : "Tidak Ada Transaksi Ditemukan"}
-                    </span>
-                    <span className="text-xs text-slate-400 mt-0.5">
-                      {shortageTransactions.length === 0
-                        ? "Semua pengiriman linen kotor telah lengkap diselesaikan."
-                        : "Tidak ada transaksi yang sesuai dengan filter atau pencarian Anda."}
-                    </span>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                    {filteredShortageTransactions.map(tx => (
-                      <div key={tx.id} className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm hover:shadow-md transition flex flex-col justify-between gap-5 relative overflow-hidden group">
-                        {/* Top banner accent */}
-                        <div className="absolute top-0 left-0 right-0 h-1.5 bg-[#126776]" />
-                        
-                        <div className="space-y-3">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-xs font-black text-slate-800 bg-slate-100 px-3 py-1.5 rounded-xl">{tx.form_number}</span>
-                            <span className="text-[10px] font-bold text-rose-500 bg-rose-50 border border-rose-100 px-2.5 py-1 rounded-lg">
-                              Shortage
-                            </span>
-                          </div>
-
-                          <div className="space-y-2 pt-2 border-t border-slate-100">
-                            <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
-                              <Calendar className="h-4 w-4 text-slate-400" />
-                              <span>{new Date(tx.pickup_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
-                            </div>
-                            <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
-                              <User className="h-4 w-4 text-slate-400" />
-                              <span>Petugas: {tx.user_pickup_name}</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Shortage info highlight */}
-                        <div className="flex items-center justify-between bg-rose-50/50 border border-rose-100/60 p-3 rounded-2xl">
-                          <div className="text-left">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block">Jenis Linen</span>
-                            <span className="text-sm font-extrabold text-slate-700">{tx.shortage_items_count} item</span>
-                          </div>
-                          <div className="text-right">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block">Total Kekurangan</span>
-                            <span className="text-sm font-extrabold text-rose-600">{tx.total_shortage_qty} PCS</span>
-                          </div>
-                        </div>
-
-                        {/* Action */}
-                        <button
-                          onClick={() => handleSelectTransaction(tx)}
-                          className="w-full py-2.5 bg-[#126776] text-white hover:bg-[#0f5460] font-bold text-xs rounded-xl active:scale-[0.98] transition flex items-center justify-center gap-1.5 cursor-pointer"
-                        >
-                          <Truck className="h-4 w-4" />
-                          Proses Pengiriman
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ) : (
-              // TAB: SJ LIST (HISTORY)
-              <div className="space-y-4">
-                {loadingSj ? (
-                  <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center text-slate-400 font-medium flex flex-col items-center gap-3">
-                    <RefreshCw className="h-6 w-6 animate-spin text-teal-600" />
-                    <span>Memuat riwayat Surat Jalan...</span>
-                  </div>
-                ) : filteredSjList.length === 0 ? (
-                  <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center text-slate-400 font-medium flex flex-col items-center gap-2">
-                    <FileText className="h-8 w-8 text-slate-300 mb-2" />
-                    <span className="text-slate-700 font-bold text-sm">
-                      {sjList.length === 0 ? "Belum Ada Surat Jalan" : "Tidak Ada Surat Jalan Ditemukan"}
-                    </span>
-                    <span className="text-xs text-slate-400 mt-0.5">
-                      {sjList.length === 0
-                        ? "Surat Jalan pengiriman kurang kirim belum pernah dibuat."
-                        : "Tidak ada Surat Jalan yang sesuai dengan filter atau pencarian Anda."}
-                    </span>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                    {filteredSjList.map(sj => (
-                      <div key={sj.id} className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm hover:shadow-md transition flex flex-col justify-between gap-5 relative overflow-hidden group">
-                        {/* Top accent */}
-                        <div className="absolute top-0 left-0 right-0 h-1.5 bg-[#678083]" />
-                        
-                        <div className="space-y-3">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-xs font-black text-slate-800 bg-slate-100 px-3 py-1.5 rounded-xl">{sj.surat_jalan_number}</span>
-                            <span className="text-[10px] font-bold text-teal-600 bg-teal-50 border border-teal-100 px-2.5 py-1 rounded-lg">
-                              SJ Kurang
-                            </span>
-                          </div>
-
-                          <div className="space-y-2 pt-2 border-t border-slate-100">
-                            <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
-                              <Calendar className="h-4 w-4 text-slate-400" />
-                              <span>{new Date(sj.delivery_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
-                            </div>
-                            <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
-                              <User className="h-4 w-4 text-slate-400" />
-                              <span>Valet: {sj.valet_name}</span>
-                            </div>
-                            <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
-                              <Truck className="h-4 w-4 text-slate-400" />
-                              <span>No. Kendaraan: {sj.vehicle_number || '—'}</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Summary info */}
-                        <div className="flex items-center justify-between bg-slate-50 border border-slate-100 p-3 rounded-2xl">
-                          <div className="text-left">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block">Form Asal</span>
-                            <span className="text-xs font-bold text-slate-700">{sj.original_form_number}</span>
-                          </div>
-                          <div className="text-right">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block">Total Kirim</span>
-                            <span className="text-sm font-extrabold text-teal-600">{sj.total_qty_delivered} PCS</span>
-                          </div>
-                        </div>
-
-                        {/* Action */}
-                        <button
-                          onClick={() => handleViewSj(sj.id)}
-                          className="w-full py-2.5 bg-[#678083] hover:bg-[#5f7578] text-white font-bold text-xs rounded-xl active:scale-[0.98] transition flex items-center justify-center gap-1.5 cursor-pointer"
-                        >
-                          <Printer className="h-4 w-4" />
-                          Lihat Surat Jalan
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+          </div>,
+          document.body
         )}
-      </div>
-
-      {/* ════════════════════════ VIEW SJ MODAL (FULL PRINT-READY PREVIEW) ════════════════════════ */}
-      {viewingSj && createPortal(
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 overflow-y-auto no-print">
-          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-[840px] flex flex-col overflow-hidden max-h-[90vh] animate-[scaleUp_0.2s_ease-out]">
-            {/* Modal Header */}
-            <div className="p-5 border-b border-slate-150 flex items-center justify-between gap-4 shrink-0">
-              <div>
-                <h3 className="text-sm font-bold text-slate-800">Detail Surat Jalan Kurang Kirim</h3>
-                <p className="text-[10px] text-slate-400 font-semibold mt-0.5">{viewingSj.surat_jalan_number}</p>
-              </div>
-              <button
-                onClick={() => setViewingSj(null)}
-                className="h-8 w-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-450 hover:text-slate-650 transition active:scale-90"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            {/* Modal Body */}
-            <div className="p-6 overflow-y-auto flex-1 bg-slate-50">
-              <div id="print-document" className="bg-white border border-slate-250 rounded-2xl p-8 shadow-sm text-slate-850">
-                {/* Paper Header */}
-                <div className="flex flex-row items-center justify-between pb-4 border-b-2 border-slate-900 gap-4">
-                  <div className="flex items-center gap-3">
-                    <img src={ikmLogo} alt="IKM Logo" className="h-14 object-contain" />
-                    <div>
-                      <h2 className="text-md font-bold uppercase tracking-tight text-slate-900 leading-none">PT. INTERSOLUSI KARYA MANDIRI</h2>
-                      <p className="text-[10px] text-slate-500 font-semibold mt-1">Jl. Pringgondani No. 101, Cimanggis, Depok, Jawa Barat</p>
-                      <p className="text-[10px] text-slate-500 font-semibold mt-0.5">HP: 08118871101 / 08161986580</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <h1 className="text-xl font-black tracking-widest text-slate-900 leading-none">SURAT JALAN</h1>
-                    <p className="text-[10px] font-bold text-slate-500 mt-1 uppercase tracking-wider">No. {viewingSj.surat_jalan_number}</p>
-                  </div>
-                </div>
-
-                {/* Info block */}
-                <div className="grid grid-cols-2 gap-4 py-5 border-b border-slate-200 text-[11px] font-semibold text-slate-600">
-                  <div className="space-y-1.5">
-                    <p className="flex"><span className="w-36 font-bold text-slate-400">Kepada Yth:</span> <span className="font-bold text-slate-900">{viewingSj.recipient_name}</span></p>
-                    <p className="flex"><span className="w-36 font-bold text-slate-400">Tanggal Pengambilan:</span> <span className="text-slate-800">{viewingSj.original_pickup_date ? new Date(viewingSj.original_pickup_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '—'}</span></p>
-                    <p className="flex"><span className="w-36 font-bold text-slate-400">Form Transaksi Asal:</span> <span className="text-slate-800">{viewingSj.original_form_number || '—'}</span></p>
-                  </div>
-                  <div className="space-y-1.5 text-right sm:text-left sm:pl-10">
-                    <p className="flex"><span className="w-36 font-bold text-slate-400">Tanggal Pengiriman:</span> <span className="text-slate-800">{new Date(viewingSj.delivery_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</span></p>
-                    <p className="flex"><span className="w-36 font-bold text-slate-400">Jam:</span> <span className="text-slate-800">{new Date(viewingSj.delivery_date).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB</span></p>
-                    <p className="flex"><span className="w-36 font-bold text-slate-400">No. Kendaraan:</span> <span className="text-slate-800">{viewingSj.vehicle_number || '—'}</span></p>
-                  </div>
-                </div>
-
-                {/* Items Table */}
-                <div className="py-5">
-                  <table className="w-full text-left border-collapse border border-slate-900 text-xs font-semibold">
-                    <thead>
-                      <tr className="bg-slate-100 text-slate-900 uppercase font-black border-b border-slate-900 text-[9px] tracking-wider">
-                        <th className="px-4 py-2 border-r border-slate-900 text-center w-12">No</th>
-                        <th className="px-4 py-2 border-r border-slate-900 text-center">Nama Barang</th>
-                        <th className="px-4 py-2 border-r border-slate-900 text-center w-24">Jumlah</th>
-                        <th className="px-4 py-2 border-r border-slate-900 text-center w-24">Berat (Gram)</th>
-                        <th className="px-4 py-2 text-center">Keterangan</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-900 border-b border-slate-900">
-                      {sjDetails.map((item, idx) => {
-                        const itemWeight = parseFloat(item.grammage || 0) * (item.qty_delivered || 0);
-                        return (
-                          <tr key={item.id} className="text-slate-800">
-                            <td className="px-4 py-2.5 border-r border-slate-900 text-center font-bold">{idx + 1}</td>
-                            <td className="px-4 py-2.5 border-r border-slate-900">{getLinenDisplayName(item)}</td>
-                            <td className="px-4 py-2.5 border-r border-slate-900 text-center font-bold">
-                              {item.qty_delivered}
-                            </td>
-                            <td className="px-4 py-2.5 border-r border-slate-900 text-center font-bold">
-                              {itemWeight ? itemWeight.toLocaleString('id-ID') : '—'}
-                            </td>
-                            <td className="px-4 py-2.5 text-slate-500 italic">{item.notes || '—'}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Signatures */}
-                <div className="grid grid-cols-2 gap-10 pt-8 text-center text-[11px] font-bold text-slate-900">
-                  <div className="space-y-3">
-                    <p>Di Terima Oleh :</p>
-                    <div className="h-24 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-center overflow-hidden">
-                      {viewingSj.signature_hospital ? (
-                        <img src={viewingSj.signature_hospital} alt="Hospital recipient signature" className="h-full object-contain" />
-                      ) : (
-                        <span className="text-[10px] text-slate-400 italic">Tidak ada tanda tangan</span>
-                      )}
-                    </div>
-                    <p className="border-t border-slate-950 pt-1.5 font-bold uppercase tracking-wider">{viewingSj.hospital_staff || viewingSj.recipient_name || '(Petugas RS)'}</p>
-                  </div>
-                  <div className="space-y-3">
-                    <p>Di Serahkan Oleh :</p>
-                    <div className="h-24 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-center overflow-hidden">
-                      {viewingSj.signature_valet ? (
-                        <img src={viewingSj.signature_valet} alt="Valet courier signature" className="h-full object-contain" />
-                      ) : (
-                        <span className="text-[10px] text-slate-400 italic">Tidak ada tanda tangan</span>
-                      )}
-                    </div>
-                    <p className="border-t border-slate-950 pt-1.5 font-bold uppercase tracking-wider">{viewingSj.valet_name}</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Modal Footer */}
-            <div className="p-4 border-t border-slate-150 bg-slate-50 flex items-center justify-end gap-3 shrink-0">
-              <button
-                type="button"
-                onClick={() => setViewingSj(null)}
-                className="px-4 py-2.5 bg-slate-200 text-slate-700 hover:bg-slate-300 font-bold text-xs rounded-xl active:scale-95 transition cursor-pointer"
-              >
-                Tutup
-              </button>
-              <button
-                type="button"
-                onClick={handlePrintHistory}
-                className="px-5 py-2.5 bg-[#126776] text-white hover:bg-[#0f5460] font-bold text-xs rounded-xl active:scale-95 transition flex items-center gap-1.5 cursor-pointer"
-              >
-                <Printer className="h-4 w-4" />
-                Cetak Surat Jalan
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
       </div>
     </div>
   );

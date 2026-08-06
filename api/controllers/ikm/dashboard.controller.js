@@ -155,7 +155,24 @@ export const getDashboardData = async (req, res) => {
 
     // 3. Fetch Rooms Inventory (from mst_hospital_linen_rooms join mst_rooms_rs and mst_linen)
     const roomsQuery = `
-      SELECT hlr.*, hl.linen_id, l.linen_name, r.room_name, r.is_gudang_linen
+      SELECT hlr.*, hl.linen_id, l.linen_name, r.room_name, r.is_gudang_linen,
+             COALESCE((
+               SELECT SUM(td.qty_kotor)
+               FROM tr_linen_transaction_detail td
+               INNER JOIN tr_linen_transaction t ON td.transaction_id = t.id
+               WHERE td.hospital_linen_id = hlr.hospital_linen_id 
+                 AND td.room_id = hlr.room_id
+                 AND t.status = 'PROSES'
+             ), 0) AS qty_cuci,
+             COALESCE((
+               SELECT SUM(td.qty_kotor - td.qty_bersih)
+               FROM tr_linen_transaction_detail td
+               INNER JOIN tr_linen_transaction t ON td.transaction_id = t.id
+               WHERE td.hospital_linen_id = hlr.hospital_linen_id 
+                 AND td.room_id = hlr.room_id
+                 AND t.status = 'SELESAI'
+                 AND td.qty_bersih < td.qty_kotor
+             ), 0) AS qty_kurang
       FROM mst_hospital_linen_rooms hlr
       INNER JOIN mst_hospital_linen hl ON hlr.hospital_linen_id = hl.id
       INNER JOIN mst_linen l ON hl.linen_id = l.id
@@ -266,11 +283,23 @@ export const updateTerpakai = async (req, res) => {
     );
 
     if (existing.length > 0) {
+      const record = existing[0];
       if (type === 'dirty') {
-        await ikmPool.query(
-          "UPDATE mst_hospital_linen_rooms SET qty_dirty = ? WHERE hospital_linen_id = ? AND room_id = ?",
-          [valUpdate, hospitalLinenId, roomId]
-        );
+        const oldDirty = parseInt(record.qty_dirty || 0);
+        const diff = valUpdate - oldDirty;
+        if (diff > 0) {
+          const currentTerpakai = parseInt(record.qty_terpakai || 0);
+          const newTerpakai = Math.max(0, currentTerpakai - diff);
+          await ikmPool.query(
+            "UPDATE mst_hospital_linen_rooms SET qty_dirty = ?, qty_terpakai = ? WHERE hospital_linen_id = ? AND room_id = ?",
+            [valUpdate, newTerpakai, hospitalLinenId, roomId]
+          );
+        } else {
+          await ikmPool.query(
+            "UPDATE mst_hospital_linen_rooms SET qty_dirty = ? WHERE hospital_linen_id = ? AND room_id = ?",
+            [valUpdate, hospitalLinenId, roomId]
+          );
+        }
       } else {
         await ikmPool.query(
           "UPDATE mst_hospital_linen_rooms SET qty_terpakai = ? WHERE hospital_linen_id = ? AND room_id = ?",
@@ -280,7 +309,7 @@ export const updateTerpakai = async (req, res) => {
     } else {
       if (type === 'dirty') {
         await ikmPool.query(
-          "INSERT INTO mst_hospital_linen_rooms (hospital_linen_id, room_id, qty_dirty, stock_in_rs) VALUES (?, ?, ?, 0)",
+          "INSERT INTO mst_hospital_linen_rooms (hospital_linen_id, room_id, qty_dirty, qty_terpakai, stock_in_rs) VALUES (?, ?, ?, 0, 0)",
           [hospitalLinenId, roomId, valUpdate]
         );
       } else {
@@ -289,6 +318,22 @@ export const updateTerpakai = async (req, res) => {
           [hospitalLinenId, roomId, valUpdate]
         );
       }
+    }
+
+    // Get hospital_id to emit socket event
+    const [linens] = await ikmPool.query(
+      "SELECT hospital_id FROM mst_hospital_linen WHERE id = ?",
+      [hospitalLinenId]
+    );
+    const hospitalId = linens[0]?.hospital_id;
+
+    // Emit real-time socket.io event
+    const io = req.app.get('io');
+    if (io && hospitalId) {
+      io.to(`hospital_${hospitalId}`).emit('data_changed', {
+        type: 'STOCK_UPDATE',
+        message: 'Stok ruangan telah diperbarui oleh IKM'
+      });
     }
 
     return res.status(200).json({
@@ -374,6 +419,15 @@ export const updateGudang = async (req, res) => {
       [hospitalLinenId, gudangRoomId, valGudang]
     );
 
+    // Emit real-time socket.io event
+    const io = req.app.get('io');
+    if (io && linen.hospital_id) {
+      io.to(`hospital_${linen.hospital_id}`).emit('data_changed', {
+        type: 'STOCK_UPDATE',
+        message: 'Stok gudang telah diperbarui oleh IKM'
+      });
+    }
+
     return res.status(200).json({
       success: true,
       message: "Data gudang berhasil diperbarui"
@@ -436,6 +490,22 @@ export const updateRoomStock = async (req, res) => {
        ON DUPLICATE KEY UPDATE stock_in_rs = VALUES(stock_in_rs)`,
       [hospitalLinenId, roomId, finalStockInRs]
     );
+
+    // Get hospital_id to emit socket event
+    const [linens] = await ikmPool.query(
+      "SELECT hospital_id FROM mst_hospital_linen WHERE id = ?",
+      [hospitalLinenId]
+    );
+    const hospitalId = linens[0]?.hospital_id;
+
+    // Emit real-time socket.io event
+    const io = req.app.get('io');
+    if (io && hospitalId) {
+      io.to(`hospital_${hospitalId}`).emit('data_changed', {
+        type: 'STOCK_UPDATE',
+        message: 'Stok ruangan telah diperbarui oleh IKM'
+      });
+    }
 
     return res.status(200).json({
       success: true,

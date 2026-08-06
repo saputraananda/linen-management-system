@@ -294,13 +294,15 @@ export const getShortageDeliveryDetail = async (req, res) => {
       `SELECT dd.*, 
               l.linen_name, l.linen_code,
               hl.unit, hl.hospital_linen_name, hl.grammage,
-              s.size_name, c.color_name, m.material_name
+              s.size_name, c.color_name, m.material_name,
+              r.room_name
        FROM tr_kurang_kirim_delivery_detail dd
        INNER JOIN mst_hospital_linen hl ON dd.hospital_linen_id = hl.id
        INNER JOIN mst_linen l ON hl.linen_id = l.id
        LEFT JOIN mst_size s ON l.size_id = s.id
        LEFT JOIN mst_color c ON l.color_id = c.id
        LEFT JOIN mst_material m ON l.material_id = m.id
+       LEFT JOIN mst_rooms_rs r ON dd.room_id = r.id
        WHERE dd.delivery_id = ?
        ORDER BY l.linen_name ASC`,
       [id]

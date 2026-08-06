@@ -86,7 +86,24 @@ export const getDashboardData = async (req, res) => {
 
     // 3. Fetch Rooms Inventory
     const roomsQuery = `
-      SELECT hlr.*, hl.linen_id, l.linen_name, r.room_name, r.is_gudang_linen
+      SELECT hlr.*, hl.linen_id, l.linen_name, r.room_name, r.is_gudang_linen,
+             COALESCE((
+               SELECT SUM(td.qty_kotor)
+               FROM tr_linen_transaction_detail td
+               INNER JOIN tr_linen_transaction t ON td.transaction_id = t.id
+               WHERE td.hospital_linen_id = hlr.hospital_linen_id 
+                 AND td.room_id = hlr.room_id
+                 AND t.status = 'PROSES'
+             ), 0) AS qty_cuci,
+             COALESCE((
+               SELECT SUM(td.qty_kotor - td.qty_bersih)
+               FROM tr_linen_transaction_detail td
+               INNER JOIN tr_linen_transaction t ON td.transaction_id = t.id
+               WHERE td.hospital_linen_id = hlr.hospital_linen_id 
+                 AND td.room_id = hlr.room_id
+                 AND t.status = 'SELESAI'
+                 AND td.qty_bersih < td.qty_kotor
+             ), 0) AS qty_kurang
       FROM mst_hospital_linen_rooms hlr
       INNER JOIN mst_hospital_linen hl ON hlr.hospital_linen_id = hl.id
       INNER JOIN mst_linen l ON hl.linen_id = l.id
@@ -186,6 +203,13 @@ export const updateTerpakai = async (req, res) => {
   try {
     const hospitalId = req.user.id;
     const { hospitalLinenId, roomId, qtyTerpakai, nurseName, type = 'terpakai' } = req.body;
+
+    if (type === 'dirty') {
+      return res.status(403).json({
+        success: false,
+        message: "Akses ditolak. Pengkinian Dirty Utility hanya dapat dilakukan oleh Tim Linen IKM dan Tim RS."
+      });
+    }
 
     if (!hospitalLinenId || !roomId || qtyTerpakai === undefined || !nurseName) {
       return res.status(400).json({

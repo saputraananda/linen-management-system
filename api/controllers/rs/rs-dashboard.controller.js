@@ -85,7 +85,24 @@ export const getDashboardData = async (req, res) => {
 
     // 3. Fetch Rooms Inventory (from mst_hospital_linen_rooms join mst_rooms_rs and mst_linen)
     const roomsQuery = `
-      SELECT hlr.*, hl.linen_id, l.linen_name, r.room_name, r.is_gudang_linen
+      SELECT hlr.*, hl.linen_id, l.linen_name, r.room_name, r.is_gudang_linen,
+             COALESCE((
+               SELECT SUM(td.qty_kotor)
+               FROM tr_linen_transaction_detail td
+               INNER JOIN tr_linen_transaction t ON td.transaction_id = t.id
+               WHERE td.hospital_linen_id = hlr.hospital_linen_id 
+                 AND td.room_id = hlr.room_id
+                 AND t.status = 'PROSES'
+             ), 0) AS qty_cuci,
+             COALESCE((
+               SELECT SUM(td.qty_kotor - td.qty_bersih)
+               FROM tr_linen_transaction_detail td
+               INNER JOIN tr_linen_transaction t ON td.transaction_id = t.id
+               WHERE td.hospital_linen_id = hlr.hospital_linen_id 
+                 AND td.room_id = hlr.room_id
+                 AND t.status = 'SELESAI'
+                 AND td.qty_bersih < td.qty_kotor
+             ), 0) AS qty_kurang
       FROM mst_hospital_linen_rooms hlr
       INNER JOIN mst_hospital_linen hl ON hlr.hospital_linen_id = hl.id
       INNER JOIN mst_linen l ON hl.linen_id = l.id
@@ -173,7 +190,7 @@ export const getDashboardData = async (req, res) => {
 export const updateTerpakai = async (req, res) => {
   try {
     const hospitalId = req.user.id;
-    const { hospitalLinenId, roomId, qtyTerpakai } = req.body;
+    const { hospitalLinenId, roomId, qtyTerpakai, type = 'terpakai' } = req.body;
 
     if (!hospitalLinenId || !roomId || qtyTerpakai === undefined) {
       return res.status(400).json({
@@ -182,11 +199,11 @@ export const updateTerpakai = async (req, res) => {
       });
     }
 
-    const valTerpakai = parseInt(qtyTerpakai || 0);
-    if (valTerpakai < 0) {
+    const valUpdate = parseInt(qtyTerpakai || 0);
+    if (valUpdate < 0) {
       return res.status(400).json({
         success: false,
-        message: "Jumlah terpakai tidak boleh negatif"
+        message: "Jumlah tidak boleh negatif"
       });
     }
 
@@ -237,16 +254,41 @@ export const updateTerpakai = async (req, res) => {
     );
 
     if (existing.length > 0) {
-      await ikmPool.query(
-        "UPDATE mst_hospital_linen_rooms SET qty_terpakai = ? WHERE hospital_linen_id = ? AND room_id = ?",
-        [valTerpakai, hospitalLinenId, roomId]
-      );
+      const record = existing[0];
+      if (type === 'dirty') {
+        const oldDirty = parseInt(record.qty_dirty || 0);
+        const diff = valUpdate - oldDirty;
+        if (diff > 0) {
+          const currentTerpakai = parseInt(record.qty_terpakai || 0);
+          const newTerpakai = Math.max(0, currentTerpakai - diff);
+          await ikmPool.query(
+            "UPDATE mst_hospital_linen_rooms SET qty_dirty = ?, qty_terpakai = ? WHERE hospital_linen_id = ? AND room_id = ?",
+            [valUpdate, newTerpakai, hospitalLinenId, roomId]
+          );
+        } else {
+          await ikmPool.query(
+            "UPDATE mst_hospital_linen_rooms SET qty_dirty = ? WHERE hospital_linen_id = ? AND room_id = ?",
+            [valUpdate, hospitalLinenId, roomId]
+          );
+        }
+      } else {
+        await ikmPool.query(
+          "UPDATE mst_hospital_linen_rooms SET qty_terpakai = ? WHERE hospital_linen_id = ? AND room_id = ?",
+          [valUpdate, hospitalLinenId, roomId]
+        );
+      }
     } else {
-      // If it doesn't exist, create it with qty_terpakai and stock_in_rs = 0
-      await ikmPool.query(
-        "INSERT INTO mst_hospital_linen_rooms (hospital_linen_id, room_id, qty_terpakai, stock_in_rs) VALUES (?, ?, ?, 0)",
-        [hospitalLinenId, roomId, valTerpakai]
-      );
+      if (type === 'dirty') {
+        await ikmPool.query(
+          "INSERT INTO mst_hospital_linen_rooms (hospital_linen_id, room_id, qty_dirty, qty_terpakai, stock_in_rs) VALUES (?, ?, ?, 0, 0)",
+          [hospitalLinenId, roomId, valUpdate]
+        );
+      } else {
+        await ikmPool.query(
+          "INSERT INTO mst_hospital_linen_rooms (hospital_linen_id, room_id, qty_terpakai, stock_in_rs) VALUES (?, ?, ?, 0)",
+          [hospitalLinenId, roomId, valUpdate]
+        );
+      }
     }
 
     const io = req.app.get('io');

@@ -8,8 +8,10 @@ import {
     Save, Undo, ChevronDown
 } from 'lucide-react';
 import exportSuratJalanKurangKirim from '../../ikm/utils/exportSuratJalanKurangKirim.js';
+import kopSuratIkm from '../../../assets/images/kop_surat_ikm.png';
 import exportSerahTerimaLinen from '../../../utils/exportSerahTerimaLinen.js';
 import exportSerahTerimaLinenPDF from '../../../utils/exportSerahTerimaLinenPDF.js';
+import { socket } from '../../../utils/socket';
 
 // Helper to convert string to Title Case
 const toTitleCase = (str) => {
@@ -403,10 +405,44 @@ export default function RSSerahTerima() {
         }
     };
 
+    const activeDetailTxIdRef = useRef(null);
+    useEffect(() => {
+        activeDetailTxIdRef.current = editingTransaction?.transaction?.id || null;
+    }, [editingTransaction]);
+
     // Fetch initial history
     useEffect(() => {
         fetchHistory();
         fetchHospitalInfo();
+
+        const hospitalId = localStorage.getItem('employeeId');
+        if (hospitalId) {
+            socket.connect();
+            socket.emit('join_hospital', hospitalId);
+
+            const handleDataChanged = (event) => {
+                console.log('Realtime socket update in RS-SerahTerima:', event);
+                fetchHistory();
+                if (activeDetailTxIdRef.current) {
+                    axios.get(`/api/rs/transactions/${activeDetailTxIdRef.current}`, {
+                        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+                    }).then(({ data }) => {
+                        if (data?.success) {
+                            setEditingTransaction(data.data);
+                        }
+                    }).catch(err => {
+                        console.error('Error auto-refreshing detail:', err);
+                    });
+                }
+            };
+
+            socket.on('data_changed', handleDataChanged);
+
+            return () => {
+                socket.off('data_changed', handleDataChanged);
+                socket.disconnect();
+            };
+        }
     }, []);
 
     // Fetch history when filters change
@@ -1339,93 +1375,203 @@ export default function RSSerahTerima() {
                                                             </div>
                                                         ) : (
                                                             <div className="space-y-6">
+                                                                <div id="print-document" className="max-w-[800px] mx-auto bg-white border border-slate-200 text-slate-850 shadow-sm overflow-hidden">
+                                                                    {/* Letterhead Image */}
+                                                                    <img src={kopSuratIkm} alt="Kop Surat IKM" className="w-full object-cover" />
 
-                                                                {/* SJ Metadata */}
-                                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-150 text-[11px] text-slate-650 font-semibold leading-relaxed">
-                                                                    <div className="space-y-1">
-                                                                        <p className="flex"><span className="w-28 font-bold text-slate-400 uppercase tracking-wide text-[9px]">Penerima:</span> <span className="font-bold text-slate-900">{selectedSj.recipient_name}</span></p>
-                                                                        <p className="flex"><span className="w-28 font-bold text-slate-400 uppercase tracking-wide text-[9px]">Petugas RS:</span> <span className="font-semibold text-slate-800">{selectedSj.hospital_staff || '—'}</span></p>
-                                                                        <p className="flex"><span className="w-28 font-bold text-slate-400 uppercase tracking-wide text-[9px]">Form Transaksi Asal:</span> <span className="font-bold text-slate-800">{selectedSj.original_form_number || '—'}</span></p>
-                                                                        <p className="flex"><span className="w-28 font-bold text-slate-400 uppercase tracking-wide text-[9px]">Tgl Pengambilan:</span> <span className="font-semibold text-slate-700">{selectedSj.original_pickup_date ? new Date(selectedSj.original_pickup_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '—'}</span></p>
-                                                                    </div>
-                                                                    <div className="space-y-1 border-t sm:border-t-0 sm:border-l border-slate-200 sm:pl-4">
-                                                                        <p className="flex"><span className="w-28 font-bold text-slate-400 uppercase tracking-wide text-[9px]">Tgl Pengiriman:</span> <span className="font-semibold text-slate-800">{new Date(selectedSj.delivery_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</span></p>
-                                                                        <p className="flex"><span className="w-28 font-bold text-slate-400 uppercase tracking-wide text-[9px]">Jam Pengiriman:</span> <span className="font-bold text-slate-900">{new Date(selectedSj.delivery_date).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB</span></p>
-                                                                        <p className="flex"><span className="w-28 font-bold text-slate-400 uppercase tracking-wide text-[9px]">No. Kendaraan:</span> <span className="font-bold text-slate-800">{selectedSj.vehicle_number || '—'}</span></p>
-                                                                        <p className="flex"><span className="w-28 font-bold text-slate-400 uppercase tracking-wide text-[9px]">Valet Pengirim:</span> <span className="font-bold text-slate-900">{selectedSj.valet_name || '—'}</span></p>
-                                                                    </div>
-                                                                </div>
-
-                                                                {/* Delivered Items Table */}
-                                                                <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-sm bg-white">
-                                                                    <table className="w-full text-left text-xs border-collapse">
-                                                                        <thead>
-                                                                            <tr className="bg-slate-50 text-slate-400 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200">
-                                                                                <th className="py-2.5 px-3 text-center">No</th>
-                                                                                <th className="py-2.5 px-3">Nama Barang</th>
-                                                                                <th className="py-2.5 px-3 text-center">Jumlah</th>
-                                                                                <th className="py-2.5 px-3 text-center">Berat (Gram)</th>
-                                                                                <th className="py-2.5 px-3">Keterangan</th>
-                                                                            </tr>
-                                                                        </thead>
-                                                                        <tbody className="divide-y divide-slate-150 font-semibold text-slate-700">
-                                                                            {sjDetails.map((item, idx) => {
-                                                                                const qty = item.qty_delivered || item.qtyDelivered || 0;
-                                                                                const grammage = parseFloat(item.grammage || 0);
-                                                                                const weight = grammage * qty;
-                                                                                const formattedWeight = weight > 0 ? weight.toLocaleString('id-ID') : '—';
-
-                                                                                return (
-                                                                                    <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
-                                                                                        <td className="py-2.5 px-3 text-center text-slate-400">{idx + 1}</td>
-                                                                                        <td className="py-2.5 px-3 text-slate-800 font-bold">{getLinenDisplayName(item)}</td>
-                                                                                        <td className="py-2.5 px-3 text-center text-teal-700 font-bold">{qty} Pcs</td>
-                                                                                        <td className="py-2.5 px-3 text-center text-slate-500">{formattedWeight}</td>
-                                                                                        <td className="py-2.5 px-3 text-slate-500 italic font-normal">{item.notes || '—'}</td>
-                                                                                    </tr>
-                                                                                );
-                                                                            })}
-                                                                        </tbody>
-                                                                    </table>
-                                                                </div>
-
-                                                                {/* Signatures block for SJ */}
-                                                                <div className="grid grid-cols-2 gap-4">
-                                                                    <div className="border border-slate-200 rounded-xl p-3 bg-white text-center flex flex-col justify-between h-[180px]">
-                                                                        <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider block">Diterima Oleh</span>
-                                                                        <div className="flex-1 flex items-center justify-center p-1 bg-slate-50 rounded border border-slate-100 my-2 overflow-hidden">
-                                                                            {selectedSj.signature_hospital ? (
-                                                                                <img src={selectedSj.signature_hospital} alt="Hospital Recipient Signature" className="max-h-[80px] object-contain" />
-                                                                            ) : (
-                                                                                <span className="text-[9px] text-slate-350 italic">Tidak ada</span>
-                                                                            )}
+                                                                    <div className="px-8 pb-8 pt-0">
+                                                                        {/* Paper Header */}
+                                                                        <div className="text-center mt-[-65px] mb-4">
+                                                                            <h1 className="text-xl font-black tracking-widest text-slate-900 leading-none">SURAT JALAN</h1>
+                                                                            <p className="text-xs font-bold text-slate-500 mt-2 uppercase tracking-wider">No. {selectedSj.surat_jalan_number}</p>
                                                                         </div>
-                                                                        <span className="text-[10px] font-bold text-teal-700 truncate">({toTitleCase(selectedSj.hospital_staff || selectedSj.recipient_name || '')})</span>
-                                                                    </div>
-                                                                    <div className="border border-slate-200 rounded-xl p-3 bg-white text-center flex flex-col justify-between h-[180px]">
-                                                                        <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider block">Diserahkan Oleh</span>
-                                                                        <div className="flex-1 flex items-center justify-center p-1 bg-slate-50 rounded border border-slate-100 my-2 overflow-hidden">
-                                                                            {selectedSj.signature_valet ? (
-                                                                                <img src={selectedSj.signature_valet} alt="Valet Courier Signature" className="max-h-[80px] object-contain" />
-                                                                            ) : (
-                                                                                <span className="text-[9px] text-slate-350 italic">Tidak ada</span>
-                                                                            )}
+
+                                                                        {/* Metadata Block */}
+                                                                        <div className="grid grid-cols-2 gap-4 border-b border-slate-200 pb-4 text-xs font-semibold text-slate-650">
+                                                                            <div className="space-y-1.5">
+                                                                                <p className="flex"><span className="w-36 font-bold text-slate-400">Kepada Yth:</span> <span className="text-slate-800 font-bold">{selectedSj.hospital_name || hospitalName}</span></p>
+                                                                                <p className="flex"><span className="w-36 font-bold text-slate-400">Tanggal Pengambilan:</span> <span className="text-slate-800">{selectedSj.original_pickup_date ? new Date(selectedSj.original_pickup_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '—'}</span></p>
+                                                                                <p className="flex"><span className="w-36 font-bold text-slate-400">Form Transaksi Asal:</span> <span className="text-slate-800">{selectedSj.original_form_number || '—'}</span></p>
+                                                                            </div>
+                                                                            <div className="space-y-1.5 text-right sm:text-left sm:pl-10">
+                                                                                <p className="flex"><span className="w-36 font-bold text-slate-400">Tanggal Pengiriman:</span> <span className="text-slate-800">{new Date(selectedSj.delivery_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</span></p>
+                                                                                <p className="flex"><span className="w-36 font-bold text-slate-400">Jam:</span> <span className="text-slate-800">{new Date(selectedSj.delivery_date).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB</span></p>
+                                                                                <p className="flex"><span className="w-36 font-bold text-slate-400">No. Kendaraan:</span> <span className="text-slate-800">{selectedSj.vehicle_number || '—'}</span></p>
+                                                                            </div>
                                                                         </div>
-                                                                        <span className="text-[10px] font-bold text-teal-700 truncate">({toTitleCase(selectedSj.valet_name || '')})</span>
+
+                                                                        {/* Items Tables */}
+                                                                        <div className="py-6 space-y-8">
+                                                                            {/* Section 1: Ringkasan Global */}
+                                                                            <div className="space-y-3">
+                                                                                <h4 className="text-[10px] font-black text-[#126776] uppercase tracking-widest border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
+                                                                                    <span className="h-2 w-2 rounded-full bg-[#126776]"></span>
+                                                                                    Ringkasan Utama (Halaman 1)
+                                                                                </h4>
+                                                                                <table className="w-full text-left border-collapse border border-slate-900 text-xs font-semibold">
+                                                                                    <thead>
+                                                                                        <tr className="bg-slate-100 text-slate-900 uppercase font-black border-b border-slate-900 text-[10px] tracking-wider">
+                                                                                            <th className="px-4 py-2.5 border-r border-slate-900 text-center w-12">No</th>
+                                                                                            <th className="px-4 py-2.5 border-r border-slate-900 text-center">Nama Barang</th>
+                                                                                            <th className="px-4 py-2.5 border-r border-slate-900 text-center w-28">Jumlah Barang</th>
+                                                                                            <th className="px-4 py-2.5 border-r border-slate-900 text-center w-28">Berat (Gram)</th>
+                                                                                            <th className="px-4 py-2.5 text-center">Keterangan</th>
+                                                                                        </tr>
+                                                                                    </thead>
+                                                                                    <tbody className="divide-y divide-slate-900 border-b border-slate-900">
+                                                                                        {(() => {
+                                                                                            const summary = {};
+                                                                                            sjDetails.forEach(item => {
+                                                                                                const qty = parseInt(item.qty_delivered || item.qtyDelivered || 0);
+                                                                                                if (qty <= 0) return;
+
+                                                                                                const key = item.hospital_linen_id || getLinenDisplayName(item);
+                                                                                                if (!summary[key]) {
+                                                                                                    summary[key] = {
+                                                                                                        ...item,
+                                                                                                        qty_delivered: 0,
+                                                                                                        notesList: []
+                                                                                                    };
+                                                                                                }
+                                                                                                summary[key].qty_delivered += qty;
+                                                                                                if (item.notes && item.notes.trim() !== '' && item.notes !== '—') {
+                                                                                                    summary[key].notesList.push(item.notes.trim());
+                                                                                                }
+                                                                                            });
+
+                                                                                            const globalDetailsList = Object.values(summary).map(item => ({
+                                                                                                ...item,
+                                                                                                notes: item.notesList.length > 0 ? item.notesList.join('; ') : '—'
+                                                                                            }));
+
+                                                                                            if (globalDetailsList.length === 0) {
+                                                                                                return (
+                                                                                                    <tr>
+                                                                                                        <td colSpan="5" className="px-4 py-8 text-center text-slate-400 italic">
+                                                                                                            Tidak ada data pengiriman.
+                                                                                                        </td>
+                                                                                                    </tr>
+                                                                                                );
+                                                                                            }
+
+                                                                                            return globalDetailsList.map((item, idx) => {
+                                                                                                const calculatedWeight = parseFloat(item.grammage || 0) * item.qty_delivered;
+                                                                                                return (
+                                                                                                    <tr key={item.id} className="text-slate-800">
+                                                                                                        <td className="px-4 py-3 border-r border-slate-900 text-center font-bold">{idx + 1}</td>
+                                                                                                        <td className="px-4 py-3 border-r border-slate-900">{getLinenDisplayName(item)}</td>
+                                                                                                        <td className="px-4 py-3 border-r border-slate-900 text-center font-bold">{item.qty_delivered}</td>
+                                                                                                        <td className="px-4 py-3 border-r border-slate-900 text-center font-bold">
+                                                                                                            {calculatedWeight ? calculatedWeight.toLocaleString('id-ID') : '—'}
+                                                                                                        </td>
+                                                                                                        <td className="px-4 py-3 text-slate-550 italic">{item.notes}</td>
+                                                                                                    </tr>
+                                                                                                );
+                                                                                            });
+                                                                                        })()}
+                                                                                    </tbody>
+                                                                                </table>
+                                                                            </div>
+
+                                                                            {/* Section 2: Rincian Unit / Ruangan */}
+                                                                            {(() => {
+                                                                                const roomGroups = {};
+                                                                                sjDetails.forEach(item => {
+                                                                                    const qty = parseInt(item.qty_delivered || item.qtyDelivered || 0);
+                                                                                    if (qty <= 0) return;
+
+                                                                                    const rName = item.room_name || 'Tanpa Ruangan';
+                                                                                    if (!roomGroups[rName]) {
+                                                                                        roomGroups[rName] = [];
+                                                                                    }
+                                                                                    roomGroups[rName].push(item);
+                                                                                });
+
+                                                                                if (Object.keys(roomGroups).length === 0) return null;
+
+                                                                                return Object.entries(roomGroups).map(([rName, roomItems]) => (
+                                                                                    <div key={rName} className="space-y-3 pt-4 border-t border-slate-100">
+                                                                                        <h4 className="text-[10px] font-black text-[#1ea59e] uppercase tracking-widest flex items-center gap-1.5">
+                                                                                            <span className="h-2 w-2 rounded-full bg-[#1ea59e]"></span>
+                                                                                            Rincian Unit: {rName} (Halaman Selanjutnya)
+                                                                                        </h4>
+                                                                                        <table className="w-full text-left border-collapse border border-slate-900 text-xs font-semibold">
+                                                                                            <thead>
+                                                                                                <tr className="bg-slate-100 text-slate-900 uppercase font-black tracking-wider border-b border-slate-900 text-[10px]">
+                                                                                                    <th className="px-4 py-2.5 border-r border-slate-900 text-center w-12">No</th>
+                                                                                                    <th className="px-4 py-2.5 border-r border-slate-900 text-center">Nama Barang</th>
+                                                                                                    <th className="px-4 py-2.5 border-r border-slate-900 text-center w-28">Jumlah Barang</th>
+                                                                                                    <th className="px-4 py-2.5 border-r border-slate-900 text-center w-28">Berat (Gram)</th>
+                                                                                                    <th className="px-4 py-2.5 text-center">Keterangan</th>
+                                                                                                </tr>
+                                                                                            </thead>
+                                                                                            <tbody className="divide-y divide-slate-900 border-b border-slate-900">
+                                                                                                {roomItems.map((item, idx) => {
+                                                                                                    const qty = parseInt(item.qty_delivered || item.qtyDelivered || 0);
+                                                                                                    const calculatedWeight = parseFloat(item.grammage || 0) * qty;
+                                                                                                    return (
+                                                                                                        <tr key={item.id} className="text-slate-800">
+                                                                                                            <td className="px-4 py-3 border-r border-slate-900 text-center font-bold">{idx + 1}</td>
+                                                                                                            <td className="px-4 py-3 border-r border-slate-900">{getLinenDisplayName(item)}</td>
+                                                                                                            <td className="px-4 py-3 border-r border-slate-900 text-center font-bold">{qty}</td>
+                                                                                                            <td className="px-4 py-3 border-r border-slate-900 text-center font-bold">
+                                                                                                                {calculatedWeight ? calculatedWeight.toLocaleString('id-ID') : '—'}
+                                                                                                            </td>
+                                                                                                            <td className="px-4 py-3 text-slate-550 italic">{item.notes || '—'}</td>
+                                                                                                        </tr>
+                                                                                                    );
+                                                                                                })}
+                                                                                            </tbody>
+                                                                                        </table>
+                                                                                    </div>
+                                                                                ));
+                                                                            })()}
+                                                                        </div>
+
+                                                                        {/* Signatures & Notes */}
+                                                                        <div className="grid grid-cols-2 gap-10 pt-10 text-center text-xs font-bold text-slate-900">
+                                                                            {/* Left signature block */}
+                                                                            <div className="space-y-4">
+                                                                                <p>Di Terima Oleh :</p>
+                                                                                <div className="h-28 flex items-center justify-center relative overflow-hidden bg-white">
+                                                                                    {selectedSj.signature_hospital ? (
+                                                                                        <img src={selectedSj.signature_hospital} alt="Hospital signature" className="h-full object-contain" />
+                                                                                    ) : (
+                                                                                        <span className="text-[10px] text-slate-400 italic font-semibold">Tanda Tangan Belum Ada</span>
+                                                                                    )}
+                                                                                </div>
+                                                                                <p className="border-t border-slate-950 pt-1.5 font-bold uppercase tracking-wide">
+                                                                                    {selectedSj.hospital_staff || selectedSj.recipient_name || '(Petugas RS)'}
+                                                                                </p>
+                                                                                <p className="text-[10px] text-slate-500 font-semibold mt-0.5">Tim Linen RS</p>
+                                                                            </div>
+
+                                                                            {/* Right signature block */}
+                                                                            <div className="space-y-4">
+                                                                                <p>Di Serahkan Oleh :</p>
+                                                                                <div className="h-28 flex items-center justify-center relative overflow-hidden bg-white">
+                                                                                    {selectedSj.signature_valet ? (
+                                                                                        <img src={selectedSj.signature_valet} alt="Valet signature" className="h-full object-contain" />
+                                                                                    ) : (
+                                                                                        <span className="text-[10px] text-slate-400 italic font-semibold">Tanda Tangan Belum Ada</span>
+                                                                                    )}
+                                                                                </div>
+                                                                                <p className="border-t border-slate-950 pt-1.5 font-bold uppercase tracking-wide">
+                                                                                    {selectedSj.valet_name}
+                                                                                </p>
+                                                                                <p className="text-[10px] text-slate-500 font-semibold mt-0.5">Tim Linen IKM</p>
+                                                                            </div>
+                                                                        </div>
                                                                     </div>
                                                                 </div>
-
                                                             </div>
                                                         )}
-
                                                     </div>
                                                 )}
                                             </div>
                                         )}
-
                                     </div>
                                 )}
-
                             </div>
 
                             {/* Modal Footer */}

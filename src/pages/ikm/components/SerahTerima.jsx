@@ -4,7 +4,7 @@ import {
   FileText, Search, Calendar, CheckCircle2,
   AlertTriangle, ArrowLeft, RefreshCw, PlusCircle,
   ChevronRight, ChevronDown, Save, User, Clock, AlertCircle,
-  Warehouse, Building, Shirt, HelpCircle, Info, X
+  Warehouse, Building, Shirt, HelpCircle, Info, X, Lock, Unlock
 } from 'lucide-react';
 
 // Utility to convert string to Title Case
@@ -204,6 +204,8 @@ export default function SerahTerima() {
   const [hospitalId, setHospitalId] = useState(sessionStorage.getItem('valet_hospital_id') || '');
   const [hospitalName, setHospitalName] = useState(sessionStorage.getItem('valet_hospital_name') || '');
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
+  const [alertConfig, setAlertConfig] = useState({ show: false, title: 'Peringatan', message: '' });
+  const [savedRooms, setSavedRooms] = useState([]);
   const [temporaryTxId, setTemporaryTxId] = useState(null);
 
   // Keep hospitalId and hospitalName in sync with sessionStorage in case of client-side navigation transitions
@@ -237,6 +239,7 @@ export default function SerahTerima() {
   const [linensList, setLinensList] = useState([]);
   const [roomLinensList, setRoomLinensList] = useState([]);
   const [selectedRoomId, setSelectedRoomId] = useState('');
+  const isRoomLocked = selectedRoomId && savedRooms.includes(selectedRoomId.toString());
   const [loadingLinens, setLoadingLinens] = useState(false);
   const [userPickup, setUserPickup] = useState(localStorage.getItem('employeeId') || '');
   const [userPickupName, setUserPickupName] = useState(
@@ -489,79 +492,27 @@ export default function SerahTerima() {
   };
 
   const getBersihQty = (detailId) => {
-    const detailQtys = bersihQuantities[detailId];
-    if (detailQtys === undefined || detailQtys === null) return '';
-    if (typeof detailQtys === 'number' || typeof detailQtys === 'string') {
-      return selectedRoomId ? '' : detailQtys;
-    }
-    if (selectedRoomId) {
-      return detailQtys[selectedRoomId] !== undefined ? detailQtys[selectedRoomId] : '';
-    } else {
-      let sum = 0;
-      let hasValue = false;
-      Object.entries(detailQtys).forEach(([room, qty]) => {
-        if (qty !== '') {
-          sum += parseInt(qty) || 0;
-          hasValue = true;
-        }
-      });
-      return hasValue ? sum : '';
-    }
+    const val = bersihQuantities[detailId];
+    return val !== undefined && val !== null ? val : '';
   };
 
   const handleBersihQtyChange = (detailId, value) => {
-    setBersihQuantities(prev => {
-      const detailQtys = prev[detailId] || {};
-      const activeRoom = selectedRoomId || 'all';
-      if (typeof detailQtys === 'number' || typeof detailQtys === 'string') {
-        return { ...prev, [detailId]: { all: detailQtys, [activeRoom]: value === '' ? '' : (parseInt(value) || 0) } };
-      }
-      return {
-        ...prev,
-        [detailId]: {
-          ...detailQtys,
-          [activeRoom]: value === '' ? '' : (parseInt(value) || 0)
-        }
-      };
-    });
+    setBersihQuantities(prev => ({
+      ...prev,
+      [detailId]: value === '' ? '' : (parseInt(value) || 0)
+    }));
   };
 
   const getEditKotorQty = (detailId) => {
-    const detailQtys = editKotorQuantities[detailId];
-    if (detailQtys === undefined || detailQtys === null) return '';
-    if (typeof detailQtys === 'number' || typeof detailQtys === 'string') {
-      return selectedRoomId ? '' : detailQtys;
-    }
-    if (selectedRoomId) {
-      return detailQtys[selectedRoomId] !== undefined ? detailQtys[selectedRoomId] : '';
-    } else {
-      let sum = 0;
-      let hasValue = false;
-      Object.entries(detailQtys).forEach(([room, qty]) => {
-        if (qty !== '') {
-          sum += parseInt(qty) || 0;
-          hasValue = true;
-        }
-      });
-      return hasValue ? sum : '';
-    }
+    const val = editKotorQuantities[detailId];
+    return val !== undefined && val !== null ? val : '';
   };
 
   const handleEditKotorQtyChange = (detailId, value) => {
-    setEditKotorQuantities(prev => {
-      const detailQtys = prev[detailId] || {};
-      const activeRoom = selectedRoomId || 'all';
-      if (typeof detailQtys === 'number' || typeof detailQtys === 'string') {
-        return { ...prev, [detailId]: { all: detailQtys, [activeRoom]: value === '' ? '' : (parseInt(value) || 0) } };
-      }
-      return {
-        ...prev,
-        [detailId]: {
-          ...detailQtys,
-          [activeRoom]: value === '' ? '' : (parseInt(value) || 0)
-        }
-      };
-    });
+    setEditKotorQuantities(prev => ({
+      ...prev,
+      [detailId]: value === '' ? '' : (parseInt(value) || 0)
+    }));
   };
 
   const getNoteVal = (id) => {
@@ -731,13 +682,23 @@ export default function SerahTerima() {
   };
 
   // Submit Day 1 Kotor form
-  const handleCreatePickup = async (e) => {
-    e.preventDefault();
+  const handleCreatePickup = async (e = null) => {
+    if (e) e.preventDefault();
     setErrorMsg('');
 
-    if (!hospitalStaffPickup.trim()) {
-      setErrorMsg('Nama petugas RS pemeriksa (Pickup) wajib diisi.');
-      return;
+    const isTemp = !signatureValetPickup || !signatureHospitalPickup;
+    if (!isTemp) {
+      if (!hospitalStaffPickup.trim()) {
+        setErrorMsg('Nama petugas RS pemeriksa (Pickup) wajib diisi.');
+        showAlert('Nama petugas RS pemeriksa (Pickup) wajib diisi.');
+        return;
+      }
+
+      if (!hospitalAssistantPickup.trim()) {
+        setErrorMsg('Nama Perawat RS (Pickup) wajib diisi.');
+        showAlert('Nama Perawat RS (Pickup) wajib diisi.');
+        return;
+      }
     }
 
 
@@ -774,6 +735,7 @@ export default function SerahTerima() {
 
     if (activeDetails.length === 0) {
       setErrorMsg('Harap isi jumlah "Kotor" minimal untuk 1 jenis linen.');
+      showAlert('Harap isi jumlah "Kotor" minimal untuk 1 jenis linen.');
       return;
     }
 
@@ -783,10 +745,10 @@ export default function SerahTerima() {
       const { data } = await axios.post('/api/ikm/transactions', {
         id: temporaryTxId,
         hospitalId: parseInt(hospitalId),
+        pickupDate: pickupDate.replace('T', ' ') + ':00',
         userPickup: parseInt(userPickup),
         hospitalStaffPickup,
         hospitalAssistantPickup,
-        pickupDate: pickupDate.replace('T', ' ') + ':00',
         notes,
         details: activeDetails,
         signatureValetPickup,
@@ -797,6 +759,7 @@ export default function SerahTerima() {
       });
 
       if (data?.success) {
+        setSavedRooms([]);
         if (data.isTemporary) {
           setTemporaryTxId(data.data.transactionId);
           showToast("Berhasil Tersimpan Sementara");
@@ -841,6 +804,7 @@ export default function SerahTerima() {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (data?.success) {
+        setSavedRooms([]);
         const fullTx = data.data;
 
         // If pickup signatures are missing/empty, it's still in Day 1 kotor pickup phase!
@@ -864,16 +828,34 @@ export default function SerahTerima() {
           // Map kotor quantities
           const qtys = {};
           const notesMap = {};
+          const initiallySavedRooms = new Set();
+          
           linensList.forEach(item => {
-            qtys[item.id] = 0;
-            notesMap[item.id] = '';
+            qtys[item.id] = {};
+            notesMap[item.id] = {};
           });
+          
           fullTx.details.forEach(detailItem => {
-            qtys[detailItem.hospital_linen_id] = detailItem.qty_kotor || 0;
-            notesMap[detailItem.hospital_linen_id] = detailItem.notes || '';
+            const roomIdKey = detailItem.room_id ? detailItem.room_id.toString() : 'all';
+            
+            if (!qtys[detailItem.hospital_linen_id]) {
+              qtys[detailItem.hospital_linen_id] = {};
+            }
+            qtys[detailItem.hospital_linen_id][roomIdKey] = detailItem.qty_kotor || 0;
+
+            if (!notesMap[detailItem.hospital_linen_id]) {
+              notesMap[detailItem.hospital_linen_id] = {};
+            }
+            notesMap[detailItem.hospital_linen_id][roomIdKey] = detailItem.notes || '';
+            
+            if (detailItem.room_id && (detailItem.qty_kotor > 0 || (detailItem.notes && detailItem.notes.trim() !== ''))) {
+              initiallySavedRooms.add(detailItem.room_id.toString());
+            }
           });
+          
           setKotorQuantities(qtys);
           setItemNotes(notesMap);
+          setSavedRooms(Array.from(initiallySavedRooms));
 
           setEditingTransaction(null);
           setActiveTab('form');
@@ -906,14 +888,20 @@ export default function SerahTerima() {
           const initialKotor = {};
           const initialBersih = {};
           const initialNotes = {};
+          const initiallySavedRooms = new Set();
           fullTx.details.forEach(item => {
             initialKotor[item.id] = item.qty_kotor !== null ? item.qty_kotor : '';
             initialBersih[item.id] = item.qty_bersih !== null ? item.qty_bersih : '';
             initialNotes[item.id] = item.notes || '';
+            
+            if (item.room_id && (item.qty_bersih !== null && item.qty_bersih > 0)) {
+              initiallySavedRooms.add(item.room_id.toString());
+            }
           });
           setEditKotorQuantities(initialKotor);
           setBersihQuantities(initialBersih);
           setEditItemNotes(initialNotes);
+          setSavedRooms(Array.from(initiallySavedRooms));
           setErrorMsg('');
         }
       }
@@ -923,13 +911,23 @@ export default function SerahTerima() {
   };
 
   // Submit Day 2 Bersih completion
-  const handleCompleteDelivery = async (e) => {
-    e.preventDefault();
+  const handleCompleteDelivery = async (e = null) => {
+    if (e) e.preventDefault();
     setErrorMsg('');
 
-    if (!hospitalStaffDelivery.trim()) {
-      setErrorMsg('Nama petugas RS pemeriksa (Delivery) wajib diisi.');
-      return;
+    const isTemp = !signatureValetDelivery || !signatureHospitalDelivery;
+    if (!isTemp) {
+      if (!hospitalStaffDelivery.trim()) {
+        setErrorMsg('Nama petugas RS pemeriksa (Delivery) wajib diisi.');
+        showAlert('Nama petugas RS pemeriksa (Delivery) wajib diisi.');
+        return;
+      }
+
+      if (!hospitalAssistantDelivery.trim()) {
+        setErrorMsg('Nama Perawat RS (Delivery) wajib diisi.');
+        showAlert('Nama Perawat RS (Delivery) wajib diisi.');
+        return;
+      }
     }
 
     setSubmittingEdit(true);
@@ -971,6 +969,7 @@ export default function SerahTerima() {
       });
 
       if (data?.success) {
+        setSavedRooms([]);
         if (data.isTemporary) {
           const { data: detailData } = await axios.get(`/api/ikm/transactions/${editingTransaction.transaction.id}`, {
             headers: { Authorization: `Bearer ${token}` }
@@ -995,14 +994,20 @@ export default function SerahTerima() {
             const initialKotor = {};
             const initialBersih = {};
             const initialItemNotes = {};
+            const initiallySavedRooms = new Set();
             fullTx.details.forEach(item => {
               initialKotor[item.id] = item.qty_kotor;
               initialBersih[item.id] = item.qty_bersih !== null ? item.qty_bersih : '';
               initialItemNotes[item.id] = item.notes || '';
+              
+              if (item.room_id && (item.qty_bersih !== null && item.qty_bersih > 0)) {
+                initiallySavedRooms.add(item.room_id.toString());
+              }
             });
             setEditKotorQuantities(initialKotor);
             setBersihQuantities(initialBersih);
             setEditItemNotes(initialItemNotes);
+            setSavedRooms(Array.from(initiallySavedRooms));
           }
           showToast("Berhasil Tersimpan Sementara");
           fetchHistory();
@@ -1100,9 +1105,17 @@ export default function SerahTerima() {
     }
   })();
 
-  const isEditable = editingTransaction
-    ? (editingTransaction.transaction.status === 'PROSES' || editingTransaction.transaction.is_editable)
-    : false;
+  const isEditable = (() => {
+    if (!editingTransaction) return false;
+    
+    // Lock completely if delivery signatures are present
+    const hasDeliverySignatures = editingTransaction.transaction.signature_valet_delivery && editingTransaction.transaction.signature_hospital_delivery;
+    if (hasDeliverySignatures) {
+      return false;
+    }
+    
+    return editingTransaction.transaction.status === 'PROSES' || editingTransaction.transaction.is_editable;
+  })();
 
   const getLinenNameById = (hospitalLinenId) => {
     const detail = editingTransaction?.details?.find(d => d.hospital_linen_id === hospitalLinenId);
@@ -1280,6 +1293,7 @@ export default function SerahTerima() {
                 setActiveTab('form');
                 setEditingTransaction(null);
                 setTemporaryTxId(null);
+                setSavedRooms([]);
                 setNotes('');
                 setHospitalStaffPickup('');
                 setHospitalAssistantPickup('');
@@ -1740,7 +1754,6 @@ export default function SerahTerima() {
                         <th className="py-3.5 px-4 w-12 text-center">No</th>
                         <th className="py-3.5 px-4">Nama Linen</th>
                         <th className="py-3.5 px-4 text-center">Ruangan</th>
-                        <th className="py-3.5 px-4 text-center">Stok</th>
                         <th className="py-3.5 px-4 w-28 text-center">Kotor</th>
                         <th className="py-3.5 px-4 text-center">Keterangan</th>
                       </tr>
@@ -1748,14 +1761,14 @@ export default function SerahTerima() {
                     <tbody className="divide-y divide-slate-100 text-slate-700">
                       {loadingLinens ? (
                         <tr>
-                          <td colSpan="4" className="py-16 text-center text-slate-400 font-bold">
+                          <td colSpan="5" className="py-16 text-center text-slate-400 font-bold">
                             <RefreshCw className="h-5 w-5 animate-spin mx-auto text-[#126776] mb-2" />
                             Memuat data linen...
                           </td>
                         </tr>
                       ) : filteredLinensList.length === 0 ? (
                         <tr>
-                          <td colSpan="4" className="py-16 text-center text-slate-400 font-semibold">
+                          <td colSpan="5" className="py-16 text-center text-slate-400 font-semibold">
                             {linenSearch ? `Tidak ada linen yang cocok dengan "${linenSearch}"` : 'Belum ada master linen terdaftar untuk rumah sakit ini.'}
                           </td>
                         </tr>
@@ -1763,6 +1776,7 @@ export default function SerahTerima() {
                         filteredLinensList.map((item, index) => {
                           const isFilled = (kotorQuantities[item.id] || 0) > 0;
                           const roomInfo = getRoomAndStockInfo(item.id);
+                          const isRoomLocked = selectedRoomId && savedRooms.includes(selectedRoomId.toString());
                           return (
                             <tr
                               key={item.id}
@@ -1780,16 +1794,7 @@ export default function SerahTerima() {
                                   {roomInfo.roomName}
                                 </span>
                               </td>
-                              <td className="py-3 px-4 text-center">
-                                {roomInfo.isRoomSelected ? (
-                                  <div>
-                                    <div className="font-bold text-slate-700">{roomInfo.roomStock} Pcs</div>
-                                    <div className="text-[10px] text-slate-400 font-semibold mt-0.5">Total RS: {roomInfo.totalStock} Pcs</div>
-                                  </div>
-                                ) : (
-                                  <div className="font-bold text-slate-700">{roomInfo.totalStock} Pcs</div>
-                                )}
-                              </td>
+
                               <td className="py-3 px-4">
                                 <div className="flex items-center justify-center">
                                   <input
@@ -1797,7 +1802,7 @@ export default function SerahTerima() {
                                     min="0"
                                     value={getKotorQty(item.id)}
                                     onChange={e => handleKotorQtyChange(item.id, e.target.value)}
-                                    className="w-16 text-center py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] focus:bg-white transition"
+                                    className="w-16 text-center py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] focus:bg-white transition text-slate-700"
                                   />
                                 </div>
                               </td>
@@ -1877,22 +1882,34 @@ export default function SerahTerima() {
               <div className="flex justify-end gap-3 pt-2">
                 <button
                   type="button"
-                  onClick={() => { setActiveTab('history'); setErrorMsg(''); }}
+                  onClick={() => { setActiveTab('history'); setErrorMsg(''); setSavedRooms([]); }}
                   className="px-6 py-2.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition active:scale-95 cursor-pointer"
                 >
                   Batal
                 </button>
-                <button
-                  type="submit"
-                  disabled={submittingNew}
-                  className="px-6 py-2.5 bg-gradient-to-r from-[#126776] to-[#1ea59e] hover:from-[#0e5562] hover:to-[#188b85] text-white rounded-xl text-xs font-semibold shadow-md shadow-[#126776]/10 active:scale-95 transition cursor-pointer flex items-center gap-1.5"
-                >
-                  {submittingNew ? (
-                    <><RefreshCw className="h-4 w-4 animate-spin" /> Menyimpan...</>
-                  ) : (
-                    <><Save className="h-4 w-4" /> Simpan Pengambilan</>
-                  )}
-                </button>
+                {selectedRoomId ? (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await handleCreatePickup();
+                    }}
+                    className="px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-semibold shadow-md shadow-amber-500/10 active:scale-95 transition cursor-pointer flex items-center gap-1.5 animate-[fadeIn_0.2s_ease-out]"
+                  >
+                    <Save className="h-4 w-4" /> Simpan Sementara Ruangan Ini
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    disabled={submittingNew}
+                    className="px-6 py-2.5 bg-gradient-to-r from-[#126776] to-[#1ea59e] hover:from-[#0e5562] hover:to-[#188b85] text-white rounded-xl text-xs font-semibold shadow-md shadow-[#126776]/10 active:scale-95 transition cursor-pointer flex items-center gap-1.5"
+                  >
+                    {submittingNew ? (
+                      <><RefreshCw className="h-4 w-4 animate-spin" /> Menyimpan...</>
+                    ) : (
+                      <><Save className="h-4 w-4" /> Simpan Pengambilan</>
+                    )}
+                  </button>
+                )}
               </div>
 
             </form>
@@ -2153,7 +2170,7 @@ export default function SerahTerima() {
               {editingTransaction.transaction.status === 'SELESAI' && !isEditable && (
                 <div className="p-4 bg-amber-50 border border-amber-100 text-amber-800 text-xs font-semibold rounded-xl flex items-start gap-2.5">
                   <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
-                  <span>Data Sudah Lebih Dari 24 Jam, Mohon Hubungi Admin Jika Ada Perubahan</span>
+                  <span>Data Sudah Terkunci dan Sudah Disetujui Oleh Kedua Belah Pihak</span>
                 </div>
               )}
 
@@ -2206,7 +2223,6 @@ export default function SerahTerima() {
                         <th className="py-3 px-4 w-12 text-center">No</th>
                         <th className="py-3 px-4">Nama Linen</th>
                         <th className="py-3 px-4 text-center">Ruangan</th>
-                        <th className="py-3 px-4 text-center">Stok</th>
                         <th className="py-3 px-4 text-center w-24">Kotor</th>
                         <th className="py-3 px-4 text-center w-24">Bersih</th>
                         <th className="py-3 px-4 text-center">Catatan Selisih & Keterangan</th>
@@ -2215,13 +2231,14 @@ export default function SerahTerima() {
                     <tbody className="divide-y divide-slate-100 text-slate-700">
                       {filteredEditDetails.length === 0 ? (
                         <tr>
-                          <td colSpan="7" className="py-12 text-center text-slate-400 font-semibold text-xs">
+                          <td colSpan="6" className="py-12 text-center text-slate-400 font-semibold text-xs">
                             {editLinenSearch ? `Tidak ada linen yang cocok dengan "${editLinenSearch}"` : 'Tidak ada data linen.'}
                           </td>
                         </tr>
                       ) : filteredEditDetails.map((item, index) => {
                         const isRowEditable = isEditable && (!item.isGrouped || (item.originalItemIds.length === 1 && editingTransaction.details.find(d => d.id === item.originalItemIds[0])?.room_id === null));
                         const inputKey = item.isGrouped ? (item.originalItemIds?.[0] || item.id) : item.id;
+                        const isRoomLocked = selectedRoomId && savedRooms.includes(selectedRoomId.toString());
 
                         let kotor = 0;
                         let bersih = 0;
@@ -2258,42 +2275,17 @@ export default function SerahTerima() {
                           >
                             <td className="py-3 px-4 text-center font-medium text-slate-400 text-xs">{index + 1}</td>
                             <td className="py-3 px-4">
-                              <p className="font-semibold text-slate-800 text-sm">{getLinenDisplayName(item)}</p>
+                                <p className="font-semibold text-slate-800 text-sm">{getLinenDisplayName(item)}</p>
                             </td>
                             <td className="py-3 px-4 text-center">
                               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-650 border border-slate-200">
                                 {item.room_name || 'Semua Ruangan'}
                               </span>
                             </td>
-                            <td className="py-3 px-4 text-center">
-                              {roomInfo.isRoomSelected ? (
-                                <div>
-                                  <div className="font-bold text-slate-700">{roomInfo.roomStock} Pcs</div>
-                                  <div className="text-[10px] text-slate-400 font-semibold mt-0.5">Total RS: {roomInfo.totalStock} Pcs</div>
-                                </div>
-                              ) : (
-                                <div className="font-bold text-slate-700">{roomInfo.totalStock} Pcs</div>
-                              )}
-                            </td>
                             <td className="py-3 px-4">
-                              {isRowEditable ? (
-                                <div className="flex items-center justify-center">
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    value={editKotorQuantities[inputKey] !== undefined ? editKotorQuantities[inputKey] : ''}
-                                    onChange={e => {
-                                      const val = e.target.value;
-                                      setEditKotorQuantities(prev => ({ ...prev, [inputKey]: val === '' ? '' : (parseInt(val) || 0) }));
-                                    }}
-                                    className="w-16 text-center py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] focus:bg-white transition"
-                                  />
-                                </div>
-                              ) : (
-                                <div className="text-center font-bold text-slate-700 text-sm">
-                                  {formatNumber(kotor)}
-                                </div>
-                              )}
+                              <div className="text-center font-bold text-slate-700 text-sm">
+                                {formatNumber(kotor)}
+                              </div>
                             </td>
                             <td className="py-3 px-4">
                               {isRowEditable ? (
@@ -2306,7 +2298,7 @@ export default function SerahTerima() {
                                       const val = e.target.value;
                                       setBersihQuantities(prev => ({ ...prev, [inputKey]: val === '' ? '' : (parseInt(val) || 0) }));
                                     }}
-                                    className="w-16 text-center py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] focus:bg-white transition"
+                                    className="w-16 text-center py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] focus:bg-white transition text-slate-700"
                                   />
                                 </div>
                               ) : (
@@ -2677,24 +2669,36 @@ export default function SerahTerima() {
               <div className="flex justify-end gap-3 pt-2">
                 <button
                   type="button"
-                  onClick={() => { setEditingTransaction(null); setErrorMsg(''); }}
+                  onClick={() => { setEditingTransaction(null); setErrorMsg(''); setSavedRooms([]); }}
                   className="px-6 py-2.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition active:scale-95 cursor-pointer"
                 >
                   {editingTransaction.transaction.status === 'SELESAI' && !isEditable ? 'Tutup' : 'Batal'}
                 </button>
 
                 {isEditable && (
-                  <button
-                    type="submit"
-                    disabled={submittingEdit}
-                    className="px-6 py-2.5 bg-gradient-to-r from-[#126776] to-[#1ea59e] hover:from-[#0e5562] hover:to-[#188b85] text-white rounded-xl text-xs font-semibold shadow-md shadow-[#126776]/10 active:scale-95 transition cursor-pointer flex items-center gap-1.5"
-                  >
-                    {submittingEdit ? (
-                      <><RefreshCw className="h-4 w-4 animate-spin" /> Menyimpan...</>
-                    ) : (
-                      <><Save className="h-4 w-4" /> {editingTransaction.transaction.status === 'SELESAI' ? 'Simpan Perubahan' : 'Simpan & Selesaikan Transaksi'}</>
-                    )}
-                  </button>
+                  selectedRoomId ? (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await handleCompleteDelivery();
+                      }}
+                      className="px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-semibold shadow-md shadow-amber-500/10 active:scale-95 transition cursor-pointer flex items-center gap-1.5 animate-[fadeIn_0.2s_ease-out]"
+                    >
+                      <Save className="h-4 w-4" /> Simpan Sementara Ruangan Ini
+                    </button>
+                  ) : (
+                    <button
+                      type="submit"
+                      disabled={submittingEdit}
+                      className="px-6 py-2.5 bg-gradient-to-r from-[#126776] to-[#1ea59e] hover:from-[#0e5562] hover:to-[#188b85] text-white rounded-xl text-xs font-semibold shadow-md shadow-[#126776]/10 active:scale-95 transition cursor-pointer flex items-center gap-1.5"
+                    >
+                      {submittingEdit ? (
+                        <><RefreshCw className="h-4 w-4 animate-spin" /> Menyimpan...</>
+                      ) : (
+                        <><Save className="h-4 w-4" /> {editingTransaction.transaction.status === 'SELESAI' ? 'Simpan Perubahan' : 'Simpan & Selesaikan Transaksi'}</>
+                      )}
+                    </button>
+                  )
                 )}
               </div>
 
@@ -2727,6 +2731,37 @@ export default function SerahTerima() {
           >
             <X className="h-3.5 w-3.5" />
           </button>
+        </div>
+      )}
+
+      {/* Custom Alert Modal */}
+      {alertConfig.show && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-[fadeIn_0.2s_ease-out]">
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-2xl max-w-md w-full p-6 space-y-6 transform animate-[scaleIn_0.2s_ease-out] relative">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-rose-50 text-rose-600 rounded-2xl border border-rose-100/50">
+                <AlertTriangle className="h-6 w-6" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">{alertConfig.title}</h3>
+                <p className="text-slate-500 text-xs font-semibold mt-1">Sistem Waschen Alora</p>
+              </div>
+            </div>
+            
+            <p className="text-slate-600 text-sm font-semibold leading-relaxed">
+              {alertConfig.message}
+            </p>
+            
+            <div className="flex justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setAlertConfig({ show: false, title: 'Peringatan', message: '' })}
+                className="px-6 py-2.5 bg-gradient-to-r from-[#126776] to-[#1ea59e] hover:from-[#0e5562] hover:to-[#188b85] text-white rounded-xl text-xs font-semibold shadow-md shadow-[#126776]/10 active:scale-95 transition cursor-pointer"
+              >
+                Mengerti
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

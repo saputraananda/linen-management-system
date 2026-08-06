@@ -21,12 +21,12 @@ function App() {
     <Router>
       <Routes>
         <Route path="/" element={<Navigate to="/login" replace />} />
-        
+
         {/* Guest routes (locked when logged in) */}
         <Route element={<GuestRoute />}>
           <Route path="/login" element={<Login />} />
         </Route>
-        
+
         {/* Valet Portal protected routes */}
         <Route element={<ProtectedRoute allowedRoles={['valet']} />}>
           <Route path="/valet" element={<ValetPage />}>

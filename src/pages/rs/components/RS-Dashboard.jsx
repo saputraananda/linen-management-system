@@ -336,14 +336,16 @@ export default function RSDashboard() {
       (ownershipFilter === 'MILIK_RS' && item.ownership_type === 'MILIK_RS') ||
       (ownershipFilter === 'SEWA' && item.ownership_type === 'SEWA');
 
-    const matchesShortage = !showOnlyShortage || parseInt(item.total_kurang || 0) > 0;
+    const roomRecord = selectedRoomFilter === 'all' ? null : dashboardData?.roomLinens?.find(
+      rl => rl.hospital_linen_id === item.id && rl.room_id.toString() === selectedRoomFilter.toString()
+    );
+    const currentShortage = selectedRoomFilter === 'all'
+      ? parseInt(item.total_kurang || 0)
+      : roomRecord ? parseInt(roomRecord.qty_kurang || 0) : 0;
+    const matchesShortage = !showOnlyShortage || currentShortage > 0;
 
-    // Room Filter: If a specific room is selected, only show linens registered in that room
-    if (selectedRoomFilter !== 'all') {
-      const existsInRoom = dashboardData?.roomLinens?.some(
-        rl => rl.hospital_linen_id === item.id && rl.room_id.toString() === selectedRoomFilter.toString()
-      );
-      if (!existsInRoom) return false;
+    if (selectedRoomFilter !== 'all' && !roomRecord) {
+      return false;
     }
 
     return matchesSearch && matchesOwnership && matchesShortage;
@@ -672,7 +674,7 @@ export default function RSDashboard() {
                         {selectedRoomFilter === 'all' ? 'Dirty Utility' : 'Dirty Utility'}
                       </th>
                       <th className="py-4 px-6 text-center">
-                        {selectedRoomFilter === 'all' ? 'Lemari Bersih' : `Lemari (${getSelectedRoomName()})`}
+                        {selectedRoomFilter === 'all' ? 'Lemari Bersih' : `Lemari Bersih (${getSelectedRoomName()})`}
                       </th>
                       <th className="py-4 px-6 text-center">Cuci IKM</th>
                       <th className="py-4 px-6 text-center">Gudang Linen</th>
@@ -695,12 +697,13 @@ export default function RSDashboard() {
                       </tr>
                     ) : (
                       filteredLinens.map((item, index) => {
-                        const totalKurang = parseInt(item.total_kurang || 0);
-                        const hasShortage = totalKurang > 0;
-                        // Resolve Terpakai and Lemari
                         const roomRecord = selectedRoomFilter === 'all' ? null : dashboardData?.roomLinens?.find(
                           rl => rl.hospital_linen_id === item.id && rl.room_id.toString() === selectedRoomFilter.toString()
                         );
+                        const totalKurang = selectedRoomFilter === 'all'
+                          ? parseInt(item.total_kurang || 0)
+                          : roomRecord ? parseInt(roomRecord.qty_kurang || 0) : 0;
+                        const hasShortage = totalKurang > 0;
                         
                         const displayStokAwal = selectedRoomFilter === 'all'
                           ? parseInt(item.stock_in_rs || 0)
@@ -718,7 +721,9 @@ export default function RSDashboard() {
                           ? parseInt(item.total_lemari || 0)
                           : Math.max(0, displayStokAwal - terpakai - dirty);
                           
-                        const cuci = parseInt(item.total_cuci || 0);
+                        const cuci = selectedRoomFilter === 'all'
+                          ? parseInt(item.total_cuci || 0)
+                          : roomRecord ? parseInt(roomRecord.qty_cuci || 0) : 0;
                         const gudang = parseInt(item.total_gudang || 0);
 
                         return (

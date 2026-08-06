@@ -216,7 +216,7 @@ export default function UnitDashboard() {
 
   const handleSaveModalTerpakai = async () => {
     if (!selectedUpdateLinen || updating) return;
-    
+
     // Resolve current terpakai and dirty
     const roomRecord = dashboardData?.roomLinens?.find(
       rl => rl.hospital_linen_id === selectedUpdateLinen.id && rl.room_id.toString() === selectedRoom?.id?.toString()
@@ -225,10 +225,10 @@ export default function UnitDashboard() {
     const currentDirty = roomRecord ? parseInt(roomRecord.qty_dirty || 0) : 0;
     const currentStokAwal = roomRecord ? parseInt(roomRecord.stock_in_rs || 0) : 0;
     const currentLemari = Math.max(0, currentStokAwal - currentTerpakai - currentDirty);
-    
+
     const inputVal = parseInt(updateValue || 0);
     let finalValue = 0;
-    
+
     if (updateTarget === 'terpakai') {
       let finalTerpakai = currentTerpakai;
       if (updateMode === 'out') {
@@ -274,7 +274,7 @@ export default function UnitDashboard() {
       }
       finalValue = finalDirty;
     }
-    
+
     setUpdating(true);
     try {
       const token = localStorage.getItem('token');
@@ -291,7 +291,7 @@ export default function UnitDashboard() {
       setShowUpdateModal(false);
       setSelectedUpdateLinen(null);
       setUpdateValue('');
-      
+
       // Refresh modal logs if open
       if (selectedLinenDetail && selectedLinenDetail.id === selectedUpdateLinen.id) {
         fetchLinenLogs(selectedUpdateLinen.id, selectedRoom.id);
@@ -738,19 +738,18 @@ export default function UnitDashboard() {
                         </tr>
                       ) : (
                         filteredLinens.map((item, index) => {
-                          const totalKurang = parseInt(item.total_kurang || 0);
-                          const hasShortage = totalKurang > 0;
-                          
                           // Resolve Terpakai, Dirty, and Lemari for selected room
                           const roomRecord = dashboardData?.roomLinens?.find(
                             rl => rl.hospital_linen_id === item.id && rl.room_id.toString() === selectedRoom.id.toString()
                           );
-                          
+                          const totalKurang = parseInt(roomRecord?.qty_kurang || 0);
+                          const hasShortage = totalKurang > 0;
+
                           const stokAwalRuangan = parseInt(roomRecord?.stock_in_rs || 0);
                           const terpakai = parseInt(roomRecord?.qty_terpakai || 0);
                           const dirty = parseInt(roomRecord?.qty_dirty || 0);
                           const lemari = Math.max(0, stokAwalRuangan - terpakai - dirty);
-                          const cuci = parseInt(item.total_cuci || 0);
+                          const cuci = parseInt(roomRecord?.qty_cuci || 0);
 
                           return (
                             <tr
@@ -806,32 +805,10 @@ export default function UnitDashboard() {
                                 </span>
                               </td>
 
-                              {/* Dirty Utility Column (Editable) */}
-                              <td
-                                className="py-4 px-6 text-center"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (!activeNurse.trim()) {
-                                    alert("Silakan masukkan Nama Petugas / Perawat RS terlebih dahulu pada kolom di atas sebelum melakukan pembaruan.");
-                                    const inputElem = document.getElementById("nurse-name-input");
-                                    if (inputElem) {
-                                      inputElem.focus();
-                                      inputElem.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                                    }
-                                    return;
-                                  }
-                                  setSelectedUpdateLinen(item);
-                                  setUpdateTarget('dirty');
-                                  setUpdateMode('out');
-                                  setUpdateValue('1'); // Default to +1 for quick use
-                                  setShowUpdateModal(true);
-                                }}
-                              >
-                                <span className="inline-flex items-center gap-1 font-bold text-rose-600 hover:bg-slate-100 px-2 py-1 rounded-lg cursor-pointer border border-dashed border-rose-200">
+                              {/* Dirty Utility Column (Read-only for Unit Staff) */}
+                              <td className="py-4 px-6 text-center">
+                                <span className="inline-flex items-center gap-1 font-bold text-slate-650">
                                   {formatNumber(dirty)}
-                                  <svg className="w-3.5 h-3.5 text-rose-400 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                                  </svg>
                                 </span>
                               </td>
 
@@ -914,11 +891,10 @@ export default function UnitDashboard() {
                 <button
                   type="button"
                   onClick={() => setDetailModalTab('shortage')}
-                  className={`transition-colors cursor-pointer pb-1 ${
-                    detailModalTab === 'shortage'
+                  className={`transition-colors cursor-pointer pb-1 ${detailModalTab === 'shortage'
                       ? 'text-teal-600 font-extrabold border-b-2 border-teal-500'
                       : 'hover:text-slate-600'
-                  }`}
+                    }`}
                 >
                   Riwayat & Catatan Kurang Kirim
                 </button>
@@ -926,11 +902,10 @@ export default function UnitDashboard() {
                 <button
                   type="button"
                   onClick={() => setDetailModalTab('activity')}
-                  className={`transition-colors cursor-pointer pb-1 ${
-                    detailModalTab === 'activity'
+                  className={`transition-colors cursor-pointer pb-1 ${detailModalTab === 'activity'
                       ? 'text-teal-600 font-extrabold border-b-2 border-teal-500'
                       : 'hover:text-slate-600'
-                  }`}
+                    }`}
                 >
                   Riwayat Aktivitas Pemakaian Unit
                 </button>
@@ -1038,11 +1013,10 @@ export default function UnitDashboard() {
                                   {log.nurse_name}
                                 </td>
                                 <td className="py-2.5 px-3 text-center">
-                                  <span className={`inline-block px-1.5 py-0.5 rounded font-extrabold text-[9px] uppercase border ${
-                                    log.action_type === 'UPDATE_DIRTY'
+                                  <span className={`inline-block px-1.5 py-0.5 rounded font-extrabold text-[9px] uppercase border ${log.action_type === 'UPDATE_DIRTY'
                                       ? 'bg-rose-50 text-rose-700 border-rose-100'
                                       : 'bg-teal-50 text-teal-700 border-teal-100'
-                                  }`}>
+                                    }`}>
                                     {log.action_type === 'UPDATE_TERPAKAI' ? 'Pakai Linen' : log.action_type === 'UPDATE_DIRTY' ? 'Dirty Utility' : log.action_type}
                                   </span>
                                 </td>
@@ -1093,11 +1067,11 @@ export default function UnitDashboard() {
         const currentTerpakai = roomRecord ? parseInt(roomRecord.qty_terpakai || 0) : 0;
         const currentDirty = roomRecord ? parseInt(roomRecord.qty_dirty || 0) : 0;
         const currentLemari = Math.max(0, currentStokAwal - currentTerpakai - currentDirty);
-        
+
         const numericVal = parseInt(updateValue || 0);
         let previewTerpakai = currentTerpakai;
         let previewDirty = currentDirty;
-        
+
         if (updateTarget === 'terpakai') {
           if (updateMode === 'out') {
             previewTerpakai = currentTerpakai + numericVal;
@@ -1115,12 +1089,12 @@ export default function UnitDashboard() {
             previewDirty = numericVal;
           }
         }
-        
+
         const previewLemari = Math.max(0, currentStokAwal - previewTerpakai - previewDirty);
-        
+
         let isValid = true;
         let errorMessage = '';
-        
+
         if (updateTarget === 'terpakai') {
           isValid = previewTerpakai >= 0 && previewTerpakai + currentDirty <= currentStokAwal;
           if (updateMode === 'out' && numericVal > currentLemari) {
@@ -1158,7 +1132,7 @@ export default function UnitDashboard() {
         return (
           <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-100 flex flex-col animate-[fadeIn_0.2s_ease-out]">
-              
+
               {/* Header */}
               <div className={`p-5 bg-gradient-to-br ${isDirtyTarget ? 'from-rose-600 to-red-700' : 'from-[#126776] to-[#1ea59e]'} text-white flex justify-between items-center`}>
                 <div>
@@ -1185,7 +1159,7 @@ export default function UnitDashboard() {
 
               {/* Body */}
               <div className="p-5 space-y-4">
-                
+
                 {/* Info Box */}
                 <div className="grid grid-cols-4 gap-2 p-3 bg-slate-50 border border-slate-100 rounded-2xl text-center">
                   <div>
@@ -1214,11 +1188,10 @@ export default function UnitDashboard() {
                       setUpdateMode('out');
                       setUpdateValue('1');
                     }}
-                    className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer border ${
-                      updateMode === 'out'
+                    className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer border ${updateMode === 'out'
                         ? 'bg-white text-black shadow-sm font-extrabold border-slate-250'
                         : 'text-slate-800 hover:text-black font-extrabold border-transparent hover:bg-white/40'
-                    }`}
+                      }`}
                   >
                     {isDirtyTarget ? 'Kotor (+)' : 'Keluar (-)'}
                   </button>
@@ -1228,11 +1201,10 @@ export default function UnitDashboard() {
                       setUpdateMode('in');
                       setUpdateValue('1');
                     }}
-                    className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer border ${
-                      updateMode === 'in'
+                    className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer border ${updateMode === 'in'
                         ? 'bg-white text-black shadow-sm font-extrabold border-slate-250'
                         : 'text-slate-800 hover:text-black font-extrabold border-transparent hover:bg-white/40'
-                    }`}
+                      }`}
                   >
                     {isDirtyTarget ? 'Kurang (-)' : 'Masuk (+)'}
                   </button>
@@ -1242,11 +1214,10 @@ export default function UnitDashboard() {
                       setUpdateMode('override');
                       setUpdateValue(isDirtyTarget ? currentDirty.toString() : currentTerpakai.toString());
                     }}
-                    className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer border ${
-                      updateMode === 'override'
+                    className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer border ${updateMode === 'override'
                         ? 'bg-white text-black shadow-sm font-extrabold border-slate-250'
                         : 'text-slate-800 hover:text-black font-extrabold border-transparent hover:bg-white/40'
-                    }`}
+                      }`}
                   >
                     Ubah Total
                   </button>
