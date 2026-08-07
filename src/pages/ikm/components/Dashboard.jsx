@@ -4,7 +4,8 @@ import axios from 'axios';
 import {
   Building, Lock, Unlock, Search, ArrowLeft, Shirt,
   Database, AlertTriangle, CheckCircle2, ChevronRight,
-  Eye, EyeOff, Layers, RefreshCw, Warehouse, HelpCircle
+  Eye, EyeOff, Layers, RefreshCw, Warehouse, HelpCircle,
+  ClipboardList
 } from 'lucide-react';
 import ConfirmDialog from '../../../components/ConfirmDialog';
 import { socket } from '../../../utils/socket';
@@ -77,6 +78,11 @@ export default function ValetDashboard() {
   const [showGudangModal, setShowGudangModal] = useState(false);
   const [selectedGudangLinen, setSelectedGudangLinen] = useState(null);
   const [gudangValue, setGudangValue] = useState('');
+
+  // Smart Hasil SO Modal States
+  const [showSOModal, setShowSOModal] = useState(false);
+  const [selectedSOLinen, setSelectedSOLinen] = useState(null);
+  const [soValue, setSoValue] = useState('');
 
   // Inline Editing States
   const [updating, setUpdating] = useState(false);
@@ -429,6 +435,37 @@ export default function ValetDashboard() {
       setUpdating(false);
     }
   };
+
+  const handleSaveModalSO = async () => {
+    if (!selectedSOLinen || updating) return;
+    const val = parseInt(soValue || 0);
+    if (val < 0) {
+      alert("Hasil SO tidak boleh kurang dari 0!");
+      return;
+    }
+    setUpdating(true);
+    try {
+      const token = localStorage.getItem('token');
+      await axios.post('/api/ikm/update-so', {
+        hospitalLinenId: selectedSOLinen.id,
+        roomId: selectedRoomFilter,
+        soResult: val
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      await fetchDashboardData(selectedHospitalId);
+      setShowSOModal(false);
+      setSelectedSOLinen(null);
+      setSoValue('');
+    } catch (err) {
+      console.error('Error updating SO:', err);
+      alert(err.response?.data?.message || 'Gagal memperbarui hasil SO');
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const isManagement = !!dashboardData?.isManagement;
 
 
   // Filter logic for combined table
@@ -887,19 +924,21 @@ export default function ValetDashboard() {
                         <th className="py-4 px-6 text-center">Cuci IKM</th>
                         <th className="py-4 px-6 text-center">Gudang RS</th>
                         <th className="py-4 px-6 text-center">Kurang Kirim IKM</th>
+                        {isManagement && <th className="py-4 px-6 text-center">Hasil SO</th>}
+                        {isManagement && <th className="py-4 px-6 text-center">Selisih</th>}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {loadingData ? (
                         <tr>
-                          <td colSpan="10" className="py-12 text-center text-slate-400 text-sm font-semibold">
+                          <td colSpan={isManagement ? 12 : 10} className="py-12 text-center text-slate-400 text-sm font-semibold">
                             <RefreshCw className="h-6 w-6 animate-spin mx-auto text-teal-500 mb-2" />
                             Memuat data inventaris...
                           </td>
                         </tr>
                       ) : filteredLinens.length === 0 ? (
                         <tr>
-                          <td colSpan="10" className="py-12 text-center text-slate-400 text-sm font-semibold">
+                          <td colSpan={isManagement ? 12 : 10} className="py-12 text-center text-slate-400 text-sm font-semibold">
                             Tidak ada data linen yang cocok dengan kriteria pencarian/ruangan Anda.
                           </td>
                         </tr>
@@ -934,6 +973,16 @@ export default function ValetDashboard() {
                              ? parseInt(item.total_cuci || 0)
                              : roomRecord ? parseInt(roomRecord.qty_cuci || 0) : 0;
                            const gudang = parseInt(item.total_gudang || 0);
+                           
+                           const hasilSO = selectedRoomFilter === 'all'
+                             ? parseInt(item.total_so || 0)
+                             : roomRecord ? parseInt(roomRecord.so_result || 0) : 0;
+                           
+                           const gudangVal = selectedRoomFilter === 'all'
+                             ? gudang
+                             : (roomRecord && roomRecord.is_gudang_linen === 1 ? displayStokAwal : 0);
+                             
+                           const selisih = displayStokAwal - (terpakai + dirty + lemari + cuci + gudangVal + totalKurang);
 
                           return (
                             <tr
@@ -1046,6 +1095,37 @@ export default function ValetDashboard() {
                                   {hasShortage && <AlertTriangle className="h-4 w-4 text-rose-500" />}
                                 </span>
                               </td>
+
+                              {/* Hasil SO Column */}
+                              {isManagement && (
+                                <td 
+                                  className="py-4 px-6 text-center"
+                                  onClick={(e) => {
+                                    if (selectedRoomFilter !== 'all') {
+                                      e.stopPropagation();
+                                      setSelectedSOLinen(item);
+                                      setSoValue(hasilSO.toString());
+                                      setShowSOModal(true);
+                                    }
+                                  }}
+                                >
+                                  <span className={`inline-flex items-center gap-1 font-bold ${selectedRoomFilter !== 'all' ? 'text-teal-600 hover:bg-slate-100 px-2 py-1 rounded-lg cursor-pointer border border-dashed border-teal-200' : 'text-slate-600'}`}>
+                                    {formatNumber(hasilSO)}
+                                    {selectedRoomFilter !== 'all' && (
+                                      <svg className="w-3.5 h-3.5 text-teal-400 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                      </svg>
+                                    )}
+                                  </span>
+                                </td>
+                              )}
+
+                              {/* Selisih Column */}
+                              {isManagement && (
+                                <td className="py-4 px-6 text-center text-slate-700 font-bold text-sm md:text-base">
+                                  {formatNumber(selisih)}
+                                </td>
+                              )}
                             </tr>
                           );
                         })
@@ -1220,10 +1300,10 @@ export default function ValetDashboard() {
                               <td className="py-2.5 px-3 font-semibold text-slate-800">
                                 {h.form_number}
                               </td>
-                              <td className="py-2.5 px-3 text-center font-medium text-slate-650">
+                              <td className="py-2.5 px-3 text-center font-medium text-slate-655">
                                 {formatNumber(h.qty_kotor)}
                               </td>
-                              <td className="py-2.5 px-3 text-center font-medium text-slate-650">
+                              <td className="py-2.5 px-3 text-center font-medium text-slate-655">
                                 {formatNumber(h.qty_bersih)}
                               </td>
                               <td className="py-2.5 px-3 text-center font-bold text-rose-600">
@@ -1244,7 +1324,67 @@ export default function ValetDashboard() {
                   </div>
                 )}
               </div>
+
+              {/* History of Stock Opname (SO) */}
+              <div className="space-y-3">
+                <h4 className="text-sm font-semibold text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
+                  <ClipboardList className="h-4 w-4 text-slate-400" />
+                  Riwayat Stock Opname (SO)
+                </h4>
+
+                {dashboardData?.soHistory?.filter(h => h.hospital_linen_id === selectedLinenDetail.id).length > 0 ? (
+                  <div className="border border-slate-150 rounded-2xl overflow-hidden shadow-sm">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="bg-slate-50 text-slate-400 font-semibold uppercase tracking-wider text-[10px] border-b border-slate-150">
+                          <th className="py-2.5 px-3 text-center">Tanggal</th>
+                          <th className="py-2.5 px-3">Ruangan</th>
+                          <th className="py-2.5 px-3 text-center">Sebelum SO</th>
+                          <th className="py-2.5 px-3 text-center">Hasil SO</th>
+                          <th className="py-2.5 px-3 text-center">Selisih</th>
+                          <th className="py-2.5 px-3">PIC</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-slate-700">
+                        {dashboardData.soHistory
+                          .filter(h => h.hospital_linen_id === selectedLinenDetail.id)
+                          .map((h, i) => {
+                            const diff = h.new_value - h.old_value;
+                            return (
+                              <tr key={i} className="hover:bg-slate-50/50 transition-colors">
+                                <td className="py-2.5 px-3 font-medium text-slate-550 text-center whitespace-nowrap">
+                                  {formatDate(h.created_at)}
+                                </td>
+                                <td className="py-2.5 px-3 font-semibold text-slate-800">
+                                  {h.room_name}
+                                </td>
+                                <td className="py-2.5 px-3 text-center font-medium text-slate-655">
+                                  {formatNumber(h.old_value)}
+                                </td>
+                                <td className="py-2.5 px-3 text-center font-medium text-slate-655">
+                                  {formatNumber(h.new_value)}
+                                </td>
+                                <td className={`py-2.5 px-3 text-center font-bold ${diff >= 0 ? 'text-teal-600' : 'text-rose-600'}`}>
+                                  {diff > 0 ? `+${formatNumber(diff)}` : formatNumber(diff)}
+                                </td>
+                                <td className="py-2.5 px-3 text-slate-500 font-medium">
+                                  {h.pic_name}
+                                </td>
+                              </tr>
+                            );
+                          })
+                        }
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="py-10 text-center text-slate-400 bg-slate-50 border border-dashed border-slate-200 rounded-2xl text-xs font-semibold">
+                    Tidak ada riwayat Stock Opname (SO) untuk linen ini.
+                  </div>
+                )}
+              </div>
             </div>
+
 
             {/* Modal Footer */}
             <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end">
@@ -1642,6 +1782,140 @@ export default function ValetDashboard() {
                 <button
                   type="button"
                   onClick={handleSaveModalGudang}
+                  disabled={updating || !isValid}
+                  className="px-4 py-2 bg-teal-600 hover:bg-teal-700 active:scale-95 text-white disabled:opacity-50 text-xs font-bold rounded-xl transition cursor-pointer shadow-sm"
+                >
+                  {updating ? 'Menyimpan...' : 'Simpan Perubahan'}
+                </button>
+              </div>
+
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Smart Hasil SO Update Modal */}
+      {showSOModal && selectedSOLinen && (() => {
+        const roomRecord = dashboardData?.roomLinens?.find(
+          rl => rl.hospital_linen_id === selectedSOLinen.id && rl.room_id.toString() === selectedRoomFilter.toString()
+        );
+        const itemStokAwal = roomRecord ? parseInt(roomRecord.stock_in_rs || 0) : 0;
+        const currentSO = roomRecord ? parseInt(roomRecord.so_result || 0) : 0;
+        
+        const numericVal = parseInt(soValue || 0);
+        let isValid = numericVal >= 0;
+        let errorMessage = '';
+        
+        if (numericVal < 0) {
+          isValid = false;
+          errorMessage = 'Hasil SO tidak boleh kurang dari 0!';
+        }
+
+        return (
+          <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-100 flex flex-col animate-[fadeIn_0.2s_ease-out]">
+              
+              {/* Header */}
+              <div className="p-5 bg-gradient-to-br from-[#126776] to-[#1ea59e] text-white flex justify-between items-center">
+                <div>
+                  <span className="text-[10px] font-bold tracking-widest uppercase bg-white/15 px-2.5 py-0.5 rounded-full border border-white/10">
+                    Pembaruan Hasil Stock Opname (Valet)
+                  </span>
+                  <h3 className="text-base font-bold mt-1 tracking-tight">
+                    {getLinenDisplayName(selectedSOLinen)}
+                  </h3>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowSOModal(false);
+                    setSelectedSOLinen(null);
+                    setSoValue('');
+                  }}
+                  className="p-1 rounded-xl text-white/80 hover:text-white hover:bg-white/10 transition cursor-pointer"
+                >
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="p-5 space-y-4">
+                
+                {/* Info Box */}
+                <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 border border-slate-100 rounded-2xl text-center">
+                  <div>
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Stok Awal Ruangan</span>
+                    <span className="text-sm font-extrabold text-slate-700 mt-0.5 block">{itemStokAwal} Pcs</span>
+                  </div>
+                  <div>
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Hasil SO Sekarang</span>
+                    <span className="text-sm font-extrabold text-slate-700 mt-0.5 block">{currentSO} Pcs</span>
+                  </div>
+                </div>
+
+                {/* Input Fields */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    Jumlah Hasil SO Baru (Pcs)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={soValue}
+                    onChange={(e) => setSoValue(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-teal-500/25 focus:border-teal-500 text-slate-900 placeholder-slate-400"
+                    placeholder="Masukkan jumlah..."
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && isValid && !updating) {
+                        handleSaveModalSO();
+                      }
+                    }}
+                  />
+                </div>
+
+                {/* Preview / Validation */}
+                <div className={`p-3 rounded-2xl border text-xs font-semibold ${isValid ? 'bg-teal-50 border-teal-100 text-teal-800' : 'bg-rose-50 border-rose-100 text-rose-800'}`}>
+                  <div className="flex items-center gap-1.5">
+                    <AlertTriangle className={`h-4 w-4 ${isValid ? 'text-teal-600' : 'text-rose-500'}`} />
+                    <span>Validasi Pembaruan Hasil SO:</span>
+                  </div>
+                  <div className="mt-1.5 space-y-1 pl-5 text-[11px] font-medium text-slate-655">
+                    <div>
+                      Hasil SO Baru: {numericVal} Pcs
+                    </div>
+                    {!isValid && (
+                      <div className="text-rose-600 font-bold mt-1">
+                        * {errorMessage}
+                      </div>
+                    )}
+                    {isValid && (
+                      <div className="text-teal-600 font-bold mt-1">
+                        Input valid. Hasil SO dapat diperbarui.
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Footer */}
+              <div className="p-4 bg-slate-50 border-t border-slate-150 flex items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowSOModal(false);
+                    setSelectedSOLinen(null);
+                    setSoValue('');
+                  }}
+                  className="px-4 py-2 border border-slate-400 text-slate-800 hover:text-black hover:border-slate-500 bg-white hover:bg-slate-50 active:scale-95 text-xs font-bold rounded-xl transition cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveModalSO}
                   disabled={updating || !isValid}
                   className="px-4 py-2 bg-teal-600 hover:bg-teal-700 active:scale-95 text-white disabled:opacity-50 text-xs font-bold rounded-xl transition cursor-pointer shadow-sm"
                 >

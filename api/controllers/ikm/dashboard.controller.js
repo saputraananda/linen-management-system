@@ -1,4 +1,4 @@
-import { ikmPool } from '../../db/pool.js';
+import { ikmPool, mainPool } from '../../db/pool.js';
 
 /**
  * Get list of all active hospitals
@@ -85,6 +85,18 @@ export const getDashboardData = async (req, res) => {
       });
     }
 
+    // Check if user is in mst_leader with role = 'management'
+    let isManagement = false;
+    if (req.user && req.user.role === 'valet') {
+      const [leaders] = await ikmPool.query(
+        "SELECT role FROM mst_leader WHERE employee_id = ?",
+        [req.user.id]
+      );
+      if (leaders.length > 0 && leaders[0].role === 'management') {
+        isManagement = true;
+      }
+    }
+
     // 1. Fetch Hospital Info
     const [hospitals] = await ikmPool.query(
       "SELECT id, hospital_name, hospital_id, company_name, address FROM mst_hospital WHERE id = ?",
@@ -142,7 +154,12 @@ export const getDashboardData = async (req, res) => {
                INNER JOIN mst_rooms_rs r ON hlr.room_id = r.id
                WHERE hlr.hospital_linen_id = hl.id 
                  AND COALESCE(r.is_gudang_linen, 0) = 0
-             ), 0) AS total_lemari
+             ), 0) AS total_lemari,
+             COALESCE((
+               SELECT SUM(hlr.so_result)
+               FROM mst_hospital_linen_rooms hlr
+               WHERE hlr.hospital_linen_id = hl.id
+             ), 0) AS total_so
       FROM mst_hospital_linen hl
       INNER JOIN mst_linen l ON hl.linen_id = l.id
       LEFT JOIN mst_size s ON l.size_id = s.id
@@ -205,6 +222,34 @@ export const getDashboardData = async (req, res) => {
     `;
     const [history] = await ikmPool.query(historyQuery, [hospitalId]);
 
+    // 6. Fetch detailed SO history (tr_log_SO) for this hospital
+    const soLogsQuery = `
+      SELECT lso.id, lso.hospital_linen_id, lso.room_id, r.room_name,
+             lso.pic_employee_id, lso.old_value, lso.new_value, lso.created_at
+      FROM tr_log_SO lso
+      INNER JOIN mst_rooms_rs r ON lso.room_id = r.id
+      WHERE r.hospital_id = ?
+      ORDER BY lso.created_at DESC
+    `;
+    const [soLogs] = await ikmPool.query(soLogsQuery, [hospitalId]);
+
+    // Fetch employee names for PIC in SO logs
+    const picUserIds = [...new Set(soLogs.map(l => l.pic_employee_id).filter(Boolean))];
+    let empMap = new Map();
+    if (picUserIds.length > 0) {
+      const [employees] = await mainPool.query(
+        "SELECT employee_id, full_name FROM mst_employee WHERE employee_id IN (?)",
+        [picUserIds]
+      );
+      empMap = new Map(employees.map(emp => [emp.employee_id, emp.full_name]));
+    }
+
+    // Attach PIC name to SO logs
+    const soHistory = soLogs.map(l => ({
+      ...l,
+      pic_name: empMap.get(l.pic_employee_id) || 'Valet IKM'
+    }));
+
     // Calculate Summary Stats
     const totalLinenTypes = linens.length;
     let totalStockIkm = 0;
@@ -230,6 +275,7 @@ export const getDashboardData = async (req, res) => {
       success: true,
       data: {
         hospital,
+        isManagement,
         stats: {
           totalLinenTypes,
           totalStockIkm,
@@ -241,7 +287,8 @@ export const getDashboardData = async (req, res) => {
         linens,
         roomLinens,
         rooms,
-        history
+        history,
+        soHistory
       }
     });
   } catch (error) {
@@ -516,6 +563,86 @@ export const updateRoomStock = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Gagal memperbarui stok ruangan",
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Update Hasil SO for a specific room and linen
+ */
+export const updateSO = async (req, res) => {
+  try {
+    const { hospitalLinenId, roomId, soResult } = req.body;
+
+    if (!hospitalLinenId || !roomId || soResult === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: "hospitalLinenId, roomId, dan soResult wajib diisi"
+      });
+    }
+
+    const valSO = parseInt(soResult || 0);
+    if (valSO < 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Hasil SO tidak boleh negatif"
+      });
+    }
+
+    // 1. Get current so_result to log in tr_log_SO
+    const [existing] = await ikmPool.query(
+      "SELECT so_result FROM mst_hospital_linen_rooms WHERE hospital_linen_id = ? AND room_id = ?",
+      [hospitalLinenId, roomId]
+    );
+
+    const oldSO = existing.length > 0 ? parseInt(existing[0].so_result || 0) : 0;
+
+    if (existing.length > 0) {
+      await ikmPool.query(
+        "UPDATE mst_hospital_linen_rooms SET so_result = ? WHERE hospital_linen_id = ? AND room_id = ?",
+        [valSO, hospitalLinenId, roomId]
+      );
+    } else {
+      await ikmPool.query(
+        "INSERT INTO mst_hospital_linen_rooms (hospital_linen_id, room_id, so_result, stock_in_rs) VALUES (?, ?, ?, 0)",
+        [hospitalLinenId, roomId, valSO]
+      );
+    }
+
+    // 2. Insert into log history tr_log_SO
+    const picEmployeeId = req.user?.id || 0;
+    await ikmPool.query(
+      `INSERT INTO tr_log_SO (hospital_linen_id, room_id, pic_employee_id, old_value, new_value) 
+       VALUES (?, ?, ?, ?, ?)`,
+      [hospitalLinenId, roomId, picEmployeeId, oldSO, valSO]
+    );
+
+    // Get hospital_id to emit socket event
+    const [linens] = await ikmPool.query(
+      "SELECT hospital_id FROM mst_hospital_linen WHERE id = ?",
+      [hospitalLinenId]
+    );
+    const hospitalId = linens[0]?.hospital_id;
+
+    // Emit real-time socket.io event
+    const io = req.app.get('io');
+    if (io && hospitalId) {
+      io.to(`hospital_${hospitalId}`).emit('data_changed', {
+        type: 'STOCK_UPDATE',
+        message: 'Hasil SO ruangan telah diperbarui oleh IKM'
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Hasil SO berhasil diperbarui"
+    });
+  } catch (error) {
+    console.error("Error updating SO:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Gagal memperbarui hasil SO",
       error: error.message
     });
   }
