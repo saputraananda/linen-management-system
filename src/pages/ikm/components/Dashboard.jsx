@@ -884,9 +884,9 @@ export default function ValetDashboard() {
                         <th className="py-4 px-6 text-center">
                           {selectedRoomFilter === 'all' ? 'Lemari Bersih' : `Lemari (${getSelectedRoomName()})`}
                         </th>
-                        <th className="py-4 px-6 text-center">Cuci</th>
-                        <th className="py-4 px-6 text-center">Gudang</th>
-                        <th className="py-4 px-6 text-center">Kurang Kirim</th>
+                        <th className="py-4 px-6 text-center">Cuci IKM</th>
+                        <th className="py-4 px-6 text-center">Gudang RS</th>
+                        <th className="py-4 px-6 text-center">Kurang Kirim IKM</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">

@@ -718,8 +718,8 @@ export default function UnitDashboard() {
                         <th className="py-4 px-6 text-center">Terpakai</th>
                         <th className="py-4 px-6 text-center">Dirty Utility</th>
                         <th className="py-4 px-6 text-center">Lemari Bersih ({selectedRoom.room_name})</th>
-                        <th className="py-4 px-6 text-center">Cuci</th>
-                        <th className="py-4 px-6 text-center">Kurang Kirim</th>
+                        <th className="py-4 px-6 text-center">Cuci IKM</th>
+                        <th className="py-4 px-6 text-center">Kurang Kirim IKM</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
