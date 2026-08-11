@@ -9,8 +9,8 @@ import {
 } from 'lucide-react';
 import exportSuratJalanKurangKirim from '../../ikm/utils/exportSuratJalanKurangKirim.js';
 import kopSuratIkm from '../../../assets/images/kop_surat_ikm.png';
-import exportSerahTerimaLinen from '../../../utils/exportSerahTerimaLinen.js';
-import exportSerahTerimaLinenPDF from '../../../utils/exportSerahTerimaLinenPDF.js';
+import exportSerahTerimaLinen from '../utils/exportSerahTerimaLinen.js';
+import exportSerahTerimaLinenPDF from '../utils/exportSerahTerimaLinenPDF.js';
 import { socket } from '../../../utils/socket';
 
 // Helper to convert string to Title Case

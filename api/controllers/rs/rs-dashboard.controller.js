@@ -7,7 +7,7 @@ export const getDashboardData = async (req, res) => {
   try {
     // Get hospitalId from authenticated user token (role 'rs')
     const hospitalId = req.user.id;
-    
+
     if (!hospitalId) {
       return res.status(400).json({
         success: false,
@@ -15,7 +15,7 @@ export const getDashboardData = async (req, res) => {
       });
     }
 
-    // 1. Fetch Hospital Info
+    // 1. Fetch Hospital Infojd
     const [hospitals] = await ikmPool.query(
       "SELECT id, hospital_name, hospital_id, company_name, address FROM mst_hospital WHERE id = ?",
       [hospitalId]
@@ -148,7 +148,7 @@ export const getDashboardData = async (req, res) => {
       totalStockRs += parseInt(hl.stock_in_rs || 0);
       totalParStock += parseInt(hl.par_stock || 0);
       totalKurangKirim += parseInt(hl.total_kurang || 0);
-      
+
       const currentStock = parseInt(hl.stock_in_ikm || 0) + parseInt(hl.stock_in_rs || 0);
       const minStock = parseInt(hl.min_stock || 0);
       if (currentStock < minStock) {

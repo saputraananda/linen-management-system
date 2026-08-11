@@ -982,7 +982,7 @@ export default function ValetDashboard() {
                              ? gudang
                              : (roomRecord && roomRecord.is_gudang_linen === 1 ? displayStokAwal : 0);
                              
-                           const selisih = displayStokAwal - (terpakai + dirty + lemari + cuci + gudangVal + totalKurang);
+                           const selisih = hasilSO - (terpakai + dirty + lemari + cuci + gudangVal + totalKurang);
 
                           return (
                             <tr

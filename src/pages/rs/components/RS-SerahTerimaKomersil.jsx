@@ -7,8 +7,8 @@ import {
     Shirt, Info, X, Printer, ListCollapse
 } from 'lucide-react';
 import exportSuratJalanKurangKirimKomersil from '../../ikm/utils/exportSuratJalanKurangKirimKomersil.js';
-import exportSerahTerimaLinenKomersil from '../../../utils/exportSerahTerimaLinenKomersil.js';
-import exportSerahTerimaLinenPDFKomersil from '../../../utils/exportSerahTerimaLinenPDFKomersil.js';
+import exportSerahTerimaLinenKomersil from '../utils/exportSerahTerimaLinenKomersil.js';
+import exportSerahTerimaLinenPDFKomersil from '../utils/exportSerahTerimaLinenPDFKomersil.js';
 
 // Helper to convert string to Title Case
 const toTitleCase = (str) => {

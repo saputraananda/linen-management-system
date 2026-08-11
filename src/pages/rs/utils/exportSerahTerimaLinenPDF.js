@@ -1,4 +1,4 @@
-import kopSuratIkm from '../assets/images/kop_surat_ikm.png';
+import kopSuratIkm from '../../../assets/images/kop_surat_ikm.png';
 
 // Helper to convert string to Title Case
 const toTitleCase = (str) => {
