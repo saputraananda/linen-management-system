@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import {
   Building, Search, ArrowLeft, Database, AlertTriangle, CheckCircle2,
-  Layers, RefreshCw, Home, Compass, ChevronRight
+  Layers, RefreshCw, Home, Compass, ChevronRight, X
 } from 'lucide-react';
 import ConfirmDialog from '../../../components/ConfirmDialog';
 import { socket } from '../../../utils/socket';
@@ -57,6 +57,33 @@ export default function UnitDashboard() {
   const [updateMode, setUpdateMode] = useState('add'); // 'add' or 'correct'
   const [updateValue, setUpdateValue] = useState('');
   const [updateTarget, setUpdateTarget] = useState('terpakai'); // 'terpakai' or 'dirty'
+
+  // Transfer Modal States
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [transferSourceId, setTransferSourceId] = useState('');
+  const [transferQuantities, setTransferQuantities] = useState({});
+  const [transferNotes, setTransferNotes] = useState('');
+  const [transferring, setTransferring] = useState(false);
+
+  const [transferTab, setTransferTab] = useState('form'); // 'form' or 'history'
+  const [transferHistory, setTransferHistory] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [confirmCancelId, setConfirmCancelId] = useState(null);
+
+  // Toast Notification States
+  const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
+  const showToast = (message, type = 'success') => {
+    setToast({ show: true, message, type });
+  };
+  useEffect(() => {
+    if (toast.show) {
+      const timer = setTimeout(() => {
+        setToast(prev => ({ ...prev, show: false }));
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast.show]);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -325,9 +352,106 @@ export default function UnitDashboard() {
       setEditingCell(null);
     } catch (err) {
       console.error('Error updating gudang:', err);
-      alert(err.response?.data?.message || 'Gagal memperbarui data gudang');
+      showToast(err.response?.data?.message || 'Gagal memperbarui data gudang', 'error');
     } finally {
       setUpdating(false);
+    }
+  };
+
+  const fetchTransferHistory = async () => {
+    setLoadingHistory(true);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`/api/unit/transfer-history?roomId=${selectedRoom.id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (response.data && response.data.success) {
+        setTransferHistory(response.data.data);
+      }
+    } catch (err) {
+      console.error("Error fetching transfer history:", err);
+      showToast("Gagal memuat riwayat transfer.", "error");
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  const handleCancelTransfer = async (transferId) => {
+    setTransferring(true);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.post('/api/unit/cancel-transfer', {
+        transferId,
+        picName: activeNurse
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (response.data && response.data.success) {
+        showToast("Transfer berhasil dibatalkan, stok dikembalikan!", "success");
+        fetchTransferHistory();
+        fetchDashboardData(hospitalId, selectedRoom.id);
+      }
+    } catch (err) {
+      console.error("Error cancelling transfer:", err);
+      showToast(err.response?.data?.message || "Gagal membatalkan transfer.", "error");
+    } finally {
+      setTransferring(false);
+    }
+  };
+
+  const handleTransferLinen = async (e) => {
+    e.preventDefault();
+    if (!transferSourceId || transferring) return;
+
+    // Filter items with qty > 0
+    const items = Object.entries(transferQuantities)
+      .map(([id, qty]) => ({ hospitalLinenId: parseInt(id), qty: parseInt(qty || 0) }))
+      .filter(item => item.qty > 0);
+
+    if (items.length === 0) {
+      showToast("Masukkan jumlah pengambilan minimal 1 Pcs pada salah satu item.", 'error');
+      return;
+    }
+
+    setTransferring(true);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.post('/api/unit/transfer-linen', {
+        sourceRoomId: parseInt(transferSourceId),
+        destRoomId: selectedRoom.id,
+        items,
+        picName: activeNurse,
+        notes: transferNotes
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (response.data && response.data.success) {
+        showToast("Linen berhasil diambil dari transit!", 'success');
+        setShowTransferModal(false);
+        setTransferSourceId('');
+        setTransferQuantities({});
+        setTransferNotes('');
+        fetchDashboardData(hospitalId, selectedRoom.id);
+      }
+    } catch (err) {
+      console.error("Error transferring linen:", err);
+      showToast(err.response?.data?.message || "Gagal melakukan pengambilan linen.", 'error');
+    } finally {
+      setTransferring(false);
+    }
+  };
+
+  const handleCloseTransferModal = () => {
+    const hasInputs = Object.values(transferQuantities).some(q => q > 0);
+    if (transferTab === 'form' && hasInputs) {
+      setConfirmDiscard(true);
+    } else {
+      setShowTransferModal(false);
+      setTransferSourceId('');
+      setTransferQuantities({});
+      setTransferNotes('');
     }
   };
 
@@ -458,8 +582,13 @@ export default function UnitDashboard() {
                             {room.room_name}
                           </h3>
                           {room.is_gudang_linen === 1 && (
-                            <span className="inline-block mt-1 px-1.5 py-0.5 rounded-full text-[8px] sm:text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-100">
+                            <span className="inline-block mt-1 mr-1 px-1.5 py-0.5 rounded-full text-[8px] sm:text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-100">
                               Gudang Linen
+                            </span>
+                          )}
+                          {room.is_special_unit === 1 && (
+                            <span className="inline-block mt-1 px-1.5 py-0.5 rounded-full text-[8px] sm:text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-100">
+                              Transit/Spesial
                             </span>
                           )}
                         </div>
@@ -588,6 +717,20 @@ export default function UnitDashboard() {
                   >
                     <ArrowLeft className="h-3.5 w-3.5" />
                     Ganti Ruangan
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setShowTransferModal(true);
+                      setTransferTab('form');
+                      setTransferSourceId('');
+                      setTransferQuantities({});
+                      setTransferNotes('');
+                    }}
+                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-sm transition active:scale-95 cursor-pointer"
+                  >
+                    <Layers className="h-3.5 w-3.5" />
+                    Ambil Linen dari Transit
                   </button>
 
                   <button
@@ -1314,6 +1457,329 @@ export default function UnitDashboard() {
         );
       })()}
 
+      {/* Linen Transit Transfer Modal */}
+      {showTransferModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-[fadeIn_0.2s_ease-out]">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 max-w-2xl w-full flex flex-col max-h-[85vh] overflow-hidden">
+            {/* Header */}
+            <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-extrabold text-slate-950 flex items-center gap-2">
+                  <Layers className="h-5 w-5 text-indigo-600 animate-pulse" />
+                  Ambil Linen dari Transit / Special Unit
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Kelola stok linen bersih dari Special Unit ke ruangan Anda ({selectedRoom.room_name}).
+                </p>
+              </div>
+              <button
+                onClick={handleCloseTransferModal}
+                className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Tabs */}
+            <div className="flex border-b border-slate-100 px-6 bg-slate-50/50">
+              <button
+                onClick={() => setTransferTab('form')}
+                className={`py-3 px-4 font-bold text-xs border-b-2 transition-all cursor-pointer ${
+                  transferTab === 'form' 
+                    ? 'border-indigo-600 text-indigo-600' 
+                    : 'border-transparent text-slate-500 hover:text-indigo-600'
+                }`}
+              >
+                Form Ambil Linen
+              </button>
+              <button
+                onClick={() => {
+                  setTransferTab('history');
+                  fetchTransferHistory();
+                }}
+                className={`py-3 px-4 font-bold text-xs border-b-2 transition-all cursor-pointer ${
+                  transferTab === 'history' 
+                    ? 'border-indigo-600 text-indigo-600' 
+                    : 'border-transparent text-slate-500 hover:text-indigo-600'
+                }`}
+              >
+                Riwayat Pengambilan
+              </button>
+            </div>
+
+            {/* Tab: Form */}
+            {transferTab === 'form' && (
+              <>
+                {/* Content */}
+                <div className="flex-1 overflow-y-auto p-6 space-y-5">
+                  {/* Source Room Dropdown */}
+                  <div className="space-y-2">
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
+                      Pilih Ruangan Asal (Transit)
+                    </label>
+                    <select
+                      value={transferSourceId}
+                      onChange={(e) => {
+                        setTransferSourceId(e.target.value);
+                        setTransferQuantities({});
+                      }}
+                      className="block w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 font-semibold focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-500 transition-all text-sm cursor-pointer"
+                    >
+                      <option value="">-- Pilih Ruangan Asal --</option>
+                      {dashboardData?.rooms
+                        ?.filter(r => r.is_special_unit === 1 && r.id.toString() !== selectedRoom?.id?.toString())
+                        ?.map(room => (
+                          <option key={room.id} value={room.id.toString()}>
+                            {room.room_name}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+
+                  {/* Items List */}
+                  {transferSourceId && (() => {
+                    // Get all hospital linens and their available stock in the source room
+                    const linensWithStock = (dashboardData?.linens || []).map(linen => {
+                      const sourceRecord = dashboardData?.roomLinens?.find(
+                        rl => rl.hospital_linen_id === linen.id && rl.room_id.toString() === transferSourceId.toString()
+                      );
+                      const stockInRs = sourceRecord ? parseInt(sourceRecord.stock_in_rs || 0) : 0;
+                      const terpakai = sourceRecord ? parseInt(sourceRecord.qty_terpakai || 0) : 0;
+                      const dirty = sourceRecord ? parseInt(sourceRecord.qty_dirty || 0) : 0;
+                      const cleanStock = Math.max(0, stockInRs - terpakai - dirty);
+
+                      return {
+                        ...linen,
+                        cleanStock
+                      };
+                    }).filter(linen => linen.cleanStock > 0);
+
+                    if (linensWithStock.length === 0) {
+                      return (
+                        <div className="py-10 text-center text-slate-400 font-semibold border border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
+                          <Layers className="h-8 w-8 mx-auto text-slate-300 mb-2" />
+                          Tidak ada stok linen bersih yang tersedia di ruangan transit ini.
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="space-y-3">
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
+                          Daftar Linen Bersih Tersedia
+                        </label>
+                        <div className="border border-slate-100 rounded-2xl overflow-hidden shadow-sm">
+                          <table className="w-full text-left text-xs border-collapse">
+                            <thead>
+                              <tr className="bg-slate-50 border-b border-slate-100 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
+                                <th className="py-3 px-4">Nama Linen</th>
+                                <th className="py-3 px-4 text-center">Stok Transit</th>
+                                <th className="py-3 px-4 text-center w-28">Jumlah Ambil</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {linensWithStock.map(linen => {
+                                const currentQty = transferQuantities[linen.id] || '';
+                                return (
+                                  <tr key={linen.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition">
+                                    <td className="py-3.5 px-4">
+                                      <div className="font-bold text-slate-800">{getLinenDisplayName(linen)}</div>
+                                      <div className="text-[10px] text-indigo-500 font-medium">Linen ID: {linen.id}</div>
+                                    </td>
+                                    <td className="py-3.5 px-4 text-center font-extrabold text-slate-900 text-sm">
+                                      {linen.cleanStock} <span className="text-[10px] text-slate-400">Pcs</span>
+                                    </td>
+                                    <td className="py-3.5 px-4 text-center">
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        max={linen.cleanStock}
+                                        value={currentQty}
+                                        placeholder="0"
+                                        onChange={(e) => {
+                                          const val = e.target.value === '' ? '' : Math.min(linen.cleanStock, Math.max(0, parseInt(e.target.value || 0)));
+                                          setTransferQuantities(prev => ({
+                                            ...prev,
+                                            [linen.id]: val
+                                          }));
+                                        }}
+                                        className="block w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-center text-slate-800 font-bold text-sm focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-500 transition-all"
+                                      />
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Notes Input */}
+                  {transferSourceId && (
+                    <div className="space-y-2">
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
+                        Catatan Pengambilan (Opsional)
+                      </label>
+                      <textarea
+                        rows="2"
+                        value={transferNotes}
+                        onChange={(e) => setTransferNotes(e.target.value)}
+                        placeholder="Masukkan catatan tambahan jika diperlukan..."
+                        className="block w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 font-semibold focus:outline-none focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-500 transition-all text-xs"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* Footer */}
+                <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={handleCloseTransferModal}
+                    className="px-4 py-2 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-xl text-xs font-bold transition shadow-sm active:scale-95 cursor-pointer"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleTransferLinen}
+                    disabled={transferring || !transferSourceId || Object.values(transferQuantities).filter(Boolean).length === 0}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-50 text-xs font-bold rounded-xl transition shadow-sm active:scale-95 cursor-pointer"
+                  >
+                    {transferring ? 'Memproses...' : 'Konfirmasi Ambil Linen'}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* Tab: History */}
+            {transferTab === 'history' && (
+              <>
+                <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                  {loadingHistory ? (
+                    <div className="flex flex-col items-center justify-center py-20 text-slate-400 font-semibold">
+                      <RefreshCw className="h-8 w-8 animate-spin text-indigo-600 mb-3" />
+                      Memuat riwayat transfer...
+                    </div>
+                  ) : transferHistory.length === 0 ? (
+                    <div className="py-16 text-center text-slate-400 font-semibold border border-dashed border-slate-200 rounded-3xl bg-slate-50/50">
+                      <Layers className="h-10 w-10 mx-auto text-slate-350 mb-3" />
+                      Belum ada riwayat transaksi transfer untuk ruangan ini.
+                    </div>
+                  ) : (
+                    <div className="border border-slate-100 rounded-2xl overflow-hidden shadow-sm">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr className="bg-slate-50 border-b border-slate-100 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
+                            <th className="py-3 px-4">Tanggal & PIC</th>
+                            <th className="py-3 px-4">Tipe / Ruangan</th>
+                            <th className="py-3 px-4">Linen & Jumlah</th>
+                            <th className="py-3 px-4 text-center">Aksi</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {transferHistory.map(history => {
+                            const isDest = history.dest_room_id.toString() === selectedRoom.id.toString();
+                            return (
+                              <tr key={history.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition">
+                                <td className="py-3.5 px-4">
+                                  <div className="font-bold text-slate-800">
+                                    {new Date(history.transfer_date).toLocaleString('id-ID', {
+                                      dateStyle: 'medium',
+                                      timeStyle: 'short'
+                                    })}
+                                  </div>
+                                  <div className="text-[10px] text-slate-400 font-semibold mt-0.5">Oleh: {history.pic_name}</div>
+                                </td>
+                                <td className="py-3.5 px-4">
+                                  <span className={`inline-block px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
+                                    isDest ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-rose-50 text-rose-700 border border-rose-100'
+                                  }`}>
+                                    {isDest ? 'Masuk (In)' : 'Keluar (Out)'}
+                                  </span>
+                                  <div className="text-[10px] font-bold text-slate-700 mt-1">
+                                    {isDest ? `Asal: ${history.source_room_name}` : `Tujuan: ${history.dest_room_name}`}
+                                  </div>
+                                </td>
+                                <td className="py-3.5 px-4">
+                                  <div className="font-bold text-slate-800">{history.linen_name}</div>
+                                  <div className="text-sm font-extrabold text-slate-900 mt-0.5">
+                                    {history.qty} <span className="text-[10px] text-slate-400">Pcs</span>
+                                  </div>
+                                </td>
+                                <td className="py-3.5 px-4 text-center">
+                                  {isDest ? (
+                                    <button
+                                      onClick={() => {
+                                        setConfirmCancelId(history.id);
+                                      }}
+                                      className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 border border-rose-100 hover:border-rose-200 text-rose-700 font-bold rounded-lg transition active:scale-95 cursor-pointer text-[10px] shadow-sm"
+                                    >
+                                      Batal Ambil
+                                    </button>
+                                  ) : (
+                                    <span className="text-slate-400 font-semibold text-[10px]">—</span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                {/* Footer */}
+                <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end">
+                  <button
+                    type="button"
+                    onClick={handleCloseTransferModal}
+                    className="px-6 py-2.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-xl text-sm font-bold transition shadow-sm active:scale-95 cursor-pointer"
+                  >
+                    Tutup
+                  </button>
+                </div>
+              </>
+            )}
+
+          </div>
+        </div>
+      )}
+
+      {/* Discard Modal Inputs Confirm */}
+      <ConfirmDialog
+        isOpen={confirmDiscard}
+        onClose={() => setConfirmDiscard(false)}
+        onConfirm={() => {
+          setConfirmDiscard(false);
+          setShowTransferModal(false);
+          setTransferSourceId('');
+          setTransferQuantities({});
+          setTransferNotes('');
+        }}
+        title="Batalkan Pengisian?"
+        message="Anda telah memasukkan beberapa jumlah transfer. Apakah Anda yakin ingin membatalkan dan membuang pengisian ini?"
+        confirmText="Ya, Batalkan"
+        cancelText="Kembali"
+      />
+
+      {/* Cancel Committed Transfer Confirm */}
+      <ConfirmDialog
+        isOpen={confirmCancelId !== null}
+        onClose={() => setConfirmCancelId(null)}
+        onConfirm={() => {
+          handleCancelTransfer(confirmCancelId);
+          setConfirmCancelId(null);
+        }}
+        title="Batalkan Pengambilan Linen?"
+        message="Apakah Anda yakin ingin membatalkan transfer ini? Stok bersih akan dikembalikan ke ruangan transit asal."
+        confirmText="Ya, Batalkan"
+        cancelText="Kembali"
+      />
+
       <ConfirmDialog
         isOpen={confirmLogout}
         onClose={() => setConfirmLogout(false)}
@@ -1324,10 +1790,41 @@ export default function UnitDashboard() {
         cancelText="Batal"
       />
 
+      {/* Toast Notification */}
+      {toast.show && (
+        <div className="fixed top-5 right-5 z-[9999] flex items-center gap-3 px-4 py-3 bg-white border border-slate-100 rounded-2xl shadow-xl shadow-slate-200/50 animate-[slideIn_0.2s_ease-out] max-w-sm">
+          <div className={`p-2 rounded-xl flex items-center justify-center ${
+            toast.type === 'success' ? 'bg-emerald-50 text-emerald-600' :
+            toast.type === 'error' ? 'bg-rose-50 text-rose-600' :
+            toast.type === 'warning' ? 'bg-amber-50 text-amber-600' : 'bg-blue-50 text-blue-600'
+          }`}>
+            {toast.type === 'success' ? <CheckCircle2 className="h-5 w-5" /> : <AlertTriangle className="h-5 w-5" />}
+          </div>
+          <div className="flex-1">
+            <p className="text-xs font-extrabold text-slate-800 tracking-tight">
+              {toast.type === 'success' ? 'Berhasil' : 'Peringatan'}
+            </p>
+            <p className="text-[11px] font-semibold text-slate-500 mt-0.5 leading-snug">
+              {toast.message}
+            </p>
+          </div>
+          <button
+            onClick={() => setToast(prev => ({ ...prev, show: false }))}
+            className="p-1 hover:bg-slate-50 rounded-lg text-slate-400 hover:text-slate-600 transition"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       <style>{`
         @keyframes fadeIn {
           from { opacity: 0; transform: translateY(4px); }
           to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes slideIn {
+          from { opacity: 0; transform: translateY(-10px) scale(0.95); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
         }
       `}</style>
     </>

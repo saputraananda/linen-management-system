@@ -115,7 +115,7 @@ export const getDashboardData = async (req, res) => {
 
     // 4. Fetch All Rooms (even those without registered linens)
     const allRoomsQuery = `
-      SELECT id, room_name, is_gudang_linen 
+      SELECT id, room_name, is_gudang_linen, is_special_unit 
       FROM mst_rooms_rs 
       WHERE hospital_id = ? 
       ORDER BY room_name ASC
@@ -381,5 +381,363 @@ export const getLinenLogs = async (req, res) => {
       message: "Gagal memuat log aktivitas linen",
       error: error.message
     });
+  }
+};
+
+/**
+ * Transfer clean linen from a Special (Transit) Room to a regular Room
+ */
+export const transferLinen = async (req, res) => {
+  const connection = await ikmPool.getConnection();
+  try {
+    const hospitalId = req.user.id;
+    const { sourceRoomId, destRoomId, items, picName, notes } = req.body;
+
+    if (!sourceRoomId || !destRoomId || !items || !Array.isArray(items) || items.length === 0 || !picName) {
+      return res.status(400).json({
+        success: false,
+        message: "sourceRoomId, destRoomId, items (array), dan picName wajib diisi."
+      });
+    }
+
+    await connection.beginTransaction();
+
+    // Verify source room
+    const [sourceRooms] = await connection.query(
+      "SELECT hospital_id, is_special_unit, room_name FROM mst_rooms_rs WHERE id = ?",
+      [sourceRoomId]
+    );
+
+    if (sourceRooms.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({
+        success: false,
+        message: "Ruangan sumber tidak ditemukan."
+      });
+    }
+
+    const sourceRoom = sourceRooms[0];
+    if (sourceRoom.hospital_id !== hospitalId) {
+      await connection.rollback();
+      return res.status(403).json({
+        success: false,
+        message: "Ruangan sumber bukan milik rumah sakit Anda."
+      });
+    }
+
+    if (sourceRoom.is_special_unit !== 1) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: `Ruangan '${sourceRoom.room_name}' bukan merupakan Special Unit (transit room).`
+      });
+    }
+
+    // Verify destination room
+    const [destRooms] = await connection.query(
+      "SELECT hospital_id, room_name FROM mst_rooms_rs WHERE id = ?",
+      [destRoomId]
+    );
+
+    if (destRooms.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({
+        success: false,
+        message: "Ruangan tujuan tidak ditemukan."
+      });
+    }
+
+    const destRoom = destRooms[0];
+    if (destRoom.hospital_id !== hospitalId) {
+      await connection.rollback();
+      return res.status(403).json({
+        success: false,
+        message: "Ruangan tujuan bukan milik rumah sakit Anda."
+      });
+    }
+
+    // Process each item
+    for (const item of items) {
+      const { hospitalLinenId, qty } = item;
+      const qtyInt = parseInt(qty || 0);
+
+      if (!hospitalLinenId || qtyInt <= 0) {
+        await connection.rollback();
+        return res.status(400).json({
+          success: false,
+          message: "hospitalLinenId wajib diisi dan qty harus lebih besar dari 0."
+        });
+      }
+
+      // Verify linen belongs to hospital
+      const [linens] = await connection.query(
+        "SELECT hospital_id, linen_id FROM mst_hospital_linen WHERE id = ? AND is_active = 1",
+        [hospitalLinenId]
+      );
+
+      if (linens.length === 0 || linens[0].hospital_id !== hospitalId) {
+        await connection.rollback();
+        return res.status(400).json({
+          success: false,
+          message: `Linen dengan ID ${hospitalLinenId} tidak valid untuk rumah sakit ini.`
+        });
+      }
+
+      // Check clean stock in source room
+      const [stocks] = await connection.query(
+        "SELECT stock_in_rs, qty_terpakai, qty_dirty FROM mst_hospital_linen_rooms WHERE hospital_linen_id = ? AND room_id = ?",
+        [hospitalLinenId, sourceRoomId]
+      );
+
+      const stock = stocks[0] || { stock_in_rs: 0, qty_terpakai: 0, qty_dirty: 0 };
+      const cleanStock = Math.max(0, parseInt(stock.stock_in_rs || 0) - parseInt(stock.qty_terpakai || 0) - parseInt(stock.qty_dirty || 0));
+
+      if (cleanStock < qtyInt) {
+        await connection.rollback();
+        return res.status(400).json({
+          success: false,
+          message: `Stok bersih tidak mencukupi di ruangan sumber. Tersedia: ${cleanStock} Pcs, Diminta: ${qtyInt} Pcs.`
+        });
+      }
+
+      // 1. Decrement source room stock_in_rs
+      await connection.query(
+        "UPDATE mst_hospital_linen_rooms SET stock_in_rs = stock_in_rs - ? WHERE hospital_linen_id = ? AND room_id = ?",
+        [qtyInt, hospitalLinenId, sourceRoomId]
+      );
+
+      // 2. Increment destination room stock_in_rs
+      await connection.query(
+        `INSERT INTO mst_hospital_linen_rooms (hospital_linen_id, room_id, stock_in_rs, qty_terpakai, qty_dirty) 
+         VALUES (?, ?, ?, 0, 0) 
+         ON DUPLICATE KEY UPDATE stock_in_rs = stock_in_rs + VALUES(stock_in_rs)`,
+        [hospitalLinenId, destRoomId, qtyInt]
+      );
+
+      // 3. Log into tr_linen_transfer
+      await connection.query(
+        `INSERT INTO tr_linen_transfer (hospital_id, source_room_id, dest_room_id, hospital_linen_id, qty, pic_name, notes) 
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [hospitalId, sourceRoomId, destRoomId, hospitalLinenId, qtyInt, picName, notes || null]
+      );
+
+      // 4. Also log into tr_unit_activity_log for destination unit
+      await connection.query(
+        `INSERT INTO tr_unit_activity_log (hospital_linen_id, room_id, nurse_name, action_type, old_value, new_value)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [hospitalLinenId, destRoomId, picName, `TRANSFER_IN_FROM_${sourceRoom.room_name.toUpperCase().replace(/\s+/g, '_')}`, 0, qtyInt]
+      );
+      
+      // And log transfer out for source unit
+      await connection.query(
+        `INSERT INTO tr_unit_activity_log (hospital_linen_id, room_id, nurse_name, action_type, old_value, new_value)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [hospitalLinenId, sourceRoomId, picName, `TRANSFER_OUT_TO_${destRoom.room_name.toUpperCase().replace(/\s+/g, '_')}`, 0, qtyInt]
+      );
+    }
+
+    await connection.commit();
+
+    // Emit socket event
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`hospital_${hospitalId}`).emit('data_changed', {
+        type: 'STOCK_TRANSFER',
+        message: 'Linen berhasil ditransfer antar ruangan'
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Linen berhasil ditransfer antar ruangan"
+    });
+  } catch (error) {
+    await connection.rollback();
+    console.error("Error transferring linen:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Gagal mentransfer linen.",
+      error: error.message
+    });
+  } finally {
+    connection.release();
+  }
+};
+
+/**
+ * Fetch transfer history for a specific room (either as source or destination)
+ */
+export const getTransferHistory = async (req, res) => {
+  try {
+    const hospitalId = req.user.id;
+    const { roomId } = req.query;
+
+    if (!roomId) {
+      return res.status(400).json({
+        success: false,
+        message: "roomId wajib diisi"
+      });
+    }
+
+    // Security check: Verify that roomId belongs to the authenticated hospital
+    const [rooms] = await ikmPool.query(
+      "SELECT hospital_id FROM mst_rooms_rs WHERE id = ?",
+      [roomId]
+    );
+
+    if (rooms.length === 0 || rooms[0].hospital_id !== hospitalId) {
+      return res.status(403).json({
+        success: false,
+        message: "Akses ditolak. Ruangan tidak valid."
+      });
+    }
+
+    const [transfers] = await ikmPool.query(
+      `SELECT lt.*, 
+              sr.room_name AS source_room_name, 
+              dr.room_name AS dest_room_name,
+              l.linen_name,
+              hl.ownership_type
+       FROM tr_linen_transfer lt
+       INNER JOIN mst_rooms_rs sr ON lt.source_room_id = sr.id
+       INNER JOIN mst_rooms_rs dr ON lt.dest_room_id = dr.id
+       INNER JOIN mst_hospital_linen hl ON lt.hospital_linen_id = hl.id
+       INNER JOIN mst_linen l ON hl.linen_id = l.id
+       WHERE (lt.source_room_id = ? OR lt.dest_room_id = ?) AND lt.hospital_id = ?
+       ORDER BY lt.transfer_date DESC LIMIT 50`,
+      [roomId, roomId, hospitalId]
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: transfers
+    });
+  } catch (error) {
+    console.error("Error getting transfer history:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Gagal memuat riwayat transfer linen",
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Cancel/Rollback a linen transfer
+ */
+export const cancelTransfer = async (req, res) => {
+  const connection = await ikmPool.getConnection();
+  try {
+    const hospitalId = req.user.id;
+    const { transferId, picName } = req.body;
+
+    if (!transferId || !picName) {
+      return res.status(400).json({
+        success: false,
+        message: "transferId dan picName wajib diisi."
+      });
+    }
+
+    await connection.beginTransaction();
+
+    // 1. Get the transfer record
+    const [transfers] = await connection.query(
+      `SELECT lt.*, sr.room_name AS source_room_name, dr.room_name AS dest_room_name
+       FROM tr_linen_transfer lt
+       INNER JOIN mst_rooms_rs sr ON lt.source_room_id = sr.id
+       INNER JOIN mst_rooms_rs dr ON lt.dest_room_id = dr.id
+       WHERE lt.id = ?`,
+      [transferId]
+    );
+
+    if (transfers.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({
+        success: false,
+        message: "Data transfer tidak ditemukan."
+      });
+    }
+
+    const transfer = transfers[0];
+    if (transfer.hospital_id !== hospitalId) {
+      await connection.rollback();
+      return res.status(403).json({
+        success: false,
+        message: "Akses ditolak. Transaksi transfer bukan milik rumah sakit Anda."
+      });
+    }
+
+    // 2. Check destination room stock
+    const [destStocks] = await connection.query(
+      "SELECT stock_in_rs, qty_terpakai, qty_dirty FROM mst_hospital_linen_rooms WHERE hospital_linen_id = ? AND room_id = ?",
+      [transfer.hospital_linen_id, transfer.dest_room_id]
+    );
+
+    const destStock = destStocks[0] || { stock_in_rs: 0, qty_terpakai: 0, qty_dirty: 0 };
+    const cleanStockDest = Math.max(0, parseInt(destStock.stock_in_rs || 0) - parseInt(destStock.qty_terpakai || 0) - parseInt(destStock.qty_dirty || 0));
+
+    if (cleanStockDest < transfer.qty) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: `Gagal membatalkan transfer. Stok bersih di ruangan tujuan (${transfer.dest_room_name}) tidak mencukupi (Tersedia: ${cleanStockDest} Pcs, Butuh: ${transfer.qty} Pcs). Kemungkinan linen sudah digunakan.`
+      });
+    }
+
+    // 3. Rollback stocks: decrement destination, increment source
+    await connection.query(
+      "UPDATE mst_hospital_linen_rooms SET stock_in_rs = stock_in_rs - ? WHERE hospital_linen_id = ? AND room_id = ?",
+      [transfer.qty, transfer.hospital_linen_id, transfer.dest_room_id]
+    );
+
+    await connection.query(
+      `UPDATE mst_hospital_linen_rooms SET stock_in_rs = stock_in_rs + ? WHERE hospital_linen_id = ? AND room_id = ?`,
+      [transfer.qty, transfer.hospital_linen_id, transfer.source_room_id]
+    );
+
+    // 4. Delete the transfer record
+    await connection.query(
+      "DELETE FROM tr_linen_transfer WHERE id = ?",
+      [transferId]
+    );
+
+    // 5. Log cancellation in activity logs
+    await connection.query(
+      `INSERT INTO tr_unit_activity_log (hospital_linen_id, room_id, nurse_name, action_type, old_value, new_value)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [transfer.hospital_linen_id, transfer.dest_room_id, picName, `CANCEL_TRANSFER_IN_FROM_${transfer.source_room_name.toUpperCase().replace(/\s+/g, '_')}`, 0, transfer.qty]
+    );
+
+    await connection.query(
+      `INSERT INTO tr_unit_activity_log (hospital_linen_id, room_id, nurse_name, action_type, old_value, new_value)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [transfer.hospital_linen_id, transfer.source_room_id, picName, `CANCEL_TRANSFER_OUT_TO_${transfer.dest_room_name.toUpperCase().replace(/\s+/g, '_')}`, 0, transfer.qty]
+    );
+
+    await connection.commit();
+
+    // Emit socket event
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`hospital_${hospitalId}`).emit('data_changed', {
+        type: 'STOCK_TRANSFER_CANCEL',
+        message: 'Pengambilan linen dibatalkan, stok dikembalikan'
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Transfer linen berhasil dibatalkan dan stok dikembalikan."
+    });
+  } catch (error) {
+    await connection.rollback();
+    console.error("Error cancelling transfer:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Gagal membatalkan transfer.",
+      error: error.message
+    });
+  } finally {
+    connection.release();
   }
 };

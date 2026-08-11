@@ -201,7 +201,7 @@ export const getDashboardData = async (req, res) => {
 
     // 4. Fetch All Rooms (even those without registered linens)
     const allRoomsQuery = `
-      SELECT id, room_name, is_gudang_linen 
+      SELECT id, room_name, is_gudang_linen, is_special_unit 
       FROM mst_rooms_rs 
       WHERE hospital_id = ? 
       ORDER BY room_name ASC

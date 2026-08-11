@@ -625,6 +625,18 @@ export const updateTransactionDelivery = async (req, res) => {
       ]
     );
 
+    // Query for any special unit/transit room in this hospital
+    let specialRoomId = null;
+    if (!isTemporary) {
+      const [specialRooms] = await connection.query(
+        "SELECT id FROM mst_rooms_rs WHERE hospital_id = ? AND is_special_unit = 1 LIMIT 1",
+        [oldHeader.hospital_id]
+      );
+      if (specialRooms.length > 0) {
+        specialRoomId = specialRooms[0].id;
+      }
+    }
+
     // Update Details (support updating both qty_kotor and qty_bersih)
     for (const item of details) {
       await connection.query(
@@ -641,6 +653,51 @@ export const updateTransactionDelivery = async (req, res) => {
           id
         ]
       );
+
+      // Mutate room stocks if final save (status === 'SELESAI')
+      if (!isTemporary && item.qtyBersih !== null && item.qtyBersih !== undefined) {
+        const qtyCleaned = parseInt(item.qtyBersih || 0);
+        if (qtyCleaned > 0) {
+          // Get hospital_linen_id and room_id from detail record
+          const [detailRows] = await connection.query(
+            "SELECT hospital_linen_id, room_id FROM tr_linen_transaction_detail WHERE id = ?",
+            [item.id]
+          );
+
+          if (detailRows.length > 0) {
+            const { hospital_linen_id, room_id } = detailRows[0];
+
+            if (room_id) {
+              // 1. Clear dirty utility in originating unit
+              await connection.query(
+                `UPDATE mst_hospital_linen_rooms 
+                 SET qty_dirty = IF(qty_dirty >= ?, qty_dirty - ?, 0) 
+                 WHERE hospital_linen_id = ? AND room_id = ?`,
+                [qtyCleaned, qtyCleaned, hospital_linen_id, room_id]
+              );
+
+              // 2. Route clean stock
+              if (specialRoomId && specialRoomId !== room_id) {
+                // If there's a special unit, decrease allocated stock in unit
+                await connection.query(
+                  `UPDATE mst_hospital_linen_rooms 
+                   SET stock_in_rs = IF(stock_in_rs >= ?, stock_in_rs - ?, 0) 
+                   WHERE hospital_linen_id = ? AND room_id = ?`,
+                  [qtyCleaned, qtyCleaned, hospital_linen_id, room_id]
+                );
+
+                // And increase stock in special unit (transit room)
+                await connection.query(
+                  `INSERT INTO mst_hospital_linen_rooms (hospital_linen_id, room_id, stock_in_rs, qty_terpakai, qty_dirty) 
+                   VALUES (?, ?, ?, 0, 0) 
+                   ON DUPLICATE KEY UPDATE stock_in_rs = stock_in_rs + VALUES(stock_in_rs)`,
+                  [hospital_linen_id, specialRoomId, qtyCleaned]
+                );
+              }
+            }
+          }
+        }
+      }
     }
 
 

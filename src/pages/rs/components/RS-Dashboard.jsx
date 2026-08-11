@@ -648,7 +648,9 @@ export default function RSDashboard() {
                       >
                         <option value="all">Semua Ruangan</option>
                         {dashboardData?.rooms?.map(room => (
-                          <option key={room.id} value={room.id.toString()}>{room.room_name}</option>
+                          <option key={room.id} value={room.id.toString()}>
+                            {room.room_name}{room.is_special_unit === 1 ? ' (Transit/Spesial)' : ''}
+                          </option>
                         ))}
                       </select>
                       <div className="absolute inset-y-0 right-0 pr-2.5 flex items-center pointer-events-none text-slate-400">
