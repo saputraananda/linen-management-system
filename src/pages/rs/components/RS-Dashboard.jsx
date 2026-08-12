@@ -189,7 +189,7 @@ export default function RSDashboard() {
       }, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      
+
       const freshData = await fetchDashboardData();
       if (freshData && freshData.linens) {
         const updatedLinen = freshData.linens.find(hl => hl.id === selectedLinenDetail.id);
@@ -208,7 +208,7 @@ export default function RSDashboard() {
 
   const handleSaveModalTerpakai = async () => {
     if (!selectedUpdateLinen || updating) return;
-    
+
     // Resolve current terpakai and dirty
     const roomRecord = dashboardData?.roomLinens?.find(
       rl => rl.hospital_linen_id === selectedUpdateLinen.id && rl.room_id.toString() === selectedRoomFilter.toString()
@@ -217,10 +217,10 @@ export default function RSDashboard() {
     const currentDirty = roomRecord ? parseInt(roomRecord.qty_dirty || 0) : 0;
     const currentStokAwal = roomRecord ? parseInt(roomRecord.stock_in_rs || 0) : 0;
     const currentLemari = Math.max(0, currentStokAwal - currentTerpakai - currentDirty);
-    
+
     const inputVal = parseInt(updateValue || 0);
     let finalValue = 0;
-    
+
     if (updateTarget === 'terpakai') {
       let finalTerpakai = currentTerpakai;
       if (updateMode === 'out') {
@@ -246,8 +246,8 @@ export default function RSDashboard() {
     } else {
       let finalDirty = currentDirty;
       if (updateMode === 'out') {
-        if (inputVal > currentLemari) {
-          alert("Jumlah kotor melebihi stok Lemari Bersih!");
+        if (inputVal > currentTerpakai) {
+          alert("Jumlah kotor melebihi stok Terpakai!");
           return;
         }
         finalDirty = currentDirty + inputVal;
@@ -258,15 +258,20 @@ export default function RSDashboard() {
         }
         finalDirty = currentDirty - inputVal;
       } else {
-        if (inputVal + currentTerpakai > currentStokAwal) {
-          alert("Jumlah terpakai + dirty utility tidak boleh melebihi Stok Awal Ruangan!");
+        const diff = inputVal - currentDirty;
+        if (diff > 0 && diff > currentTerpakai) {
+          alert("Peningkatan jumlah kotor melebihi stok Terpakai!");
+          return;
+        }
+        if (inputVal < 0) {
+          alert("Jumlah kotor tidak boleh kurang dari 0!");
           return;
         }
         finalDirty = inputVal;
       }
       finalValue = finalDirty;
     }
-    
+
     setUpdating(true);
     try {
       const token = localStorage.getItem('token');
@@ -387,9 +392,9 @@ export default function RSDashboard() {
         rl => rl.hospital_linen_id === item.id && rl.room_id.toString() === selectedRoomFilter.toString()
       );
     }) || [];
-    
+
     totalLinenTypes = roomLinenItems.length;
-    
+
     roomLinenItems.forEach(item => {
       const roomRecord = dashboardData?.roomLinens?.find(
         rl => rl.hospital_linen_id === item.id && rl.room_id.toString() === selectedRoomFilter.toString()
@@ -664,7 +669,7 @@ export default function RSDashboard() {
 
               {/* Unified Table Content */}
               <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm md:text-base border-collapse text-slate-600">
+                <table className="w-full text-left text-sm md:text-base border-collapse text-slate-600">
                   <thead>
                     <tr className="bg-slate-50/50 text-slate-400 font-semibold uppercase tracking-wider text-xs md:text-sm border-b border-slate-100">
                       <th className="py-4 px-6 text-center">No</th>
@@ -706,7 +711,7 @@ export default function RSDashboard() {
                           ? parseInt(item.total_kurang || 0)
                           : roomRecord ? parseInt(roomRecord.qty_kurang || 0) : 0;
                         const hasShortage = totalKurang > 0;
-                        
+
                         const displayStokAwal = selectedRoomFilter === 'all'
                           ? parseInt(item.stock_in_rs || 0)
                           : parseInt(roomRecord?.stock_in_rs || 0);
@@ -718,11 +723,11 @@ export default function RSDashboard() {
                         const dirty = selectedRoomFilter === 'all'
                           ? parseInt(item.total_dirty || 0)
                           : roomRecord ? parseInt(roomRecord.qty_dirty || 0) : 0;
-                          
+
                         const lemari = selectedRoomFilter === 'all'
                           ? parseInt(item.total_lemari || 0)
                           : Math.max(0, displayStokAwal - terpakai - dirty);
-                          
+
                         const cuci = selectedRoomFilter === 'all'
                           ? parseInt(item.total_cuci || 0)
                           : roomRecord ? parseInt(roomRecord.qty_cuci || 0) : 0;
@@ -752,9 +757,9 @@ export default function RSDashboard() {
                             <td className="py-4 px-6 text-center text-slate-650 font-semibold text-sm md:text-base">
                               {formatNumber(displayStokAwal)}
                             </td>
-                            
+
                             {/* Terpakai Column (Editable only if a room is selected) */}
-                            <td 
+                            <td
                               className="py-4 px-6 text-center"
                               onClick={(e) => {
                                 if (selectedRoomFilter !== 'all') {
@@ -778,7 +783,7 @@ export default function RSDashboard() {
                             </td>
 
                             {/* Dirty Utility Column (Editable only if a room is selected) */}
-                            <td 
+                            <td
                               className="py-4 px-6 text-center"
                               onClick={(e) => {
                                 if (selectedRoomFilter !== 'all') {
@@ -812,22 +817,22 @@ export default function RSDashboard() {
                             </td>
 
                             {/* Gudang Column (Always editable if Gudang room setup exists) */}
-                             <td 
-                               className="py-4 px-6 text-center"
-                               onClick={(e) => {
-                                 e.stopPropagation();
-                                 setSelectedGudangLinen(item);
-                                 setGudangValue(gudang.toString());
-                                 setShowGudangModal(true);
-                               }}
-                             >
-                               <span className="inline-flex items-center gap-1 font-bold text-teal-600 hover:bg-slate-100 px-2 py-1 rounded-lg cursor-pointer border border-dashed border-teal-200">
-                                 {formatNumber(gudang)}
-                                 <svg className="w-3.5 h-3.5 text-teal-400 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                   <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                                 </svg>
-                               </span>
-                             </td>
+                            <td
+                              className="py-4 px-6 text-center"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedGudangLinen(item);
+                                setGudangValue(gudang.toString());
+                                setShowGudangModal(true);
+                              }}
+                            >
+                              <span className="inline-flex items-center gap-1 font-bold text-teal-600 hover:bg-slate-100 px-2 py-1 rounded-lg cursor-pointer border border-dashed border-teal-200">
+                                {formatNumber(gudang)}
+                                <svg className="w-3.5 h-3.5 text-teal-400 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                </svg>
+                              </span>
+                            </td>
 
                             {/* Kurang Kirim Column */}
                             <td className="py-4 px-6 text-center">
@@ -854,7 +859,7 @@ export default function RSDashboard() {
       {/* Details Modal */}
       {selectedLinenDetail && (
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-2xl w-full shadow-2xl overflow-hidden border border-slate-100 flex flex-col max-h-[85vh] animate-[fadeIn_0.2s_ease-out]">
+          <div className="bg-white rounded-3xl max-w-5xl w-full shadow-2xl overflow-hidden border border-slate-100 flex flex-col max-h-[85vh] animate-[fadeIn_0.2s_ease-out]">
 
             {/* Modal Header */}
             <div className="p-6 bg-gradient-to-br from-[#126776] to-[#1ea59e] text-white flex justify-between items-start relative">
@@ -896,26 +901,24 @@ export default function RSDashboard() {
               <nav className="flex items-center gap-2 px-1 text-xs font-bold text-slate-400 select-none pb-2 border-b border-slate-100">
                 <button
                   type="button"
-                  onClick={() => setDetailModalTab('shortage')}
-                  className={`transition-colors cursor-pointer pb-1 ${
-                    detailModalTab === 'shortage'
+                  onClick={() => setDetailModalTab('distribution')}
+                  className={`transition-colors cursor-pointer pb-1 ${detailModalTab === 'distribution'
                       ? 'text-teal-600 font-extrabold border-b-2 border-teal-500'
                       : 'hover:text-slate-600'
-                  }`}
+                    }`}
                 >
-                  Riwayat & Catatan Kurang Kirim
+                  Distribusi Stok per Unit
                 </button>
                 <span className="pb-1">/</span>
                 <button
                   type="button"
-                  onClick={() => setDetailModalTab('distribution')}
-                  className={`transition-colors cursor-pointer pb-1 ${
-                    detailModalTab === 'distribution'
+                  onClick={() => setDetailModalTab('shortage')}
+                  className={`transition-colors cursor-pointer pb-1 ${detailModalTab === 'shortage'
                       ? 'text-teal-600 font-extrabold border-b-2 border-teal-500'
                       : 'hover:text-slate-600'
-                  }`}
+                    }`}
                 >
-                  Distribusi Stok per Ruangan / Unit
+                  Riwayat & Catatan Kurang Kirim
                 </button>
               </nav>
 
@@ -991,7 +994,7 @@ export default function RSDashboard() {
                           <th className="py-2.5 px-3 text-center">Jenis</th>
                           <th className="py-2.5 px-3 text-center">Terpakai</th>
                           <th className="py-2.5 px-3 text-center">Dirty Utility</th>
-                          <th className="py-2.5 px-3 text-center">Stok Lemari / Gudang</th>
+                          <th className="py-2.5 px-3 text-center">Stok Lemari</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 text-slate-700">
@@ -1010,11 +1013,10 @@ export default function RSDashboard() {
                                 {room.room_name}
                               </td>
                               <td className="py-2.5 px-3 text-center">
-                                <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-bold ${
-                                  room.is_gudang_linen === 1
+                                <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-bold ${room.is_gudang_linen === 1
                                     ? 'bg-amber-50 text-amber-700 border border-amber-100'
                                     : 'bg-teal-50 text-teal-700 border border-teal-100'
-                                }`}>
+                                  }`}>
                                   {room.is_gudang_linen === 1 ? 'Gudang' : 'Unit'}
                                 </span>
                               </td>
@@ -1024,7 +1026,7 @@ export default function RSDashboard() {
                               <td className="py-2.5 px-3 text-center font-medium text-slate-500">
                                 {formatNumber(qtyDirty)} Pcs
                               </td>
-                              <td 
+                              <td
                                 className="py-2.5 px-3 text-center"
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -1090,11 +1092,11 @@ export default function RSDashboard() {
         const currentTerpakai = roomRecord ? parseInt(roomRecord.qty_terpakai || 0) : 0;
         const currentDirty = roomRecord ? parseInt(roomRecord.qty_dirty || 0) : 0;
         const currentLemari = Math.max(0, currentStokAwal - currentTerpakai - currentDirty);
-        
+
         const numericVal = parseInt(updateValue || 0);
         let previewTerpakai = currentTerpakai;
         let previewDirty = currentDirty;
-        
+
         if (updateTarget === 'terpakai') {
           if (updateMode === 'out') {
             previewTerpakai = currentTerpakai + numericVal;
@@ -1106,18 +1108,23 @@ export default function RSDashboard() {
         } else {
           if (updateMode === 'out') {
             previewDirty = currentDirty + numericVal;
+            previewTerpakai = Math.max(0, currentTerpakai - numericVal);
           } else if (updateMode === 'in') {
             previewDirty = Math.max(0, currentDirty - numericVal);
           } else {
             previewDirty = numericVal;
+            const diff = numericVal - currentDirty;
+            if (diff > 0) {
+              previewTerpakai = Math.max(0, currentTerpakai - diff);
+            }
           }
         }
-        
+
         const previewLemari = Math.max(0, currentStokAwal - previewTerpakai - previewDirty);
-        
+
         let isValid = true;
         let errorMessage = '';
-        
+
         if (updateTarget === 'terpakai') {
           isValid = previewTerpakai >= 0 && previewTerpakai + currentDirty <= currentStokAwal;
           if (updateMode === 'out' && numericVal > currentLemari) {
@@ -1134,19 +1141,19 @@ export default function RSDashboard() {
             errorMessage = 'Jumlah terpakai + kotor melebihi Stok Awal Ruangan!';
           }
         } else {
-          isValid = previewDirty >= 0 && previewDirty + currentTerpakai <= currentStokAwal;
-          if (updateMode === 'out' && numericVal > currentLemari) {
+          isValid = previewDirty >= 0 && previewTerpakai >= 0 && previewDirty + previewTerpakai <= currentStokAwal;
+          if (updateMode === 'out' && numericVal > currentTerpakai) {
             isValid = false;
-            errorMessage = 'Jumlah kotor melebihi stok Lemari Bersih!';
+            errorMessage = 'Jumlah kotor melebihi stok Terpakai!';
           } else if (updateMode === 'in' && numericVal > currentDirty) {
             isValid = false;
             errorMessage = 'Jumlah yang dikurangi melebihi stok Dirty Utility!';
           } else if (previewDirty < 0) {
             isValid = false;
             errorMessage = 'Jumlah kotor tidak boleh kurang dari 0!';
-          } else if (previewDirty + currentTerpakai > currentStokAwal) {
+          } else if (updateMode === 'override' && numericVal - currentDirty > currentTerpakai) {
             isValid = false;
-            errorMessage = 'Jumlah terpakai + kotor melebihi Stok Awal Ruangan!';
+            errorMessage = 'Peningkatan jumlah kotor melebihi stok Terpakai!';
           }
         }
 
@@ -1155,7 +1162,7 @@ export default function RSDashboard() {
         return (
           <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-100 flex flex-col animate-[fadeIn_0.2s_ease-out]">
-              
+
               {/* Header */}
               <div className={`p-5 bg-gradient-to-br ${isDirtyTarget ? 'from-rose-600 to-red-700' : 'from-[#126776] to-[#1ea59e]'} text-white flex justify-between items-center`}>
                 <div>
@@ -1182,7 +1189,7 @@ export default function RSDashboard() {
 
               {/* Body */}
               <div className="p-5 space-y-4">
-                
+
                 {/* Info Box */}
                 <div className="grid grid-cols-4 gap-2 p-3 bg-slate-50 border border-slate-100 rounded-2xl text-center">
                   <div>
@@ -1211,11 +1218,10 @@ export default function RSDashboard() {
                       setUpdateMode('out');
                       setUpdateValue('1');
                     }}
-                    className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer border ${
-                      updateMode === 'out'
+                    className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer border ${updateMode === 'out'
                         ? 'bg-white text-black shadow-sm font-extrabold border-slate-250'
                         : 'text-slate-800 hover:text-black font-extrabold border-transparent hover:bg-white/40'
-                    }`}
+                      }`}
                   >
                     {isDirtyTarget ? 'Kotor (+)' : 'Keluar (-)'}
                   </button>
@@ -1225,11 +1231,10 @@ export default function RSDashboard() {
                       setUpdateMode('in');
                       setUpdateValue('1');
                     }}
-                    className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer border ${
-                      updateMode === 'in'
+                    className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer border ${updateMode === 'in'
                         ? 'bg-white text-black shadow-sm font-extrabold border-slate-250'
                         : 'text-slate-800 hover:text-black font-extrabold border-transparent hover:bg-white/40'
-                    }`}
+                      }`}
                   >
                     {isDirtyTarget ? 'Kurang (-)' : 'Masuk (+)'}
                   </button>
@@ -1239,11 +1244,10 @@ export default function RSDashboard() {
                       setUpdateMode('override');
                       setUpdateValue(isDirtyTarget ? currentDirty.toString() : currentTerpakai.toString());
                     }}
-                    className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer border ${
-                      updateMode === 'override'
+                    className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer border ${updateMode === 'override'
                         ? 'bg-white text-black shadow-sm font-extrabold border-slate-250'
                         : 'text-slate-800 hover:text-black font-extrabold border-transparent hover:bg-white/40'
-                    }`}
+                      }`}
                   >
                     Ubah Total
                   </button>
@@ -1344,11 +1348,11 @@ export default function RSDashboard() {
       {showGudangModal && selectedGudangLinen && (() => {
         const currentGudang = parseInt(selectedGudangLinen.total_gudang || 0);
         const itemStokAwal = parseInt(selectedGudangLinen.stock_in_rs || 0);
-        
+
         const numericVal = parseInt(gudangValue || 0);
         let isValid = numericVal >= 0 && numericVal <= itemStokAwal;
         let errorMessage = '';
-        
+
         if (numericVal < 0) {
           isValid = false;
           errorMessage = 'Jumlah gudang tidak boleh kurang dari 0!';
@@ -1360,7 +1364,7 @@ export default function RSDashboard() {
         return (
           <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-100 flex flex-col animate-[fadeIn_0.2s_ease-out]">
-              
+
               {/* Header */}
               <div className="p-5 bg-gradient-to-br from-[#126776] to-[#1ea59e] text-white flex justify-between items-center">
                 <div>
@@ -1387,7 +1391,7 @@ export default function RSDashboard() {
 
               {/* Body */}
               <div className="p-5 space-y-4">
-                
+
                 {/* Info Box */}
                 <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 border border-slate-100 rounded-2xl text-center">
                   <div>

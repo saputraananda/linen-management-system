@@ -480,13 +480,14 @@ export const updateRoomStock = async (req, res) => {
     let finalStockInRs = valStock;
 
     if (!isGudang) {
-      // Query the current qty_terpakai of that room to calculate Stok Awal (Alokasi)
+      // Query the current qty_terpakai and qty_dirty of that room to calculate Stok Awal (Alokasi)
       const [existing] = await ikmPool.query(
-        "SELECT qty_terpakai FROM mst_hospital_linen_rooms WHERE hospital_linen_id = ? AND room_id = ?",
+        "SELECT qty_terpakai, qty_dirty FROM mst_hospital_linen_rooms WHERE hospital_linen_id = ? AND room_id = ?",
         [hospitalLinenId, roomId]
       );
       const qtyTerpakai = existing.length > 0 ? parseInt(existing[0].qty_terpakai || 0) : 0;
-      finalStockInRs = valStock + qtyTerpakai;
+      const qtyDirty = existing.length > 0 ? parseInt(existing[0].qty_dirty || 0) : 0;
+      finalStockInRs = valStock + qtyTerpakai + qtyDirty;
     }
 
     // Upsert into mst_hospital_linen_rooms
