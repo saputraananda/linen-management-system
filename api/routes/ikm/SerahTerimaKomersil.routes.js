@@ -14,10 +14,10 @@ const router = express.Router();
 // Apply auth middleware
 router.use(authenticateToken);
 
-// GET /api/ikm/hospital-linen-komersil - Get hospital linen items for category 33
+// GET /api/ikm/hospital-linen-komersil - Get hospital linen items flagged is_commercial
 router.get('/hospital-linen-komersil', getHospitalLinenKomersil);
 
-// GET /api/ikm/transactions-komersil - List all komersil transactions (category 33)
+// GET /api/ikm/transactions-komersil - List all komersil transactions
 router.get('/transactions-komersil', getKomersilTransactions);
 
 // GET /api/ikm/transactions-komersil/:id - Get detail of a komersil transaction

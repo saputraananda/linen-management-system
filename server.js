@@ -17,6 +17,7 @@ import rsDashboardRoutes from './api/routes/rs/rs-dashboard.routes.js';
 import rsSerahTerimaRoutes from './api/routes/rs/rs-serahTerima.routes.js';
 import rsSerahTerimaKomersilRoutes from './api/routes/rs/rs-serahTerimaKomersil.routes.js';
 import unitDashboardRoutes from './api/routes/unit/unit.dashboard.routes.js';
+import socketNotifyRoutes from './api/routes/internal/socketNotify.routes.js';
 
 // Resolve directory paths
 const __filename = fileURLToPath(import.meta.url);
@@ -100,6 +101,7 @@ app.use('/api/rs', rsDashboardRoutes);
 app.use('/api/rs', rsSerahTerimaRoutes);
 app.use('/api/rs', rsSerahTerimaKomersilRoutes);
 app.use('/api/unit', unitDashboardRoutes);
+app.use('/api/internal', socketNotifyRoutes);
 
 // ==========================
 // Frontend

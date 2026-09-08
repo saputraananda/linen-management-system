@@ -55,7 +55,7 @@ export const getIkmEmployees = async (req, res) => {
 };
 
 /**
- * Get hospital linen items where category_id IN (32, 33) (Linen Komersil / PxL / Gorden / Vitrase / Karpet)
+ * Get hospital linen items flagged as commercial (is_commercial = 1)
  */
 export const getHospitalLinenKomersil = async (req, res) => {
   try {
@@ -76,7 +76,7 @@ export const getHospitalLinenKomersil = async (req, res) => {
       LEFT JOIN mst_size s ON l.size_id = s.id
       LEFT JOIN mst_color c ON l.color_id = c.id
       LEFT JOIN mst_material m ON l.material_id = m.id
-      WHERE hl.hospital_id = ? AND hl.is_active = 1 AND l.category_id IN (32, 33)
+      WHERE hl.hospital_id = ? AND hl.is_active = 1 AND hl.is_commercial = 1
       ORDER BY l.linen_name ASC
     `;
 

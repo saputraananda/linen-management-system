@@ -6,6 +6,7 @@ import {
   ChevronRight, ChevronDown, Save, User, Clock, AlertCircle,
   Warehouse, Building, Shirt, HelpCircle, Info, X, Trash2
 } from 'lucide-react';
+import { socket } from '../../../utils/socket';
 
 // Utility to convert string to Title Case
 const toTitleCase = (str) => {
@@ -379,6 +380,27 @@ export default function SerahTerimaKomersil() {
     }
   }, [hospitalId]);
 
+  // Realtime: perubahan master linen di Alsa / transaksi LMS → refresh dropdown + history
+  useEffect(() => {
+    if (!hospitalId) return;
+
+    socket.connect();
+    socket.emit('join_hospital', hospitalId);
+
+    const handleDataChanged = (event) => {
+      console.log('Realtime socket update (SerahTerimaKomersil):', event);
+      fetchHospitalLinensKomersil({ silent: true });
+      fetchHistory();
+    };
+
+    socket.on('data_changed', handleDataChanged);
+
+    return () => {
+      socket.off('data_changed', handleDataChanged);
+      socket.disconnect();
+    };
+  }, [hospitalId]);
+
   useEffect(() => {
     if (!hospitalId) return;
 
@@ -447,8 +469,8 @@ export default function SerahTerimaKomersil() {
     }
   };
 
-  const fetchHospitalLinensKomersil = async () => {
-    setLoadingLinens(true);
+  const fetchHospitalLinensKomersil = async ({ silent = false } = {}) => {
+    if (!silent) setLoadingLinens(true);
     try {
       const token = localStorage.getItem('token');
       const { data } = await axios.get(`/api/ikm/hospital-linen-komersil?hospitalId=${hospitalId}`, {
@@ -458,21 +480,21 @@ export default function SerahTerimaKomersil() {
         const fetchedLinens = data.data || [];
         setLinensList(fetchedLinens);
 
-        // Initialize komersil rows with 1 row per master item by default if rows are empty
-        if (fetchedLinens.length > 0 && komersilRows.length === 0) {
-          const defaultRows = fetchedLinens.map((item, idx) => ({
+        // Hanya seed baris default saat form masih kosong (jangan timpa isian user saat socket refresh)
+        setKomersilRows(prev => {
+          if (prev.length > 0 || fetchedLinens.length === 0) return prev;
+          return fetchedLinens.map((item, idx) => ({
             rowId: `row-${Date.now()}-${idx}`,
             hospitalLinenId: item.id,
             qtyKotor: '',
             notes: ''
           }));
-          setKomersilRows(defaultRows);
-        }
+        });
       }
     } catch (err) {
       console.error('Error fetching komersil linens:', err);
     } finally {
-      setLoadingLinens(false);
+      if (!silent) setLoadingLinens(false);
     }
   };
 
@@ -922,7 +944,7 @@ export default function SerahTerimaKomersil() {
               {hospitalName || 'Rumah Sakit'}
             </h2>
             <p className="text-xs text-slate-400 mt-1 font-medium">
-              Portal pencatatan sirkulasi harian linen komersil (Gorden/Vitrase/Karpet/PxL).
+              Portal pencatatan sirkulasi harian linen komersil (flag is_commercial).
             </p>
           </div>
 

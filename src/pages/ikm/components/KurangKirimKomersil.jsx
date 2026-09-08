@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import exportSuratJalanKurangKirimKomersil from '../utils/exportSuratJalanKurangKirimKomersil';
 import ikmLogo from '../../../assets/images/ikm.png';
+import { socket } from '../../../utils/socket';
 
 // Helper to convert string to Title Case
 const toTitleCase = (str) => {
@@ -341,6 +342,30 @@ export default function KurangKirimKomersil() {
         loadSjHistory();
       }
     }
+  }, [hospitalId, activeTab]);
+
+  // Realtime refresh daftar kurang kirim / SJ
+  useEffect(() => {
+    if (!hospitalId) return;
+
+    socket.connect();
+    socket.emit('join_hospital', hospitalId);
+
+    const handleDataChanged = (event) => {
+      console.log('Realtime socket update (KurangKirimKomersil):', event);
+      if (activeTab === 'history') {
+        loadShortageTransactions();
+      } else {
+        loadSjHistory();
+      }
+    };
+
+    socket.on('data_changed', handleDataChanged);
+
+    return () => {
+      socket.off('data_changed', handleDataChanged);
+      socket.disconnect();
+    };
   }, [hospitalId, activeTab]);
 
   // Get completed transactions with komersil shortages
