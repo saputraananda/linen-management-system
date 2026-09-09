@@ -4,7 +4,8 @@ import {
   FileText, Search, Calendar, CheckCircle2,
   AlertTriangle, ArrowLeft, RefreshCw, PlusCircle,
   ChevronRight, ChevronDown, Save, User, Clock, AlertCircle,
-  Warehouse, Building, Shirt, HelpCircle, Info, X, Lock, Unlock
+  Warehouse, Building, Shirt, HelpCircle, Info, X, Lock, Unlock,
+  Scale, Zap
 } from 'lucide-react';
 
 // Utility to convert string to Title Case
@@ -203,6 +204,8 @@ export default function SerahTerima() {
   const [activeTab, setActiveTab] = useState('history'); // 'history' | 'form'
   const [hospitalId, setHospitalId] = useState(sessionStorage.getItem('valet_hospital_id') || '');
   const [hospitalName, setHospitalName] = useState(sessionStorage.getItem('valet_hospital_name') || '');
+  const [billingByKg, setBillingByKg] = useState(0);
+  const [allowExpress, setAllowExpress] = useState(0);
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
   const [alertConfig, setAlertConfig] = useState({ show: false, title: 'Peringatan', message: '' });
   const [savedRooms, setSavedRooms] = useState([]);
@@ -254,6 +257,8 @@ export default function SerahTerima() {
   const [signatureValetPickup, setSignatureValetPickup] = useState('');
   const [signatureHospitalPickup, setSignatureHospitalPickup] = useState('');
   const [signatureAssistantPickup, setSignatureAssistantPickup] = useState('');
+  const [totalKgValet, setTotalKgValet] = useState('');
+  const [isExpress, setIsExpress] = useState(false);
   const [kotorQuantities, setKotorQuantities] = useState({}); // { hospitalLinenId: qty }
   const [itemNotes, setItemNotes] = useState({}); // { hospitalLinenId: noteText }
   const [submittingNew, setSubmittingNew] = useState(false);
@@ -625,6 +630,8 @@ export default function SerahTerima() {
       });
       if (data?.success) {
         setHospitalName(data.data.hospital?.hospital_name || '');
+        setBillingByKg(Number(data.data.hospital?.billing_by_kg) || 0);
+        setAllowExpress(Number(data.data.hospital?.allow_express) || 0);
       }
     } catch (err) {
       console.error('Error fetching hospital info:', err);
@@ -664,6 +671,12 @@ export default function SerahTerima() {
       if (data?.success) {
         setLinensList(data.data.linens || []);
         setRoomLinensList(data.data.roomLinens || []);
+        if (data.data.hospital?.billing_by_kg != null) {
+          setBillingByKg(Number(data.data.hospital.billing_by_kg) || 0);
+        }
+        if (data.data.hospital?.allow_express != null) {
+          setAllowExpress(Number(data.data.hospital.allow_express) || 0);
+        }
         // Initialize kotor quantities to 0
         const initialQtys = {};
         const initialNotes = {};
@@ -753,7 +766,9 @@ export default function SerahTerima() {
         details: activeDetails,
         signatureValetPickup,
         signatureHospitalPickup,
-        signatureAssistantPickup
+        signatureAssistantPickup,
+        totalKgValet: totalKgValet === '' ? null : Number(totalKgValet),
+        isExpress: isExpress ? 1 : 0
       }, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -774,6 +789,8 @@ export default function SerahTerima() {
           setSignatureValetPickup('');
           setSignatureHospitalPickup('');
           setSignatureAssistantPickup('');
+          setTotalKgValet('');
+          setIsExpress(false);
           const resetQtys = {};
           const resetNotes = {};
           linensList.forEach(item => {
@@ -815,6 +832,12 @@ export default function SerahTerima() {
           setHospitalStaffPickup(fullTx.transaction.hospital_staff_pickup || '');
           setHospitalAssistantPickup(fullTx.transaction.hospital_assistant_pickup || '');
           setNotes(fullTx.transaction.notes_pickup || '');
+          setTotalKgValet(
+            fullTx.transaction.total_kg_valet != null && fullTx.transaction.total_kg_valet !== ''
+              ? String(fullTx.transaction.total_kg_valet)
+              : ''
+          );
+          setIsExpress(Number(fullTx.transaction.is_express) === 1);
 
           if (fullTx.transaction.pickup_date) {
             const pDate = new Date(fullTx.transaction.pickup_date);
@@ -876,6 +899,12 @@ export default function SerahTerima() {
           setSignatureValetDelivery(fullTx.transaction.signature_valet_delivery || '');
           setSignatureHospitalDelivery(fullTx.transaction.signature_hospital_delivery || '');
           setSignatureAssistantDelivery(fullTx.transaction.signature_assistant_delivery || '');
+          setTotalKgValet(
+            fullTx.transaction.total_kg_valet != null && fullTx.transaction.total_kg_valet !== ''
+              ? String(fullTx.transaction.total_kg_valet)
+              : ''
+          );
+          setIsExpress(Number(fullTx.transaction.is_express) === 1);
 
           if (fullTx.transaction.delivery_date) {
             const dDate = new Date(fullTx.transaction.delivery_date);
@@ -930,6 +959,19 @@ export default function SerahTerima() {
       }
     }
 
+    // Saat pengiriman bersih: Total Kg wajib jika RS pakai billing per kg
+    const hospitalRequiresKg =
+      Number(billingByKg) === 1 ||
+      Number(editingTransaction?.transaction?.billing_by_kg) === 1;
+    if (hospitalRequiresKg) {
+      const kgNum = totalKgValet === '' || totalKgValet == null ? NaN : Number(totalKgValet);
+      if (Number.isNaN(kgNum) || kgNum < 0) {
+        setErrorMsg('Total Kg wajib diisi saat pengiriman bersih.');
+        showAlert('Total Kg wajib diisi saat pengiriman bersih.');
+        return;
+      }
+    }
+
     setSubmittingEdit(true);
 
     const activeDetails = editingTransaction.details.map(item => {
@@ -963,7 +1005,9 @@ export default function SerahTerima() {
         signatureAssistantPickup,
         signatureValetDelivery,
         signatureHospitalDelivery,
-        signatureAssistantDelivery
+        signatureAssistantDelivery,
+        totalKgValet: totalKgValet === '' ? null : Number(totalKgValet),
+        isExpress: isExpress ? 1 : 0
       }, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -990,6 +1034,12 @@ export default function SerahTerima() {
             setSignatureValetDelivery(fullTx.transaction.signature_valet_delivery || '');
             setSignatureHospitalDelivery(fullTx.transaction.signature_hospital_delivery || '');
             setSignatureAssistantDelivery(fullTx.transaction.signature_assistant_delivery || '');
+            setTotalKgValet(
+              fullTx.transaction.total_kg_valet != null && fullTx.transaction.total_kg_valet !== ''
+                ? String(fullTx.transaction.total_kg_valet)
+                : ''
+            );
+            setIsExpress(Number(fullTx.transaction.is_express) === 1);
 
             const initialKotor = {};
             const initialBersih = {};
@@ -1116,6 +1166,27 @@ export default function SerahTerima() {
     
     return editingTransaction.transaction.status === 'PROSES' || editingTransaction.transaction.is_editable;
   })();
+
+  // Kg / Express: editable only while PROSES; locked after SELESAI (Alsa-only)
+  const isKgExpressEditable = editingTransaction
+    ? editingTransaction.transaction.status === 'PROSES'
+    : true;
+
+  const showKgFields = (() => {
+    const tx = editingTransaction?.transaction;
+    const hasExisting =
+      (tx?.total_kg_valet != null && tx.total_kg_valet !== '') ||
+      (totalKgValet !== '' && totalKgValet != null);
+    return Number(billingByKg) === 1 || Number(tx?.billing_by_kg) === 1 || hasExisting;
+  })();
+
+  const showExpressField = (() => {
+    const tx = editingTransaction?.transaction;
+    const hasExisting = Number(tx?.is_express) === 1 || isExpress;
+    return Number(allowExpress) === 1 || Number(tx?.allow_express) === 1 || hasExisting;
+  })();
+
+  const showKgExpressFields = showKgFields || showExpressField;
 
   const getLinenNameById = (hospitalLinenId) => {
     const detail = editingTransaction?.details?.find(d => d.hospital_linen_id === hospitalLinenId);
@@ -1300,6 +1371,8 @@ export default function SerahTerima() {
                 setSignatureValetPickup('');
                 setSignatureHospitalPickup('');
                 setSignatureAssistantPickup('');
+                setTotalKgValet('');
+                setIsExpress(false);
                 const resetQtys = {};
                 const resetNotes = {};
                 linensList.forEach(item => {
@@ -1471,6 +1544,20 @@ export default function SerahTerima() {
                             </span>
                           )}
                         </p>
+                        {(tx.total_kg_valet != null || Number(tx.is_express) === 1) && (
+                          <p className="text-[10px] text-slate-500 mt-1 flex flex-wrap items-center gap-2">
+                            {tx.total_kg_valet != null && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-slate-100 border border-slate-200 font-semibold">
+                                {Number(tx.total_kg_valet).toLocaleString('id-ID', { maximumFractionDigits: 2 })} Kg
+                              </span>
+                            )}
+                            {Number(tx.is_express) === 1 && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 font-bold uppercase tracking-wider">
+                                Express
+                              </span>
+                            )}
+                          </p>
+                        )}
                       </div>
 
                       {/* Stat chips */}
@@ -1842,6 +1929,69 @@ export default function SerahTerima() {
                   className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] transition-all resize-none placeholder-slate-400"
                 />
               </div>
+
+              {showKgExpressFields && (
+                <div className={`grid grid-cols-1 gap-4 ${showKgFields && showExpressField ? 'sm:grid-cols-2' : ''}`}>
+                  {showKgFields && (
+                    <div className="bg-slate-50 p-5 rounded-2xl border border-slate-150 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <div className="p-1 bg-[#126776]/5 text-[#126776] rounded-md">
+                          <Scale className="h-4 w-4" />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-[#126776] uppercase tracking-widest">
+                            Total Kilogram
+                          </label>
+                          <p className="text-[10px] text-slate-400 mt-0.5">Opsional saat pengambilan kotor</p>
+                        </div>
+                      </div>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          placeholder="0.00"
+                          value={totalKgValet}
+                          onChange={e => setTotalKgValet(e.target.value)}
+                          className="w-full pl-4 pr-12 py-3 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] transition-all"
+                        />
+                        <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 uppercase tracking-wider">Kg</span>
+                      </div>
+                    </div>
+                  )}
+                  {showExpressField && (
+                    <div className="bg-slate-50 p-5 rounded-2xl border border-slate-150 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <div className="p-1 bg-amber-500/10 text-amber-600 rounded-md">
+                          <Zap className="h-4 w-4" />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-amber-700 uppercase tracking-widest">
+                            Layanan Express
+                          </label>
+                          <p className="text-[10px] text-slate-400 mt-0.5">Terpisah dari pencatatan kilogram</p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsExpress(prev => !prev)}
+                        className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl border text-left transition active:scale-[0.99] cursor-pointer ${
+                          isExpress
+                            ? 'bg-amber-50 border-amber-300 text-amber-900'
+                            : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                        }`}
+                      >
+                        <span className="text-xs font-semibold">
+                          {isExpress ? 'Express aktif' : 'Tidak express'}
+                        </span>
+                        <span className={`relative inline-flex h-5 w-9 shrink-0 rounded-full transition ${isExpress ? 'bg-amber-500' : 'bg-slate-200'}`}>
+                          <span className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition ${isExpress ? 'translate-x-4' : ''}`} />
+                        </span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Tanda Tangan Section */}
               <div className="bg-slate-50 p-5 rounded-2xl border border-slate-150 space-y-4">
@@ -2532,6 +2682,91 @@ export default function SerahTerima() {
                   className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] transition resize-none disabled:cursor-not-allowed disabled:bg-slate-100 placeholder-slate-400"
                 />
               </div>
+
+              {showKgExpressFields && (
+                <div className={`grid grid-cols-1 gap-4 ${showKgFields && showExpressField ? 'sm:grid-cols-2' : ''}`}>
+                  {showKgFields && (
+                    <div className={`p-5 rounded-2xl border space-y-3 ${
+                      isKgExpressEditable
+                        ? 'bg-teal-50/50 border-teal-200'
+                        : 'bg-slate-50 border-slate-150'
+                    }`}>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <div className="p-1 bg-[#126776]/10 text-[#126776] rounded-md">
+                            <Scale className="h-4 w-4" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-[#126776] uppercase tracking-widest">
+                              Total Kilogram
+                              {isKgExpressEditable && (
+                                <span className="ml-1.5 text-rose-500 normal-case tracking-normal font-bold">*</span>
+                              )}
+                            </label>
+                            <p className="text-[10px] text-slate-500 mt-0.5">
+                              {isKgExpressEditable ? 'Wajib diisi saat pengiriman bersih' : 'Terkunci setelah transaksi selesai'}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          placeholder="0.00"
+                          value={totalKgValet}
+                          disabled={!isKgExpressEditable}
+                          required={isKgExpressEditable}
+                          onChange={e => setTotalKgValet(e.target.value)}
+                          className={`w-full pl-4 pr-12 py-3 rounded-xl text-sm font-semibold text-slate-800 border focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] transition-all disabled:cursor-not-allowed disabled:bg-slate-100 ${
+                            isKgExpressEditable && (totalKgValet === '' || totalKgValet == null)
+                              ? 'bg-white border-rose-300'
+                              : 'bg-white border-slate-200'
+                          }`}
+                        />
+                        <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 uppercase tracking-wider">Kg</span>
+                      </div>
+                    </div>
+                  )}
+                  {showExpressField && (
+                    <div className="bg-slate-50 p-5 rounded-2xl border border-slate-150 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <div className="p-1 bg-amber-500/10 text-amber-600 rounded-md">
+                          <Zap className="h-4 w-4" />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-amber-700 uppercase tracking-widest">
+                            Layanan Express
+                          </label>
+                          <p className="text-[10px] text-slate-400 mt-0.5">
+                            {isKgExpressEditable ? 'Terpisah dari pencatatan kilogram' : 'Terkunci setelah transaksi selesai'}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={!isKgExpressEditable}
+                        onClick={() => isKgExpressEditable && setIsExpress(prev => !prev)}
+                        className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl border text-left transition ${
+                          isKgExpressEditable ? 'active:scale-[0.99] cursor-pointer' : 'cursor-not-allowed opacity-70'
+                        } ${
+                          isExpress
+                            ? 'bg-amber-50 border-amber-300 text-amber-900'
+                            : 'bg-white border-slate-200 text-slate-600'
+                        }`}
+                      >
+                        <span className="text-xs font-semibold">
+                          {isExpress ? 'Express aktif' : 'Tidak express'}
+                        </span>
+                        <span className={`relative inline-flex h-5 w-9 shrink-0 rounded-full transition ${isExpress ? 'bg-amber-500' : 'bg-slate-200'}`}>
+                          <span className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition ${isExpress ? 'translate-x-4' : ''}`} />
+                        </span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Tanda Tangan Section */}
               <div className="bg-slate-50 p-5 rounded-2xl border border-slate-150 space-y-4">

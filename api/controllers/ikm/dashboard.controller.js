@@ -6,9 +6,9 @@ import { ikmPool, mainPool } from '../../db/pool.js';
 export const getHospitals = async (req, res) => {
   try {
     const query = `
-      SELECT id, hospital_name, hospital_id, company_name 
-      FROM mst_hospital 
-      ORDER BY hospital_name ASC
+      SELECT id, hospital_name, hospital_id, company_name, billing_by_kg, allow_express 
+       FROM mst_hospital 
+       ORDER BY hospital_name ASC
     `;
     const [hospitals] = await ikmPool.query(query);
 
@@ -99,7 +99,7 @@ export const getDashboardData = async (req, res) => {
 
     // 1. Fetch Hospital Info
     const [hospitals] = await ikmPool.query(
-      "SELECT id, hospital_name, hospital_id, company_name, address FROM mst_hospital WHERE id = ?",
+      "SELECT id, hospital_name, hospital_id, company_name, address, billing_by_kg, allow_express FROM mst_hospital WHERE id = ?",
       [hospitalId]
     );
 

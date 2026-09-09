@@ -12,6 +12,42 @@ const toTitleCase = (str) => {
     .join(' ');
 };
 
+/** Never expose admin kg weighing to LMS clients */
+const stripAdminKg = (row) => {
+  if (!row || typeof row !== 'object') return row;
+  const { total_kg_admin, ...rest } = row;
+  return rest;
+};
+
+const stripAdminKgFromJson = (value) => {
+  if (value == null) return value;
+  let parsed = value;
+  if (typeof value === 'string') {
+    try {
+      parsed = JSON.parse(value);
+    } catch {
+      return value;
+    }
+  }
+  if (parsed && typeof parsed === 'object') {
+    if (parsed.transaction) {
+      parsed = { ...parsed, transaction: stripAdminKg(parsed.transaction) };
+    } else {
+      parsed = stripAdminKg(parsed);
+    }
+  }
+  return typeof value === 'string' ? JSON.stringify(parsed) : parsed;
+};
+
+const sanitizeAuditRow = (audit) => {
+  if (!audit) return audit;
+  return {
+    ...audit,
+    old_values: stripAdminKgFromJson(audit.old_values),
+    new_values: stripAdminKgFromJson(audit.new_values)
+  };
+};
+
 /**
  * Get list of completed and in-progress transactions for this hospital
  */
@@ -38,7 +74,7 @@ export const getTransactions = async (req, res) => {
     }
 
     let query = `
-      SELECT t.*, h.hospital_name,
+      SELECT t.*, h.hospital_name, h.billing_by_kg, h.allow_express,
         (SELECT COUNT(*) FROM tr_linen_transaction_detail d WHERE d.transaction_id = t.id) as total_items,
         (SELECT COALESCE(SUM(qty_kotor), 0) FROM tr_linen_transaction_detail d WHERE d.transaction_id = t.id) as total_qty_kotor,
         (SELECT COALESCE(SUM(qty_bersih), 0) FROM tr_linen_transaction_detail d WHERE d.transaction_id = t.id) as total_qty_bersih
@@ -85,7 +121,7 @@ export const getTransactions = async (req, res) => {
     const empMap = new Map(employees.map(emp => [emp.employee_id, emp.employee_name]));
 
     const formattedTransactions = transactions.map(tx => ({
-      ...tx,
+      ...stripAdminKg(tx),
       user_pickup_name: toTitleCase(empMap.get(tx.user_pickup) || ''),
       user_delivery_name: tx.user_delivery ? toTitleCase(empMap.get(tx.user_delivery) || '') : null,
       signature_valet_pickup: getSignatureUrl(tx.signature_valet_pickup),
@@ -127,7 +163,7 @@ export const getTransactionDetail = async (req, res) => {
 
     // Fetch transaction header, making sure it belongs to the authenticated hospital
     const [transactions] = await ikmPool.query(
-      `SELECT t.*, h.hospital_name 
+      `SELECT t.*, h.hospital_name, h.billing_by_kg, h.allow_express 
        FROM tr_linen_transaction t
        INNER JOIN mst_hospital h ON t.hospital_id = h.id
        WHERE t.id = ? AND t.hospital_id = ?`,
@@ -141,7 +177,7 @@ export const getTransactionDetail = async (req, res) => {
       });
     }
 
-    const transaction = transactions[0];
+    const transaction = stripAdminKg(transactions[0]);
 
     const [details] = await ikmPool.query(
       `SELECT td.*,
@@ -242,7 +278,7 @@ export const getTransactionDetail = async (req, res) => {
       data: {
         transaction,
         details,
-        audits,
+        audits: audits.map(sanitizeAuditRow),
         deliveries: formattedDeliveries
       }
     });
@@ -272,7 +308,9 @@ export const getShortageDeliveryDetail = async (req, res) => {
     }
 
     const queryHeader = `
-      SELECT d.*, t.form_number as original_form_number, t.pickup_date as original_pickup_date, h.hospital_name, h.address as hospital_address
+      SELECT d.*, t.form_number as original_form_number, t.pickup_date as original_pickup_date,
+             t.total_kg_valet, t.is_express,
+             h.hospital_name, h.address as hospital_address
       FROM tr_kurang_kirim_delivery d
       INNER JOIN tr_linen_transaction t ON d.transaction_id = t.id
       INNER JOIN mst_hospital h ON t.hospital_id = h.id
@@ -378,7 +416,7 @@ export const updateTransactionDetail = async (req, res) => {
       [id]
     );
     const oldSnapshot = {
-      transaction,
+      transaction: stripAdminKg(transaction),
       details: oldDetails
     };
 
@@ -396,7 +434,7 @@ export const updateTransactionDetail = async (req, res) => {
       [id]
     );
     const newSnapshot = {
-      transaction,
+      transaction: stripAdminKg(transaction),
       details: newDetails
     };
 
@@ -477,7 +515,7 @@ export const deleteTransactionDetail = async (req, res) => {
       [id]
     );
     const oldSnapshot = {
-      transaction,
+      transaction: stripAdminKg(transaction),
       details: oldDetails
     };
 
@@ -494,7 +532,7 @@ export const deleteTransactionDetail = async (req, res) => {
       [id]
     );
     const newSnapshot = {
-      transaction,
+      transaction: stripAdminKg(transaction),
       details: newDetails
     };
 

@@ -12,6 +12,13 @@ const toTitleCase = (str) => {
         .join(' ');
 };
 
+/** Never expose admin kg weighing to LMS clients */
+const stripAdminKg = (row) => {
+    if (!row || typeof row !== 'object') return row;
+    const { total_kg_admin, ...rest } = row;
+    return rest;
+};
+
 /**
  * Get completed transactions with remaining shortages
  */
@@ -59,7 +66,7 @@ export const getShortageTransactions = async (req, res) => {
         const empMap = new Map(employees.map(emp => [emp.employee_id, emp.employee_name]));
 
         const formatted = transactions.map(tx => ({
-            ...tx,
+            ...stripAdminKg(tx),
             user_pickup_name: toTitleCase(empMap.get(tx.user_pickup) || ''),
             user_delivery_name: tx.user_delivery ? toTitleCase(empMap.get(tx.user_delivery) || '') : null
         }));
@@ -127,7 +134,7 @@ export const getShortageTransactionDetails = async (req, res) => {
             [id]
         );
 
-        const transaction = transactions[0];
+        const transaction = stripAdminKg(transactions[0]);
         const [employees] = await mainPool.query(
             `SELECT employee_id, full_name as employee_name 
        FROM mst_employee 
@@ -205,7 +212,7 @@ export const createShortageDelivery = async (req, res) => {
             [transactionId]
         );
         const oldSnapshot = {
-            transaction: oldHeader,
+            transaction: stripAdminKg(oldHeader),
             details: oldDetails
         };
 
@@ -299,7 +306,7 @@ export const createShortageDelivery = async (req, res) => {
             [transactionId]
         );
         const newSnapshot = {
-            transaction: newHeader,
+            transaction: stripAdminKg(newHeader),
             details: newDetails
         };
 
@@ -373,7 +380,8 @@ export const getShortageDeliveries = async (req, res) => {
         }
 
         const query = `
-      SELECT d.*, t.form_number as original_form_number, t.pickup_date as original_pickup_date, h.hospital_name,
+      SELECT d.*, t.form_number as original_form_number, t.pickup_date as original_pickup_date,
+             t.total_kg_valet, t.is_express, h.hospital_name,
         (SELECT SUM(dd.qty_delivered) FROM tr_kurang_kirim_delivery_detail dd WHERE dd.delivery_id = d.id) as total_qty_delivered
       FROM tr_kurang_kirim_delivery d
       INNER JOIN tr_linen_transaction t ON d.transaction_id = t.id
@@ -418,7 +426,9 @@ export const getShortageDeliveryDetail = async (req, res) => {
         const { id } = req.params;
 
         const queryHeader = `
-      SELECT d.*, t.form_number as original_form_number, t.pickup_date as original_pickup_date, h.hospital_name, h.address as hospital_address
+      SELECT d.*, t.form_number as original_form_number, t.pickup_date as original_pickup_date,
+             t.total_kg_valet, t.is_express,
+             h.hospital_name, h.address as hospital_address
       FROM tr_kurang_kirim_delivery d
       INNER JOIN tr_linen_transaction t ON d.transaction_id = t.id
       INNER JOIN mst_hospital h ON t.hospital_id = h.id

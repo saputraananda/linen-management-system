@@ -39,6 +39,16 @@ export default async function exportSerahTerimaLinenPDF(transaction, details) {
   const formattedDeliveryDate = deliveryDateObj ? deliveryDateObj.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '—';
   const formattedDeliveryTime = deliveryDateObj ? deliveryDateObj.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace(':', '.') + ' WIB' : '—';
 
+  const kgExpressInfoHtml = (() => {
+    const hasKg = transaction.total_kg_valet != null && transaction.total_kg_valet !== '';
+    const hasExpress = Number(transaction.is_express) === 1;
+    if (!hasKg && !hasExpress) return '';
+    return `
+      <p style="margin: 0; display: flex; align-items: center;"><span style="width: 130px; font-weight: 700; color: #94a3b8;">Total Kg:</span> <span style="color: #0f172a; font-weight: 700;">${hasKg ? Number(transaction.total_kg_valet).toLocaleString('id-ID', { maximumFractionDigits: 2 }) : '—'}</span></p>
+      <p style="margin: 0; display: flex; align-items: center;"><span style="width: 130px; font-weight: 700; color: #94a3b8;">Express:</span> <span style="color: #0f172a; font-weight: 700;">${hasExpress ? 'Ya' : 'Tidak'}</span></p>
+    `;
+  })();
+
   // Signature rendering helper
   const renderSigImg = (sigSrc, pendingMsg) => {
     if (pendingMsg) {
@@ -204,6 +214,7 @@ export default async function exportSerahTerimaLinenPDF(transaction, details) {
             <div style="display: flex; flex-direction: column; gap: 5px;">
               <p style="margin: 0; display: flex; align-items: center;"><span style="width: 130px; font-weight: 700; color: #94a3b8;">Kepada Yth:</span> <span style="font-weight: 700; color: #0f172a;">${transaction.hospital_name || 'Rumah Sakit'}</span></p>
               <p style="margin: 0; display: flex; align-items: center;"><span style="width: 130px; font-weight: 700; color: #94a3b8;">Tanggal Pengambilan:</span> <span style="color: #0f172a; font-weight: 700;">${formattedPickupDate}</span></p>
+              ${kgExpressInfoHtml}
             </div>
             <div style="display: flex; flex-direction: column; gap: 5px; text-align: left;">
               <p style="margin: 0; display: flex; align-items: center;"><span style="width: 125px; font-weight: 700; color: #94a3b8;">Tanggal Pengiriman:</span> <span style="color: #0f172a;">${formattedDeliveryDate}</span></p>
@@ -312,6 +323,7 @@ export default async function exportSerahTerimaLinenPDF(transaction, details) {
             <div style="display: flex; flex-direction: column; gap: 5px;">
               <p style="margin: 0; display: flex; align-items: center;"><span style="width: 130px; font-weight: 700; color: #94a3b8;">Kepada Yth:</span> <span style="font-weight: 700; color: #0f172a;">${transaction.hospital_name || 'Rumah Sakit'}</span></p>
               <p style="margin: 0; display: flex; align-items: center;"><span style="width: 130px; font-weight: 700; color: #94a3b8;">Tanggal Pengambilan:</span> <span style="color: #0f172a; font-weight: 700;">${formattedPickupDate}</span></p>
+              ${kgExpressInfoHtml}
             </div>
             <div style="display: flex; flex-direction: column; gap: 5px; text-align: left;">
               <p style="margin: 0; display: flex; align-items: center;"><span style="width: 125px; font-weight: 700; color: #94a3b8;">Tanggal Pengiriman:</span> <span style="color: #0f172a;">${formattedDeliveryDate}</span></p>

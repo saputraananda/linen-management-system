@@ -168,7 +168,14 @@ export default async function exportSerahTerimaLinen(transaction, details) {
       weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
     });
     const formNum = transaction.form_number ? `No. Form: ${transaction.form_number}` : '';
-    dateCell.value = `${formNum ? formNum + '  |  ' : ''}Tanggal: ${formattedPickupDate}`;
+    const hasKg = transaction.total_kg_valet != null && transaction.total_kg_valet !== '';
+    const hasExpress = Number(transaction.is_express) === 1;
+    const kgExpressParts = [];
+    if (hasKg || hasExpress) {
+      kgExpressParts.push(`Total Kg: ${hasKg ? Number(transaction.total_kg_valet).toLocaleString('id-ID', { maximumFractionDigits: 2 }) : '—'}`);
+      kgExpressParts.push(`Express: ${hasExpress ? 'Ya' : 'Tidak'}`);
+    }
+    dateCell.value = `${formNum ? formNum + '  |  ' : ''}Tanggal: ${formattedPickupDate}${kgExpressParts.length ? '  |  ' + kgExpressParts.join('  |  ') : ''}`;
     dateCell.font = { name: 'Plus Jakarta Sans', size: 8.5, color: { argb: 'FF475569' } };
     dateCell.alignment = { horizontal: 'center', vertical: 'middle' };
     worksheet.getRow(3).height = 24;

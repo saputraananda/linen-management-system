@@ -62,6 +62,16 @@ export default function exportSuratJalanKurangKirim(delivery, details) {
   const hospitalRecipientName = delivery.hospital_staff || delivery.recipient_name || 'PETUGAS RS';
   const valetCourierName = delivery.valet_name || 'ABDUL ARIPIN';
 
+  const kgExpressInfoHtml = (() => {
+    const hasKg = delivery.total_kg_valet != null && delivery.total_kg_valet !== '';
+    const hasExpress = Number(delivery.is_express) === 1;
+    if (!hasKg && !hasExpress) return '';
+    return `
+      <p style="margin: 0; display: flex; align-items: center;"><span style="width: 140px; font-weight: 700; color: #94a3b8;">Total Kg:</span> <span style="color: #0f172a; font-weight: 700;">${hasKg ? Number(delivery.total_kg_valet).toLocaleString('id-ID', { maximumFractionDigits: 2 }) : '—'}</span></p>
+      <p style="margin: 0; display: flex; align-items: center;"><span style="width: 140px; font-weight: 700; color: #94a3b8;">Express:</span> <span style="color: #0f172a; font-weight: 700;">${hasExpress ? 'Ya' : 'Tidak'}</span></p>
+    `;
+  })();
+
   // 1. Build Global Summary details
   const globalSummaryMap = {};
   details.forEach(item => {
@@ -157,6 +167,7 @@ export default function exportSuratJalanKurangKirim(delivery, details) {
               <p style="margin: 0; display: flex; align-items: center;"><span style="width: 140px; font-weight: 700; color: #94a3b8;">Kepada Yth:</span> <span style="font-weight: 700; color: #0f172a;">${delivery.recipient_name || 'Rumah Sakit'}</span></p>
               <p style="margin: 0; display: flex; align-items: center;"><span style="width: 140px; font-weight: 700; color: #94a3b8;">Tanggal Pengambilan:</span> <span style="color: #0f172a; font-weight: 700;">${formattedPickupDate}</span></p>
               <p style="margin: 0; display: flex; align-items: center;"><span style="width: 140px; font-weight: 700; color: #94a3b8;">Form Transaksi Asal:</span> <span style="color: #0f172a;">${delivery.original_form_number || '—'}</span></p>
+              ${kgExpressInfoHtml}
             </div>
             <div style="display: flex; flex-direction: column; gap: 6px; text-align: left;">
               <p style="margin: 0; display: flex; align-items: center;"><span style="width: 120px; font-weight: 700; color: #94a3b8;">Tanggal Pengiriman:</span> <span style="color: #0f172a;">${formattedDate}</span></p>
@@ -289,6 +300,7 @@ export default function exportSuratJalanKurangKirim(delivery, details) {
               <p style="margin: 0; display: flex; align-items: center;"><span style="width: 140px; font-weight: 700; color: #94a3b8;">Kepada Yth:</span> <span style="font-weight: 700; color: #0f172a;">${delivery.recipient_name || 'Rumah Sakit'}</span></p>
               <p style="margin: 0; display: flex; align-items: center;"><span style="width: 140px; font-weight: 700; color: #94a3b8;">Tanggal Pengambilan:</span> <span style="color: #0f172a; font-weight: 700;">${formattedPickupDate}</span></p>
               <p style="margin: 0; display: flex; align-items: center;"><span style="width: 140px; font-weight: 700; color: #94a3b8;">Form Transaksi Asal:</span> <span style="color: #0f172a;">${delivery.original_form_number || '—'}</span></p>
+              ${kgExpressInfoHtml}
             </div>
             <div style="display: flex; flex-direction: column; gap: 6px; text-align: left;">
               <p style="margin: 0; display: flex; align-items: center;"><span style="width: 120px; font-weight: 700; color: #94a3b8;">Tanggal Pengiriman:</span> <span style="color: #0f172a;">${formattedDate}</span></p>

@@ -632,6 +632,20 @@ export default function RSSerahTerima() {
                                                     </td>
                                                     <td className="py-4 px-4 font-bold text-slate-900 group-hover:text-teal-700 transition-colors">
                                                         {tx.form_number}
+                                                        {(tx.total_kg_valet != null || Number(tx.is_express) === 1) && (
+                                                            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                                                                {tx.total_kg_valet != null && (
+                                                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-[10px] font-semibold text-slate-600">
+                                                                        {Number(tx.total_kg_valet).toLocaleString('id-ID', { maximumFractionDigits: 2 })} Kg
+                                                                    </span>
+                                                                )}
+                                                                {Number(tx.is_express) === 1 && (
+                                                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold uppercase tracking-wider">
+                                                                        Express
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        )}
                                                     </td>
                                                     <td className="py-4 px-4 text-left text-slate-500 font-medium whitespace-nowrap">
                                                         {formatDate(tx.pickup_date)}
@@ -839,6 +853,28 @@ export default function RSSerahTerima() {
                                                     <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Catatan Pengambilan</p>
                                                     <p className="text-slate-600 mt-0.5 italic">{editingTransaction.transaction.notes_pickup || '—'}</p>
                                                 </div>
+                                                {(editingTransaction.transaction.total_kg_valet != null || Number(editingTransaction.transaction.is_express) === 1) && (
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        <div className="p-2 bg-white rounded-lg border border-slate-200">
+                                                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Total Kg Valet</p>
+                                                            <p className="font-bold text-slate-800 mt-0.5">
+                                                                {editingTransaction.transaction.total_kg_valet != null
+                                                                    ? `${Number(editingTransaction.transaction.total_kg_valet).toLocaleString('id-ID', { maximumFractionDigits: 2 })} Kg`
+                                                                    : '—'}
+                                                            </p>
+                                                        </div>
+                                                        <div className="p-2 bg-white rounded-lg border border-slate-200">
+                                                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Express</p>
+                                                            <p className="mt-0.5">
+                                                                {Number(editingTransaction.transaction.is_express) === 1 ? (
+                                                                    <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold uppercase">Ya</span>
+                                                                ) : (
+                                                                    <span className="text-slate-600 font-semibold">Tidak</span>
+                                                                )}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
 
                                             {/* Right Column (Day 2 - Bersih) */}

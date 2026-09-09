@@ -863,6 +863,16 @@ export default function KurangKirimLinen() {
                     <h2 className="text-md font-bold tracking-tight">Formulir Kurang Kirim Linen</h2>
                     <p className="text-[10px] text-white/80 mt-0.5">
                       Menyelesaikan sisa kekurangan kirim untuk formulir: <span className="font-bold">{selectedTx.form_number}</span>
+                      {(selectedTx.total_kg_valet != null || Number(selectedTx.is_express) === 1) && (
+                        <span className="ml-2">
+                          {selectedTx.total_kg_valet != null && (
+                            <span className="font-semibold"> · {Number(selectedTx.total_kg_valet).toLocaleString('id-ID', { maximumFractionDigits: 2 })} Kg</span>
+                          )}
+                          {Number(selectedTx.is_express) === 1 && (
+                            <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded bg-white/15 border border-white/20 font-bold uppercase tracking-wider">Express</span>
+                          )}
+                        </span>
+                      )}
                     </p>
                   </div>
                 </div>
@@ -1562,6 +1572,21 @@ export default function KurangKirimLinen() {
                                 Shortage
                               </span>
                             </div>
+
+                            {(tx.total_kg_valet != null || Number(tx.is_express) === 1) && (
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                {tx.total_kg_valet != null && (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-lg bg-slate-100 border border-slate-200 text-[10px] font-semibold text-slate-600">
+                                    {Number(tx.total_kg_valet).toLocaleString('id-ID', { maximumFractionDigits: 2 })} Kg
+                                  </span>
+                                )}
+                                {Number(tx.is_express) === 1 && (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold uppercase tracking-wider">
+                                    Express
+                                  </span>
+                                )}
+                              </div>
+                            )}
 
                             <div className="space-y-2 pt-2 border-t border-slate-100">
                               <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">

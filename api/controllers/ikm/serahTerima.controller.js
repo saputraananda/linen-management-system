@@ -24,6 +24,55 @@ const formatMySQLDateTime = (dateStr) => {
   }
 };
 
+/** empty string → null; otherwise Number (or null if invalid) */
+const parseTotalKg = (val) => {
+  if (val === undefined || val === null || val === '') return null;
+  const n = Number(val);
+  return Number.isFinite(n) ? n : null;
+};
+
+/** boolean / 0 / 1 → 0 or 1 */
+const parseIsExpress = (val) => {
+  if (val === true || val === 1 || val === '1') return 1;
+  return 0;
+};
+
+/** Never expose admin kg weighing to LMS clients */
+const stripAdminKg = (row) => {
+  if (!row || typeof row !== 'object') return row;
+  const { total_kg_admin, ...rest } = row;
+  return rest;
+};
+
+const stripAdminKgFromJson = (value) => {
+  if (value == null) return value;
+  let parsed = value;
+  if (typeof value === 'string') {
+    try {
+      parsed = JSON.parse(value);
+    } catch {
+      return value;
+    }
+  }
+  if (parsed && typeof parsed === 'object') {
+    if (parsed.transaction) {
+      parsed = { ...parsed, transaction: stripAdminKg(parsed.transaction) };
+    } else {
+      parsed = stripAdminKg(parsed);
+    }
+  }
+  return typeof value === 'string' ? JSON.stringify(parsed) : parsed;
+};
+
+const sanitizeAuditRow = (audit) => {
+  if (!audit) return audit;
+  return {
+    ...audit,
+    old_values: stripAdminKgFromJson(audit.old_values),
+    new_values: stripAdminKgFromJson(audit.new_values)
+  };
+};
+
 /**
  * Get list of transactions for a hospital with filters
  */
@@ -49,7 +98,7 @@ export const getTransactions = async (req, res) => {
     }
 
     let query = `
-      SELECT t.*, h.hospital_name,
+      SELECT t.*, h.hospital_name, h.billing_by_kg, h.allow_express,
         (SELECT COUNT(*) FROM tr_linen_transaction_detail d WHERE d.transaction_id = t.id) as total_items,
         (SELECT COALESCE(SUM(qty_kotor), 0) FROM tr_linen_transaction_detail d WHERE d.transaction_id = t.id) as total_qty_kotor,
         (SELECT COALESCE(SUM(qty_bersih), 0) FROM tr_linen_transaction_detail d WHERE d.transaction_id = t.id) as total_qty_bersih
@@ -96,7 +145,7 @@ export const getTransactions = async (req, res) => {
     const empMap = new Map(employees.map(emp => [emp.employee_id, emp.employee_name]));
 
     const formattedTransactions = transactions.map(tx => ({
-      ...tx,
+      ...stripAdminKg(tx),
       user_pickup_name: toTitleCase(empMap.get(tx.user_pickup) || ''),
       user_delivery_name: tx.user_delivery ? toTitleCase(empMap.get(tx.user_delivery) || '') : null,
       signature_valet_pickup: getSignatureUrl(tx.signature_valet_pickup),
@@ -129,7 +178,7 @@ export const getTransactionDetail = async (req, res) => {
     const { id } = req.params;
 
     const [transactions] = await ikmPool.query(
-      `SELECT t.*, h.hospital_name 
+      `SELECT t.*, h.hospital_name, h.billing_by_kg, h.allow_express 
        FROM tr_linen_transaction t
        INNER JOIN mst_hospital h ON t.hospital_id = h.id
        WHERE t.id = ?`,
@@ -162,7 +211,7 @@ export const getTransactionDetail = async (req, res) => {
       [id]
     );
 
-    const transaction = transactions[0];
+    const transaction = stripAdminKg(transactions[0]);
     if (transaction) {
       // Fetch names
       const [employees] = await mainPool.query(
@@ -254,7 +303,7 @@ export const getTransactionDetail = async (req, res) => {
       data: {
         transaction,
         details,
-        audits
+        audits: audits.map(sanitizeAuditRow)
       }
     });
   } catch (error) {
@@ -286,8 +335,13 @@ export const createTransaction = async (req, res) => {
       details,
       signatureValetPickup,
       signatureHospitalPickup,
-      signatureAssistantPickup
+      signatureAssistantPickup,
+      totalKgValet,
+      isExpress
     } = req.body;
+
+    const total_kg_valet = parseTotalKg(totalKgValet);
+    const is_express = parseIsExpress(isExpress);
 
     const isTemporary = !signatureValetPickup || !signatureHospitalPickup;
 
@@ -331,7 +385,9 @@ export const createTransaction = async (req, res) => {
              hospital_staff_pickup = ?, 
              hospital_assistant_pickup = ?, 
              pickup_date = ?, 
-             notes_pickup = ?
+             notes_pickup = ?,
+             total_kg_valet = ?,
+             is_express = ?
          WHERE id = ?`,
         [
           userPickup, 
@@ -339,6 +395,8 @@ export const createTransaction = async (req, res) => {
           hospitalAssistantPickup ? toTitleCase(hospitalAssistantPickup) : null, 
           pickupDate, 
           notes || null,
+          total_kg_valet,
+          is_express,
           transactionId
         ]
       );
@@ -374,9 +432,9 @@ export const createTransaction = async (req, res) => {
 
       const [result] = await connection.query(
         `INSERT INTO tr_linen_transaction 
-         (form_number, hospital_id, user_pickup, hospital_staff_pickup, hospital_assistant_pickup, pickup_date, status, notes_pickup)
-         VALUES (?, ?, ?, ?, ?, ?, 'PROSES', ?)`,
-        [formNumber, hospitalId, userPickup, hospitalStaffPickup ? toTitleCase(hospitalStaffPickup) : null, hospitalAssistantPickup ? toTitleCase(hospitalAssistantPickup) : null, formatMySQLDateTime(pickupDate), notes || null]
+         (form_number, hospital_id, user_pickup, hospital_staff_pickup, hospital_assistant_pickup, pickup_date, status, notes_pickup, total_kg_valet, is_express)
+         VALUES (?, ?, ?, ?, ?, ?, 'PROSES', ?, ?, ?)`,
+        [formNumber, hospitalId, userPickup, hospitalStaffPickup ? toTitleCase(hospitalStaffPickup) : null, hospitalAssistantPickup ? toTitleCase(hospitalAssistantPickup) : null, formatMySQLDateTime(pickupDate), notes || null, total_kg_valet, is_express]
       );
 
       transactionId = result.insertId;
@@ -422,7 +480,7 @@ export const createTransaction = async (req, res) => {
     );
 
     const newSnapshot = {
-      transaction: newHeader,
+      transaction: stripAdminKg(newHeader),
       details: newDetails
     };
 
@@ -502,7 +560,9 @@ export const updateTransactionDelivery = async (req, res) => {
       signatureAssistantPickup,
       signatureValetDelivery,
       signatureHospitalDelivery,
-      signatureAssistantDelivery
+      signatureAssistantDelivery,
+      totalKgValet,
+      isExpress
     } = req.body;
 
     const isTemporary = !signatureValetDelivery || !signatureHospitalDelivery;
@@ -538,6 +598,35 @@ export const updateTransactionDelivery = async (req, res) => {
     }
 
     const oldHeader = oldHeaderRows[0];
+
+    // Kg / Express: valet may set only while PROSES; after SELESAI keep existing DB values (Alsa-only)
+    let total_kg_valet = oldHeader.total_kg_valet;
+    let is_express = oldHeader.is_express != null ? oldHeader.is_express : 0;
+    if (oldHeader.status === 'PROSES') {
+      if (totalKgValet !== undefined) {
+        total_kg_valet = parseTotalKg(totalKgValet);
+      }
+      if (isExpress !== undefined) {
+        is_express = parseIsExpress(isExpress);
+      }
+    }
+
+    // Pengiriman bersih: Total Kg wajib jika RS billing_by_kg
+    if (oldHeader.status === 'PROSES') {
+      const [hospRows] = await connection.query(
+        `SELECT billing_by_kg FROM mst_hospital WHERE id = ? LIMIT 1`,
+        [oldHeader.hospital_id]
+      );
+      if (hospRows.length && Number(hospRows[0].billing_by_kg) === 1) {
+        if (total_kg_valet == null || Number.isNaN(Number(total_kg_valet)) || Number(total_kg_valet) < 0) {
+          await connection.rollback();
+          return res.status(400).json({
+            success: false,
+            message: "Total Kg wajib diisi saat pengiriman bersih untuk rumah sakit dengan billing kilogram."
+          });
+        }
+      }
+    }
 
     // Enforce 24-hour edit limit if status is 'SELESAI'
     if (oldHeader.status === 'SELESAI') {
@@ -603,7 +692,9 @@ export const updateTransactionDelivery = async (req, res) => {
            signature_hospital_delivery = ?,
            signature_assistant_delivery = ?,
            notes_delivery = ?, 
-           status = ?
+           status = ?,
+           total_kg_valet = ?,
+           is_express = ?
        WHERE id = ?`,
       [
         formatMySQLDateTime(deliveryDate),
@@ -621,6 +712,8 @@ export const updateTransactionDelivery = async (req, res) => {
         assistantDeliveryPath || null,
         notes || null,
         status,
+        total_kg_valet,
+        is_express,
         id
       ]
     );
@@ -715,11 +808,11 @@ export const updateTransactionDelivery = async (req, res) => {
     );
 
     const oldSnapshot = {
-      transaction: oldHeader,
+      transaction: stripAdminKg(oldHeader),
       details: oldDetails
     };
     const newSnapshot = {
-      transaction: newHeader,
+      transaction: stripAdminKg(newHeader),
       details: newDetails
     };
 

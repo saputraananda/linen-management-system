@@ -17,7 +17,7 @@ export const getDashboardData = async (req, res) => {
 
     // 1. Fetch Hospital Infojd
     const [hospitals] = await ikmPool.query(
-      "SELECT id, hospital_name, hospital_id, company_name, address FROM mst_hospital WHERE id = ?",
+      "SELECT id, hospital_name, hospital_id, company_name, address, billing_by_kg, allow_express FROM mst_hospital WHERE id = ?",
       [hospitalId]
     );
 
