@@ -95,7 +95,7 @@ export default function RSSerahTerimaKomersil() {
             }
         } catch (err) {
             console.error('Error fetching transactions:', err);
-            showToast('Gagal memuat riwayat transaksi khusus', 'error');
+            showToast('Gagal memuat riwayat transaksi komersil', 'error');
         } finally {
             setLoadingHistory(false);
         }
@@ -256,7 +256,7 @@ export default function RSSerahTerimaKomersil() {
                                     {hospitalName || 'Memuat nama rumah sakit...'}
                                 </h2>
                                 <p className="text-xs text-slate-400 font-medium">
-                                    Portal pencatatan sirkulasi harian linen khusus kotor & pengembalian bersih.
+                                    Portal pencatatan sirkulasi harian linen komersil kotor & pengembalian bersih.
                                 </p>
                             </div>
                             <button
@@ -356,7 +356,7 @@ export default function RSSerahTerimaKomersil() {
                     {loadingHistory ? (
                         <div className="py-24 text-center text-slate-400 font-semibold bg-white border border-slate-200 rounded-3xl shadow-sm">
                             <RefreshCw className="h-8 w-8 animate-spin mx-auto text-teal-500 mb-3" />
-                            Memuat riwayat transaksi khusus...
+                            Memuat riwayat transaksi komersil...
                         </div>
                     ) : transactions.length === 0 ? (
                         <div className="py-20 text-center text-slate-400 bg-white border border-slate-200 rounded-3xl shadow-sm space-y-2">
@@ -638,7 +638,7 @@ export default function RSSerahTerimaKomersil() {
                                             <thead>
                                                 <tr className="bg-slate-50 text-slate-400 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200">
                                                     <th className="py-3 px-4 text-center">No</th>
-                                                    <th className="py-3 px-4">Nama Linen Khusus</th>
+                                                    <th className="py-3 px-4">Nama Linen Komersil</th>
                                                     <th className="py-3 px-4 text-center">P (m)</th>
                                                     <th className="py-3 px-4 text-center">L (m)</th>
                                                     <th className="py-3 px-4 text-center">Luas (m²)</th>

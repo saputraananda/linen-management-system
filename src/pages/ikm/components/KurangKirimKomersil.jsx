@@ -659,7 +659,7 @@ export default function KurangKirimKomersil() {
               {hospitalName || 'Rumah Sakit'}
             </h2>
             <p className="text-xs text-slate-400 mt-1 font-medium">
-              Portal pencatatan kurang kirim linen khusus (komersil) dan penerbitan Surat Jalan.
+              Portal pencatatan kurang kirim linen komersil dan penerbitan Surat Jalan.
             </p>
           </div>
 
@@ -886,7 +886,7 @@ export default function KurangKirimKomersil() {
                             <thead>
                               <tr className="bg-slate-50 text-xs font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-155">
                                 <th className="px-4 py-3.5 text-center w-12">No</th>
-                                <th className="px-4 py-3.5">Nama Linen Khusus</th>
+                                <th className="px-4 py-3.5">Nama Linen Komersil</th>
                                 <th className="px-4 py-3.5 text-center w-20">P (m)</th>
                                 <th className="px-4 py-3.5 text-center w-20">L (m)</th>
                                 <th className="px-4 py-3.5 text-center w-24">Luas (m²)</th>

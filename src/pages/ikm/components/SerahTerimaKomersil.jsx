@@ -1411,7 +1411,7 @@ export default function SerahTerimaKomersil() {
                         <thead>
                           <tr className="bg-slate-50 text-slate-400 font-semibold uppercase tracking-wider text-xs border-b border-slate-150">
                             <th className="py-3.5 px-4 w-12 text-center">No</th>
-                            <th className="py-3.5 px-4 text-center">Nama Linen Khusus</th>
+                            <th className="py-3.5 px-4 text-center">Nama Linen Komersil</th>
                             <th className="py-3.5 px-4 w-28 text-center">Kotor</th>
                             <th className="py-3.5 px-4 text-center">Keterangan</th>
                             <th className="py-3.5 px-4 w-14 text-center">Aksi</th>
@@ -1880,7 +1880,7 @@ export default function SerahTerimaKomersil() {
                         <thead>
                           <tr className="bg-slate-50 text-slate-400 font-semibold uppercase tracking-wider text-xs border-b border-slate-150">
                             <th className="py-3.5 px-4 w-12 text-center">No</th>
-                            <th className="py-3.5 px-4 text-center min-w-[160px]">Nama Linen Khusus</th>
+                            <th className="py-3.5 px-4 text-center min-w-[160px]">Nama Linen Komersil</th>
                             <th className="py-3.5 px-4 text-center w-20">P (m)</th>
                             <th className="py-3.5 px-4 text-center w-20">L (m)</th>
                             <th className="py-3.5 px-4 text-center w-24">Luas (m²)</th>
@@ -1909,7 +1909,7 @@ export default function SerahTerimaKomersil() {
                               >
                                 <td className="py-3 px-4 text-center font-medium text-slate-400 text-xs">{index + 1}</td>
                                 
-                                {/* Nama Linen Khusus */}
+                                {/* Nama Linen Komersil */}
                                 <td className="py-3 px-4 font-semibold text-slate-800">
                                   {isEditable ? (
                                     <select

@@ -104,7 +104,7 @@ export const getRSKomersilTransactions = async (req, res) => {
     console.error("Error getting RS komersil transactions:", error);
     return res.status(500).json({
       success: false,
-      message: "Gagal memuat riwayat transaksi khusus",
+      message: "Gagal memuat riwayat transaksi komersil",
       error: error.message
     });
   }
@@ -238,7 +238,7 @@ export const getRSKomersilTransactionDetail = async (req, res) => {
     console.error("Error getting RS komersil transaction detail:", error);
     return res.status(500).json({
       success: false,
-      message: "Gagal memuat rincian transaksi khusus",
+      message: "Gagal memuat rincian transaksi komersil",
       error: error.message
     });
   }
@@ -315,7 +315,7 @@ export const getRSKomersilShortageDeliveryDetail = async (req, res) => {
     console.error("Error getting RS komersil shortage delivery details:", error);
     return res.status(500).json({
       success: false,
-      message: "Gagal memuat rincian Surat Jalan khusus",
+      message: "Gagal memuat rincian Surat Jalan komersil",
       error: error.message
     });
   }

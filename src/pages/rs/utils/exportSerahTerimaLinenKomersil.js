@@ -131,7 +131,7 @@ export default async function exportSerahTerimaLinenKomersil(transaction, detail
   ]);
 
   const workbook = new ExcelJS.Workbook();
-  const worksheet = workbook.addWorksheet('Serah Terima Khusus');
+  const worksheet = workbook.addWorksheet('Serah Terima Komersil');
 
   // Set column widths (8 columns total)
   worksheet.columns = [
@@ -155,7 +155,7 @@ export default async function exportSerahTerimaLinenKomersil(transaction, detail
   // 1. Company Header Title
   worksheet.mergeCells('A1:H1');
   const titleRow = worksheet.getCell('A1');
-  titleRow.value = 'FORM SERAH TERIMA LINEN KHUSUS PT INTERSOLUSI KARYA MANDIRI';
+  titleRow.value = 'FORM SERAH TERIMA LINEN KOMERSIL PT INTERSOLUSI KARYA MANDIRI';
   titleRow.font = { name: 'Plus Jakarta Sans', size: 12, bold: true };
   titleRow.alignment = { horizontal: 'center', vertical: 'middle' };
   worksheet.getRow(1).height = 34;
@@ -199,7 +199,7 @@ export default async function exportSerahTerimaLinenKomersil(transaction, detail
 
   // Row 5: Table Header (Height: 36px)
   const headerRow = worksheet.getRow(5);
-  headerRow.values = ['No', 'Jenis Linen Khusus', 'P (m)', 'L (m)', 'Luas (m²)', 'Kotor', 'Bersih', 'Keterangan'];
+  headerRow.values = ['No', 'Jenis Linen Komersil', 'P (m)', 'L (m)', 'Luas (m²)', 'Kotor', 'Bersih', 'Keterangan'];
   headerRow.height = 36;
 
   headerRow.eachCell((cell) => {
@@ -411,7 +411,7 @@ export default async function exportSerahTerimaLinenKomersil(transaction, detail
   const url = window.URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `Serah_Terima_Khusus_${transaction.form_number || 'Dokumen'}.xlsx`;
+  a.download = `Serah_Terima_Komersil_${transaction.form_number || 'Dokumen'}.xlsx`;
   a.click();
   window.URL.revokeObjectURL(url);
 }

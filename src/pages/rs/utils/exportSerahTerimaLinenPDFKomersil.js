@@ -187,7 +187,7 @@ export default async function exportSerahTerimaLinenPDFKomersil(transaction, det
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
   doc.setTextColor(18, 103, 118);
-  doc.text('FORM SERAH TERIMA LINEN KHUSUS PT INTERSOLUSI KARYA MANDIRI', pageWidth / 2, currentY + 7, { align: 'center' });
+  doc.text('FORM SERAH TERIMA LINEN KOMERSIL PT INTERSOLUSI KARYA MANDIRI', pageWidth / 2, currentY + 7, { align: 'center' });
 
   const hospName = transaction.hospital_name ? transaction.hospital_name.toUpperCase() : 'RUMAH SAKIT';
   doc.setFontSize(10);
@@ -225,7 +225,7 @@ export default async function exportSerahTerimaLinenPDFKomersil(transaction, det
   autoTable(doc, {
     startY: currentY,
     margin: { left: margin, right: margin },
-    head: [['No', 'Jenis Linen Khusus', 'P', 'L', 'Luas', 'Kotor', 'Bersih', 'Keterangan']],
+    head: [['No', 'Jenis Linen Komersil', 'P', 'L', 'Luas', 'Kotor', 'Bersih', 'Keterangan']],
     body: tableData,
     theme: 'grid',
     headStyles: {
@@ -404,6 +404,6 @@ export default async function exportSerahTerimaLinenPDFKomersil(transaction, det
   );
 
   // Save the generated PDF file
-  const fileName = `Serah_Terima_Khusus_${transaction.form_number || 'Dokumen'}.pdf`;
+  const fileName = `Serah_Terima_Komersil_${transaction.form_number || 'Dokumen'}.pdf`;
   doc.save(fileName);
 }
