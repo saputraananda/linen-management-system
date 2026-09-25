@@ -33,6 +33,30 @@ export const getSignatureUrl = (filename) => {
   return `${urlPrefix}/${filename}`;
 };
 
+// Direktori fisik: Absolut (prod) UPLOAD_BASE_DIR/serahterimalinen, Relatif (dev) cwd/UPLOAD_BASE_DIR/serahterimalinen
+const getSignatureDir = () => {
+  const uploadBaseDir = process.env.UPLOAD_BASE_DIR || 'assets';
+  return path.isAbsolute(uploadBaseDir)
+    ? path.join(uploadBaseDir.replace(/\/$/, ''), 'serahterimalinen')
+    : path.resolve(process.cwd(), uploadBaseDir, 'serahterimalinen');
+};
+
+const signatureFiles = (row) => Object.entries(row || {})
+  .filter(([k, v]) => k.startsWith('signature') && typeof v === 'string' && v)
+  .map(([, v]) => path.basename(v));
+
+/**
+ * Hapus file tanda tangan di `before` yang tidak lagi dipakai di `after`.
+ * - Sukses: cleanupSignatures(oldRow, newRow)  → file lama yang diganti/dikosongkan terhapus
+ * - Rollback: cleanupSignatures(savedSigs, oldRow) → file baru yang batal tersimpan terhapus
+ */
+export const cleanupSignatures = (before, after) => {
+  const keep = new Set(signatureFiles(after));
+  for (const f of signatureFiles(before)) {
+    if (!keep.has(f)) fs.unlink(path.join(getSignatureDir(), f), () => {});
+  }
+};
+
 /**
  * Helper untuk menyimpan gambar Base64 ke disk
  */
@@ -49,13 +73,7 @@ export const saveBase64Image = (base64Str, prefix, transactionId) => {
     return base64Str;
   }
 
-  // Tentukan direktori fisik:
-  //   Absolut  (prod) : UPLOAD_BASE_DIR/serahterimalinen
-  //   Relatif  (dev)  : cwd/UPLOAD_BASE_DIR/serahterimalinen
-  const uploadBaseDir = process.env.UPLOAD_BASE_DIR || 'assets';
-  const targetDir = path.isAbsolute(uploadBaseDir)
-    ? path.join(uploadBaseDir.replace(/\/$/, ''), 'serahterimalinen')
-    : path.resolve(process.cwd(), uploadBaseDir, 'serahterimalinen');
+  const targetDir = getSignatureDir();
 
   if (!fs.existsSync(targetDir)) {
     fs.mkdirSync(targetDir, { recursive: true });

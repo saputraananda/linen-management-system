@@ -1,5 +1,5 @@
 import { ikmPool, mainPool } from '../../db/pool.js';
-import { getSignatureUrl, saveBase64Image } from '../../middleware/upload.js';
+import { getSignatureUrl, saveBase64Image, cleanupSignatures } from '../../middleware/upload.js';
 
 // Helper to format string to Capital Each Word (Title Case)
 const toTitleCase = (str) => {
@@ -312,6 +312,7 @@ export const getKomersilTransactionDetail = async (req, res) => {
  */
 export const createKomersilTransaction = async (req, res) => {
   const connection = await ikmPool.getConnection();
+  let oldSigs = null, savedSigs = null;
   try {
     await connection.beginTransaction();
 
@@ -340,6 +341,7 @@ export const createKomersilTransaction = async (req, res) => {
     let formNumber;
 
     if (transactionId) {
+      [[oldSigs]] = await connection.query(`SELECT * FROM tr_komersil_linen_transaction WHERE id = ?`, [transactionId]);
       // Temporary transaction update
       await connection.query(
         `UPDATE tr_komersil_linen_transaction 
@@ -385,6 +387,7 @@ export const createKomersilTransaction = async (req, res) => {
     const valetPickupPath = saveBase64Image(signatureValetPickup, 'valet_pickup', transactionId);
     const hospitalPickupPath = saveBase64Image(signatureHospitalPickup, 'hospital_pickup', transactionId);
     const assistantPickupPath = signatureAssistantPickup ? saveBase64Image(signatureAssistantPickup, 'assistant_pickup', transactionId) : null;
+    savedSigs = { signature_valet_pickup: valetPickupPath, signature_hospital_pickup: hospitalPickupPath, signature_assistant_pickup: assistantPickupPath };
 
     await connection.query(
       `UPDATE tr_komersil_linen_transaction 
@@ -452,6 +455,7 @@ export const createKomersilTransaction = async (req, res) => {
     );
 
     await connection.commit();
+    cleanupSignatures(oldSigs, newHeader);
 
     // Emit real-time socket.io event
     const io = req.app.get('io');
@@ -472,6 +476,7 @@ export const createKomersilTransaction = async (req, res) => {
     });
   } catch (error) {
     await connection.rollback();
+    cleanupSignatures(savedSigs, oldSigs);
     console.error("Error creating komersil transaction:", error);
     return res.status(500).json({
       success: false,
@@ -488,6 +493,7 @@ export const createKomersilTransaction = async (req, res) => {
  */
 export const updateKomersilTransactionDelivery = async (req, res) => {
   const connection = await ikmPool.getConnection();
+  let oldHeader = null, savedSigs = null;
   try {
     await connection.beginTransaction();
 
@@ -511,7 +517,7 @@ export const updateKomersilTransactionDelivery = async (req, res) => {
     if (oldHeaderRows.length === 0) {
       return res.status(404).json({ success: false, message: "Transaksi tidak ditemukan" });
     }
-    const oldHeader = oldHeaderRows[0];
+    oldHeader = oldHeaderRows[0];
 
     const [oldDetails] = await connection.query(
       `SELECT * FROM tr_komersil_linen_transaction_detail WHERE transaction_id = ?`,
@@ -521,6 +527,7 @@ export const updateKomersilTransactionDelivery = async (req, res) => {
     const valetDeliveryPath = saveBase64Image(signatureValetDelivery, 'valet_delivery', id);
     const hospitalDeliveryPath = saveBase64Image(signatureHospitalDelivery, 'hospital_delivery', id);
     const assistantDeliveryPath = signatureAssistantDelivery ? saveBase64Image(signatureAssistantDelivery, 'assistant_delivery', id) : null;
+    savedSigs = { signature_valet_delivery: valetDeliveryPath, signature_hospital_delivery: hospitalDeliveryPath, signature_assistant_delivery: assistantDeliveryPath };
 
     const isTemporary = !signatureValetDelivery || !signatureHospitalDelivery;
     const newStatus = isTemporary ? 'PROSES' : 'SELESAI';
@@ -633,6 +640,7 @@ export const updateKomersilTransactionDelivery = async (req, res) => {
     );
 
     await connection.commit();
+    cleanupSignatures(oldHeader, newHeader);
 
     const hospitalId = oldHeader.hospital_id;
 
@@ -652,6 +660,7 @@ export const updateKomersilTransactionDelivery = async (req, res) => {
     });
   } catch (error) {
     await connection.rollback();
+    cleanupSignatures(savedSigs, oldHeader);
     console.error("Error updating komersil transaction delivery:", error);
     return res.status(500).json({
       success: false,

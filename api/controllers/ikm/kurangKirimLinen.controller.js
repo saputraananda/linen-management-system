@@ -1,5 +1,5 @@
 import { ikmPool, mainPool } from '../../db/pool.js';
-import { getSignatureUrl, saveBase64Image } from '../../middleware/upload.js';
+import { getSignatureUrl, saveBase64Image, cleanupSignatures } from '../../middleware/upload.js';
 
 // Helper to format string to Capital Each Word (Title Case)
 const toTitleCase = (str) => {
@@ -179,6 +179,7 @@ export const getShortageTransactionDetails = async (req, res) => {
  */
 export const createShortageDelivery = async (req, res) => {
     const connection = await ikmPool.getConnection();
+    let savedSigs = null;
     try {
         await connection.beginTransaction();
 
@@ -244,6 +245,7 @@ export const createShortageDelivery = async (req, res) => {
 
         const signatureValetPath = saveBase64Image(signatureValet, 'kk_valet', deliveryId);
         const signatureHospitalPath = saveBase64Image(signatureHospital, 'kk_hospital', deliveryId);
+        savedSigs = { signature_valet: signatureValetPath, signature_hospital: signatureHospitalPath };
 
         await connection.query(
             `UPDATE tr_kurang_kirim_delivery
@@ -354,6 +356,7 @@ export const createShortageDelivery = async (req, res) => {
         });
     } catch (error) {
         await connection.rollback();
+        cleanupSignatures(savedSigs, null);
         console.error("Error creating shortage delivery:", error);
         return res.status(500).json({
             success: false,

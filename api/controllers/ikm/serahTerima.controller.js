@@ -1,5 +1,5 @@
 import { ikmPool, mainPool } from '../../db/pool.js';
-import { getSignatureUrl, saveBase64Image } from '../../middleware/upload.js';
+import { getSignatureUrl, saveBase64Image, cleanupSignatures } from '../../middleware/upload.js';
 
 // Helper to format string to Capital Each Word (Title Case)
 const toTitleCase = (str) => {
@@ -321,6 +321,7 @@ export const getTransactionDetail = async (req, res) => {
  */
 export const createTransaction = async (req, res) => {
   const connection = await ikmPool.getConnection();
+  let oldSigs = null, savedSigs = null;
   try {
     await connection.beginTransaction();
 
@@ -365,9 +366,10 @@ export const createTransaction = async (req, res) => {
     if (transactionId) {
       // Check existing
       const [oldTxRows] = await connection.query(
-        `SELECT form_number, status FROM tr_linen_transaction WHERE id = ?`,
+        `SELECT * FROM tr_linen_transaction WHERE id = ?`,
         [transactionId]
       );
+      oldSigs = oldTxRows[0];
       if (oldTxRows.length === 0) {
         await connection.rollback();
         return res.status(404).json({ success: false, message: "Transaksi tidak ditemukan" });
@@ -444,6 +446,7 @@ export const createTransaction = async (req, res) => {
     const valetPickupPath = saveBase64Image(signatureValetPickup, 'valet_pickup', transactionId);
     const hospitalPickupPath = saveBase64Image(signatureHospitalPickup, 'hospital_pickup', transactionId);
     const assistantPickupPath = signatureAssistantPickup ? saveBase64Image(signatureAssistantPickup, 'assistant_pickup', transactionId) : null;
+    savedSigs = { signature_valet_pickup: valetPickupPath, signature_hospital_pickup: hospitalPickupPath, signature_assistant_pickup: assistantPickupPath };
 
     if (valetPickupPath || hospitalPickupPath || assistantPickupPath) {
       await connection.query(
@@ -508,6 +511,7 @@ export const createTransaction = async (req, res) => {
     );
 
     await connection.commit();
+    cleanupSignatures(oldSigs, newHeader);
 
     // Emit real-time socket.io event
     const io = req.app.get('io');
@@ -526,6 +530,7 @@ export const createTransaction = async (req, res) => {
     });
   } catch (error) {
     await connection.rollback();
+    cleanupSignatures(savedSigs, oldSigs);
     console.error("Error creating transaction:", error);
     return res.status(500).json({
       success: false,
@@ -542,6 +547,7 @@ export const createTransaction = async (req, res) => {
  */
 export const updateTransactionDelivery = async (req, res) => {
   const connection = await ikmPool.getConnection();
+  let oldHeader = null, savedSigs = null;
   try {
     await connection.beginTransaction();
 
@@ -597,7 +603,7 @@ export const updateTransactionDelivery = async (req, res) => {
       });
     }
 
-    const oldHeader = oldHeaderRows[0];
+    oldHeader = oldHeaderRows[0];
 
     // Kg / Express: valet may set only while PROSES; after SELESAI keep existing DB values (Alsa-only)
     let total_kg_valet = oldHeader.total_kg_valet;
@@ -671,6 +677,10 @@ export const updateTransactionDelivery = async (req, res) => {
     const valetDeliveryPath = saveBase64Image(signatureValetDelivery, 'valet_delivery', id);
     const hospitalDeliveryPath = saveBase64Image(signatureHospitalDelivery, 'hospital_delivery', id);
     const assistantDeliveryPath = signatureAssistantDelivery ? saveBase64Image(signatureAssistantDelivery, 'assistant_delivery', id) : null;
+    savedSigs = {
+      signature_valet_pickup: valetPickupPath, signature_hospital_pickup: hospitalPickupPath, signature_assistant_pickup: assistantPickupPath,
+      signature_valet_delivery: valetDeliveryPath, signature_hospital_delivery: hospitalDeliveryPath, signature_assistant_delivery: assistantDeliveryPath
+    };
 
     const status = isTemporary ? 'PROSES' : 'SELESAI';
     const completedAtValue = isTemporary ? null : completedAt;
@@ -841,6 +851,7 @@ export const updateTransactionDelivery = async (req, res) => {
     );
 
     await connection.commit();
+    cleanupSignatures(oldHeader, newHeader);
 
     const hospitalId = oldHeader.hospital_id;
 
@@ -860,6 +871,7 @@ export const updateTransactionDelivery = async (req, res) => {
     });
   } catch (error) {
     await connection.rollback();
+    cleanupSignatures(savedSigs, oldHeader);
     console.error("Error updating transaction delivery:", error);
     return res.status(500).json({
       success: false,
