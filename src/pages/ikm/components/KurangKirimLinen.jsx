@@ -796,11 +796,7 @@ export default function KurangKirimLinen() {
         {/* Header Banner Card */}
         <div className="bg-white rounded-2xl border border-slate-150 p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-5 transition-all no-print">
           <div>
-            <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-[#126776] bg-[#126776]/5 px-3 py-1 rounded-md border border-[#126776]/10">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#1ea59e]" />
-              Rumah Sakit Terpilih
-            </span>
-            <h2 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight mt-2.5">
+            <h2 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight">
               {hospitalName || 'Rumah Sakit'}
             </h2>
             <p className="text-xs text-slate-400 mt-1 font-medium">

@@ -1,4 +1,4 @@
-import { Truck, ClipboardList, FileText } from 'lucide-react';
+import { Truck, ClipboardList, FileText, ScrollText } from 'lucide-react';
 import PageLayout from '../../components/PageLayout';
 
 const MENU_ITEMS = [
@@ -8,6 +8,7 @@ const MENU_ITEMS = [
       { to: "/valet", icon: Truck, label: "Dashboard", description: "Ringkasan aktivitas", end: true },
       { to: "/valet/serah-terima-linen", icon: FileText, label: "Serah Terima Linen", description: "Form Serah Terima Linen", end: false },
       { to: "/valet/kurang-kirim-linen", icon: ClipboardList, label: "Kurang Kirim Linen", description: "Form Kurang Kirim Linen", end: false },
+      { to: "/valet/bast-linen-sewa", icon: ScrollText, label: "BAST Linen Sewa", description: "Pengiriman & penarikan stok", end: false },
     ]
   },
   {

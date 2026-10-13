@@ -936,11 +936,7 @@ export default function SerahTerimaKomersil() {
         {/* Header Banner Card */}
         <div className="bg-white rounded-2xl border border-slate-150 p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-5 transition-all">
           <div>
-            <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-[#126776] bg-[#126776]/5 px-3 py-1 rounded-md border border-[#126776]/10">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#1ea59e]" />
-              Rumah Sakit Terpilih
-            </span>
-            <h2 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight mt-2.5">
+            <h2 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight">
               {hospitalName || 'Rumah Sakit'}
             </h2>
             <p className="text-xs text-slate-400 mt-1 font-medium">
@@ -1406,10 +1402,10 @@ export default function SerahTerimaKomersil() {
                       </button>
                     </div>
 
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left text-sm border-collapse min-w-[600px]">
-                        <thead>
-                          <tr className="bg-slate-50 text-slate-400 font-semibold uppercase tracking-wider text-xs border-b border-slate-150">
+                    <div className="max-h-[75vh] overflow-auto">
+                      <table className="w-full text-left text-sm border-separate border-spacing-0 min-w-[600px]">
+                        <thead className="sticky top-0 z-10 [&_th]:sticky [&_th]:top-0 [&_th]:bg-slate-50">
+                          <tr className="bg-slate-50 text-slate-400 font-semibold uppercase tracking-wider text-xs border-b border-slate-150 shadow-[0_1px_0_#e2e8f0]">
                             <th className="py-3.5 px-4 w-12 text-center">No</th>
                             <th className="py-3.5 px-4 text-center">Nama Linen Komersil</th>
                             <th className="py-3.5 px-4 w-28 text-center">Kotor</th>
@@ -1875,10 +1871,10 @@ export default function SerahTerimaKomersil() {
                       )}
                     </div>
 
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left text-sm border-collapse min-w-[900px]">
-                        <thead>
-                          <tr className="bg-slate-50 text-slate-400 font-semibold uppercase tracking-wider text-xs border-b border-slate-150">
+                    <div className="max-h-[75vh] overflow-auto">
+                      <table className="w-full text-left text-sm border-separate border-spacing-0 min-w-[900px]">
+                        <thead className="sticky top-0 z-10 [&_th]:sticky [&_th]:top-0 [&_th]:bg-slate-50">
+                          <tr className="bg-slate-50 text-slate-400 font-semibold uppercase tracking-wider text-xs border-b border-slate-150 shadow-[0_1px_0_#e2e8f0]">
                             <th className="py-3.5 px-4 w-12 text-center">No</th>
                             <th className="py-3.5 px-4 text-center min-w-[160px]">Nama Linen Komersil</th>
                             <th className="py-3.5 px-4 text-center w-20">P (m)</th>

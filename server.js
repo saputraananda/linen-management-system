@@ -13,9 +13,11 @@ import ikmSerahTerimaRoutes from './api/routes/ikm/serahTerima.routes.js';
 import ikmKurangKirimRoutes from './api/routes/ikm/kurangKirimLinen.routes.js';
 import ikmSerahTerimaKomersilRoutes from './api/routes/ikm/SerahTerimaKomersil.routes.js';
 import ikmKurangKirimKomersilRoutes from './api/routes/ikm/kurangKirimKomersil.routes.js';
+import ikmBastLinenSewaRoutes from './api/routes/ikm/bastLinenSewa.routes.js';
 import rsDashboardRoutes from './api/routes/rs/rs-dashboard.routes.js';
 import rsSerahTerimaRoutes from './api/routes/rs/rs-serahTerima.routes.js';
 import rsSerahTerimaKomersilRoutes from './api/routes/rs/rs-serahTerimaKomersil.routes.js';
+import rsBastLinenSewaRoutes from './api/routes/rs/rs-bastLinenSewa.routes.js';
 import unitDashboardRoutes from './api/routes/unit/unit.dashboard.routes.js';
 import socketNotifyRoutes from './api/routes/internal/socketNotify.routes.js';
 
@@ -97,9 +99,11 @@ app.use('/api/ikm', ikmSerahTerimaRoutes);
 app.use('/api/ikm', ikmKurangKirimRoutes);
 app.use('/api/ikm', ikmSerahTerimaKomersilRoutes);
 app.use('/api/ikm', ikmKurangKirimKomersilRoutes);
+app.use('/api/ikm', ikmBastLinenSewaRoutes);
 app.use('/api/rs', rsDashboardRoutes);
 app.use('/api/rs', rsSerahTerimaRoutes);
 app.use('/api/rs', rsSerahTerimaKomersilRoutes);
+app.use('/api/rs', rsBastLinenSewaRoutes);
 app.use('/api/unit', unitDashboardRoutes);
 app.use('/api/internal', socketNotifyRoutes);
 

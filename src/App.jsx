@@ -7,10 +7,12 @@ import SerahTerima from './pages/ikm/components/SerahTerima.jsx';
 import KurangKirimLinen from './pages/ikm/components/KurangKirimLinen.jsx';
 import SerahTerimaKomersil from './pages/ikm/components/SerahTerimaKomersil.jsx';
 import KurangKirimKomersil from './pages/ikm/components/KurangKirimKomersil.jsx';
+import BastLinenSewa from './pages/ikm/components/BastLinenSewa.jsx';
 import RSPage from './pages/rs/index.jsx';
 import RSDashboard from './pages/rs/components/RS-Dashboard.jsx';
 import RSSerahTerima from './pages/rs/components/RS-SerahTerima.jsx';
 import RSSerahTerimaKomersil from './pages/rs/components/RS-SerahTerimaKomersil.jsx';
+import RSBastLinenSewa from './pages/rs/components/RS-BastLinenSewa.jsx';
 // import RSKurangKirimKomersil from './pages/rs/components/RS-KurangKirimKomersil.jsx';
 import { ProtectedRoute, GuestRoute } from './components/RouteGuards.jsx';
 import UnitPage from './pages/unit/index.jsx';
@@ -35,6 +37,7 @@ function App() {
             <Route path="kurang-kirim-linen" element={<KurangKirimLinen />} />
             <Route path="serah-terima-komersil" element={<SerahTerimaKomersil />} />
             <Route path="kurang-kirim-komersil" element={<KurangKirimKomersil />} />
+            <Route path="bast-linen-sewa" element={<BastLinenSewa />} />
           </Route>
         </Route>
 
@@ -45,6 +48,7 @@ function App() {
             <Route path="dashboard" element={<RSDashboard />} />
             <Route path="serah-terima-linen" element={<RSSerahTerima />} />
             <Route path="serah-terima-komersil" element={<RSSerahTerimaKomersil />} />
+            <Route path="bast-linen-sewa" element={<RSBastLinenSewa />} />
             {/* <Route path="kurang-kirim-komersil" element={<RSKurangKirimKomersil />} /> */}
           </Route>
         </Route>
