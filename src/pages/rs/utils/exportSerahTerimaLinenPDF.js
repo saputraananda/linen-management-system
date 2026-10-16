@@ -42,10 +42,16 @@ export default async function exportSerahTerimaLinenPDF(transaction, details) {
   const kgExpressInfoHtml = (() => {
     const hasKg = transaction.total_kg_valet != null && transaction.total_kg_valet !== '';
     const hasExpress = Number(transaction.is_express) === 1;
-    if (!hasKg && !hasExpress) return '';
+    const hasAgreement = transaction.kg_agreement != null;
+    if (!hasKg && !hasExpress && !hasAgreement) return '';
+    const fmt = (v) => Number(v).toLocaleString('id-ID', { maximumFractionDigits: 2 });
     return `
-      <p style="margin: 0; display: flex; align-items: center;"><span style="width: 130px; font-weight: 700; color: #94a3b8;">Total Kg:</span> <span style="color: #0f172a; font-weight: 700;">${hasKg ? Number(transaction.total_kg_valet).toLocaleString('id-ID', { maximumFractionDigits: 2 }) : '—'}</span></p>
+      <p style="margin: 0; display: flex; align-items: center;"><span style="width: 130px; font-weight: 700; color: #94a3b8;">Total Kg:</span> <span style="color: #0f172a; font-weight: 700;">${hasKg ? fmt(transaction.total_kg_valet) : '—'}</span></p>
       <p style="margin: 0; display: flex; align-items: center;"><span style="width: 130px; font-weight: 700; color: #94a3b8;">Express:</span> <span style="color: #0f172a; font-weight: 700;">${hasExpress ? 'Ya' : 'Tidak'}</span></p>
+      ${hasAgreement ? `
+      <p style="margin: 0; display: flex; align-items: center;"><span style="width: 130px; font-weight: 700; color: #94a3b8;">Kg Perjanjian:</span> <span style="color: #0f172a; font-weight: 700;">${fmt(transaction.kg_agreement)}</span></p>
+      <p style="margin: 0; display: flex; align-items: center;"><span style="width: 130px; font-weight: 700; color: #94a3b8;">Total Kg Ditagihkan:</span> <span style="color: #0f172a; font-weight: 700;">${transaction.kg_total != null ? fmt(transaction.kg_total) : '—'}</span></p>
+      ` : ''}
     `;
   })();
 

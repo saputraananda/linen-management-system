@@ -639,6 +639,11 @@ export default function RSSerahTerima() {
                                                                         {Number(tx.total_kg_valet).toLocaleString('id-ID', { maximumFractionDigits: 2 })} Kg
                                                                     </span>
                                                                 )}
+                                                                {tx.kg_total != null && tx.kg_agreement != null && (
+                                                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-teal-50 border border-teal-200 text-[10px] font-semibold text-teal-700">
+                                                                        Ditagih {Number(tx.kg_total).toLocaleString('id-ID', { maximumFractionDigits: 2 })} Kg
+                                                                    </span>
+                                                                )}
                                                                 {Number(tx.is_express) === 1 && (
                                                                     <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold uppercase tracking-wider">
                                                                         Express
@@ -873,6 +878,26 @@ export default function RSSerahTerima() {
                                                                 )}
                                                             </p>
                                                         </div>
+                                                        {Number(editingTransaction.transaction.billing_by_kg) === 1 && (
+                                                            <>
+                                                                <div className="p-2 bg-white rounded-lg border border-slate-200">
+                                                                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Kg Perjanjian</p>
+                                                                    <p className="font-bold text-slate-800 mt-0.5">
+                                                                        {editingTransaction.transaction.kg_agreement != null
+                                                                            ? `${Number(editingTransaction.transaction.kg_agreement).toLocaleString('id-ID', { maximumFractionDigits: 2 })} Kg`
+                                                                            : 'Tidak ada'}
+                                                                    </p>
+                                                                </div>
+                                                                <div className="p-2 bg-white rounded-lg border border-teal-200">
+                                                                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Total Kg Ditagihkan</p>
+                                                                    <p className="font-bold text-teal-700 mt-0.5">
+                                                                        {editingTransaction.transaction.kg_total != null
+                                                                            ? `${Number(editingTransaction.transaction.kg_total).toLocaleString('id-ID', { maximumFractionDigits: 2 })} Kg`
+                                                                            : '—'}
+                                                                    </p>
+                                                                </div>
+                                                            </>
+                                                        )}
                                                     </div>
                                                 )}
                                             </div>

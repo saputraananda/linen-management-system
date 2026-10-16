@@ -74,7 +74,8 @@ export const getTransactions = async (req, res) => {
     }
 
     let query = `
-      SELECT t.*, h.hospital_name, h.billing_by_kg, h.allow_express,
+      SELECT t.*, h.hospital_name, h.billing_by_kg, h.allow_express, h.kg_agreement,
+        CASE WHEN t.total_kg_valet IS NULL THEN NULL ELSE t.total_kg_valet + COALESCE(h.kg_agreement, 0) END AS kg_total,
         (SELECT COUNT(*) FROM tr_linen_transaction_detail d WHERE d.transaction_id = t.id) as total_items,
         (SELECT COALESCE(SUM(qty_kotor), 0) FROM tr_linen_transaction_detail d WHERE d.transaction_id = t.id) as total_qty_kotor,
         (SELECT COALESCE(SUM(qty_bersih), 0) FROM tr_linen_transaction_detail d WHERE d.transaction_id = t.id) as total_qty_bersih
@@ -163,7 +164,8 @@ export const getTransactionDetail = async (req, res) => {
 
     // Fetch transaction header, making sure it belongs to the authenticated hospital
     const [transactions] = await ikmPool.query(
-      `SELECT t.*, h.hospital_name, h.billing_by_kg, h.allow_express 
+      `SELECT t.*, h.hospital_name, h.billing_by_kg, h.allow_express, h.kg_agreement,
+              CASE WHEN t.total_kg_valet IS NULL THEN NULL ELSE t.total_kg_valet + COALESCE(h.kg_agreement, 0) END AS kg_total
        FROM tr_linen_transaction t
        INNER JOIN mst_hospital h ON t.hospital_id = h.id
        WHERE t.id = ? AND t.hospital_id = ?`,
@@ -309,7 +311,8 @@ export const getShortageDeliveryDetail = async (req, res) => {
 
     const queryHeader = `
       SELECT d.*, t.form_number as original_form_number, t.pickup_date as original_pickup_date,
-             t.total_kg_valet, t.is_express,
+             t.total_kg_valet, t.is_express, h.kg_agreement,
+             CASE WHEN t.total_kg_valet IS NULL THEN NULL ELSE t.total_kg_valet + COALESCE(h.kg_agreement, 0) END AS kg_total,
              h.hospital_name, h.address as hospital_address
       FROM tr_kurang_kirim_delivery d
       INNER JOIN tr_linen_transaction t ON d.transaction_id = t.id

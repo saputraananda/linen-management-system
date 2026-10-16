@@ -206,6 +206,7 @@ export default function SerahTerima() {
   const [hospitalName, setHospitalName] = useState(sessionStorage.getItem('valet_hospital_name') || '');
   const [billingByKg, setBillingByKg] = useState(0);
   const [allowExpress, setAllowExpress] = useState(0);
+  const [kgAgreement, setKgAgreement] = useState(null);
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
   const [alertConfig, setAlertConfig] = useState({ show: false, title: 'Peringatan', message: '' });
   const [savedRooms, setSavedRooms] = useState([]);
@@ -467,15 +468,12 @@ export default function SerahTerima() {
     if (selectedRoomId) {
       return linenQtys[selectedRoomId] !== undefined ? linenQtys[selectedRoomId] : '';
     } else {
+      // Semua Ruangan: tampilkan placeholder selama belum ada unit yang mengisi qty > 0
       let sum = 0;
-      let hasValue = false;
-      Object.entries(linenQtys).forEach(([room, qty]) => {
-        if (qty !== '') {
-          sum += parseInt(qty) || 0;
-          hasValue = true;
-        }
+      Object.values(linenQtys).forEach(qty => {
+        if (qty !== '') sum += parseInt(qty) || 0;
       });
-      return hasValue ? sum : '';
+      return sum > 0 ? sum : '';
     }
   };
 
@@ -632,6 +630,7 @@ export default function SerahTerima() {
         setHospitalName(data.data.hospital?.hospital_name || '');
         setBillingByKg(Number(data.data.hospital?.billing_by_kg) || 0);
         setAllowExpress(Number(data.data.hospital?.allow_express) || 0);
+        setKgAgreement(data.data.hospital?.kg_agreement ?? null);
       }
     } catch (err) {
       console.error('Error fetching hospital info:', err);
@@ -677,11 +676,14 @@ export default function SerahTerima() {
         if (data.data.hospital?.allow_express != null) {
           setAllowExpress(Number(data.data.hospital.allow_express) || 0);
         }
-        // Initialize kotor quantities to 0
+        if (data.data.hospital) {
+          setKgAgreement(data.data.hospital.kg_agreement ?? null);
+        }
+        // Initialize kotor quantities empty (placeholder until diisi)
         const initialQtys = {};
         const initialNotes = {};
         data.data.linens.forEach(item => {
-          initialQtys[item.id] = 0;
+          initialQtys[item.id] = '';
           initialNotes[item.id] = '';
         });
         setKotorQuantities(initialQtys);
@@ -794,7 +796,7 @@ export default function SerahTerima() {
           const resetQtys = {};
           const resetNotes = {};
           linensList.forEach(item => {
-            resetQtys[item.id] = 0;
+            resetQtys[item.id] = '';
             resetNotes[item.id] = '';
           });
           setKotorQuantities(resetQtys);
@@ -1188,6 +1190,30 @@ export default function SerahTerima() {
 
   const showKgExpressFields = showKgFields || showExpressField;
 
+  // Kg ditagihkan = kg valet + kg perjanjian RS; kosong selama kg valet belum diisi
+  const kgAgreementValue = (() => {
+    const raw = editingTransaction?.transaction?.kg_agreement ?? kgAgreement;
+    const n = raw === '' || raw == null ? NaN : Number(raw);
+    return Number.isFinite(n) ? n : null;
+  })();
+  const kgTotalPreview = (() => {
+    const n = totalKgValet === '' || totalKgValet == null ? NaN : Number(totalKgValet);
+    return Number.isFinite(n) ? n + (kgAgreementValue ?? 0) : null;
+  })();
+  const formatKg = (n) => `${Number(n).toLocaleString('id-ID', { maximumFractionDigits: 2 })} Kg`;
+  const kgSummary = (
+    <div className="grid grid-cols-2 gap-2 pt-1">
+      <div className="px-3 py-2 rounded-lg bg-white border border-slate-200">
+        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Kg Perjanjian</p>
+        <p className="text-xs font-semibold text-slate-700">{kgAgreementValue != null ? formatKg(kgAgreementValue) : 'Tidak ada'}</p>
+      </div>
+      <div className="px-3 py-2 rounded-lg bg-white border border-[#126776]/20">
+        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Total Kg Ditagihkan</p>
+        <p className="text-xs font-bold text-[#126776]">{kgTotalPreview != null ? formatKg(kgTotalPreview) : '—'}</p>
+      </div>
+    </div>
+  );
+
   const getLinenNameById = (hospitalLinenId) => {
     const detail = editingTransaction?.details?.find(d => d.hospital_linen_id === hospitalLinenId);
     return detail ? getLinenDisplayName(detail) : `Linen #${hospitalLinenId}`;
@@ -1372,7 +1398,7 @@ export default function SerahTerima() {
                 const resetQtys = {};
                 const resetNotes = {};
                 linensList.forEach(item => {
-                  resetQtys[item.id] = 0;
+                  resetQtys[item.id] = '';
                   resetNotes[item.id] = '';
                 });
                 setKotorQuantities(resetQtys);
@@ -1545,6 +1571,11 @@ export default function SerahTerima() {
                             {tx.total_kg_valet != null && (
                               <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-slate-100 border border-slate-200 font-semibold">
                                 {Number(tx.total_kg_valet).toLocaleString('id-ID', { maximumFractionDigits: 2 })} Kg
+                              </span>
+                            )}
+                            {tx.kg_total != null && tx.kg_agreement != null && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-[#126776]/5 text-[#126776] border border-[#126776]/20 font-semibold">
+                                Ditagih {Number(tx.kg_total).toLocaleString('id-ID', { maximumFractionDigits: 2 })} Kg
                               </span>
                             )}
                             {Number(tx.is_express) === 1 && (
@@ -1883,9 +1914,10 @@ export default function SerahTerima() {
                                   <input
                                     type="number"
                                     min="0"
+                                    placeholder="0"
                                     value={getKotorQty(item.id)}
                                     onChange={e => handleKotorQtyChange(item.id, e.target.value)}
-                                    className="w-16 text-center py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] focus:bg-white transition text-slate-700"
+                                    className="w-16 text-center py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] focus:bg-white transition text-slate-900 placeholder:text-slate-300 placeholder:font-medium"
                                   />
                                 </div>
                               </td>
@@ -1953,6 +1985,7 @@ export default function SerahTerima() {
                         />
                         <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 uppercase tracking-wider">Kg</span>
                       </div>
+                      {kgSummary}
                     </div>
                   )}
                   {showExpressField && (
@@ -2723,6 +2756,7 @@ export default function SerahTerima() {
                         />
                         <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 uppercase tracking-wider">Kg</span>
                       </div>
+                      {kgSummary}
                     </div>
                   )}
                   {showExpressField && (

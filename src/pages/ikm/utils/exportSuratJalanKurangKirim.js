@@ -65,10 +65,16 @@ export default function exportSuratJalanKurangKirim(delivery, details) {
   const kgExpressInfoHtml = (() => {
     const hasKg = delivery.total_kg_valet != null && delivery.total_kg_valet !== '';
     const hasExpress = Number(delivery.is_express) === 1;
-    if (!hasKg && !hasExpress) return '';
+    const hasAgreement = delivery.kg_agreement != null;
+    if (!hasKg && !hasExpress && !hasAgreement) return '';
+    const fmt = (v) => Number(v).toLocaleString('id-ID', { maximumFractionDigits: 2 });
     return `
-      <p style="margin: 0; display: flex; align-items: center;"><span style="width: 140px; font-weight: 700; color: #94a3b8;">Total Kg:</span> <span style="color: #0f172a; font-weight: 700;">${hasKg ? Number(delivery.total_kg_valet).toLocaleString('id-ID', { maximumFractionDigits: 2 }) : '—'}</span></p>
+      <p style="margin: 0; display: flex; align-items: center;"><span style="width: 140px; font-weight: 700; color: #94a3b8;">Total Kg:</span> <span style="color: #0f172a; font-weight: 700;">${hasKg ? fmt(delivery.total_kg_valet) : '—'}</span></p>
       <p style="margin: 0; display: flex; align-items: center;"><span style="width: 140px; font-weight: 700; color: #94a3b8;">Express:</span> <span style="color: #0f172a; font-weight: 700;">${hasExpress ? 'Ya' : 'Tidak'}</span></p>
+      ${hasAgreement ? `
+      <p style="margin: 0; display: flex; align-items: center;"><span style="width: 140px; font-weight: 700; color: #94a3b8;">Kg Perjanjian:</span> <span style="color: #0f172a; font-weight: 700;">${fmt(delivery.kg_agreement)}</span></p>
+      <p style="margin: 0; display: flex; align-items: center;"><span style="width: 140px; font-weight: 700; color: #94a3b8;">Total Kg Ditagihkan:</span> <span style="color: #0f172a; font-weight: 700;">${delivery.kg_total != null ? fmt(delivery.kg_total) : '—'}</span></p>
+      ` : ''}
     `;
   })();
 

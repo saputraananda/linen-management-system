@@ -175,6 +175,11 @@ export default async function exportSerahTerimaLinen(transaction, details) {
       kgExpressParts.push(`Total Kg: ${hasKg ? Number(transaction.total_kg_valet).toLocaleString('id-ID', { maximumFractionDigits: 2 }) : '—'}`);
       kgExpressParts.push(`Express: ${hasExpress ? 'Ya' : 'Tidak'}`);
     }
+    if (transaction.kg_agreement != null) {
+      const fmt = (v) => Number(v).toLocaleString('id-ID', { maximumFractionDigits: 2 });
+      kgExpressParts.push(`Kg Perjanjian: ${fmt(transaction.kg_agreement)}`);
+      kgExpressParts.push(`Total Kg Ditagihkan: ${transaction.kg_total != null ? fmt(transaction.kg_total) : '—'}`);
+    }
     dateCell.value = `${formNum ? formNum + '  |  ' : ''}Tanggal: ${formattedPickupDate}${kgExpressParts.length ? '  |  ' + kgExpressParts.join('  |  ') : ''}`;
     dateCell.font = { name: 'Plus Jakarta Sans', size: 8.5, color: { argb: 'FF475569' } };
     dateCell.alignment = { horizontal: 'center', vertical: 'middle' };

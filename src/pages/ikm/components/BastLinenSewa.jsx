@@ -472,8 +472,8 @@ export default function BastLinenSewa() {
         </div>
       </div>
       {activeTab === 'form' && (
-      <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-        <div className="bg-gradient-to-r from-[#126776] to-[#1ea59e] p-5 sm:p-6">
+      <section className="rounded-3xl border border-slate-200 bg-white shadow-sm">
+        <div className="rounded-t-3xl bg-gradient-to-r from-[#126776] to-[#1ea59e] p-5 sm:p-6">
           <h1 className="text-lg font-bold text-white">{editingId ? 'Ubah Berita Acara Serah Terima Linen Sewa' : 'Form Berita Acara Serah Terima Linen Sewa'}</h1>
           <p className="mt-1 text-xs font-medium text-white/80">{hospitalName}. Pengiriman menambah stok, penarikan mengurangi stok.</p>
         </div>
@@ -484,8 +484,8 @@ export default function BastLinenSewa() {
           <input type="datetime-local" value={bastDate} onChange={(e) => setBastDate(e.target.value)} className={`${fieldClass} sm:max-w-xs`} />
         </label>
         <div className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-3">
-          <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200">
-            <div className="border-b border-slate-100 bg-slate-50 px-4 py-3">
+          <div className="flex h-full flex-col rounded-2xl border border-slate-200">
+            <div className="rounded-t-2xl border-b border-slate-100 bg-slate-50 px-4 py-3">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-[#126776]">Yang menyerahkan</p>
               <p className="text-sm font-semibold text-slate-800">Pihak Kedua · IKM</p>
             </div>

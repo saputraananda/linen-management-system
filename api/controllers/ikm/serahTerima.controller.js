@@ -98,7 +98,8 @@ export const getTransactions = async (req, res) => {
     }
 
     let query = `
-      SELECT t.*, h.hospital_name, h.billing_by_kg, h.allow_express,
+      SELECT t.*, h.hospital_name, h.billing_by_kg, h.allow_express, h.kg_agreement,
+        CASE WHEN t.total_kg_valet IS NULL THEN NULL ELSE t.total_kg_valet + COALESCE(h.kg_agreement, 0) END AS kg_total,
         (SELECT COUNT(*) FROM tr_linen_transaction_detail d WHERE d.transaction_id = t.id) as total_items,
         (SELECT COALESCE(SUM(qty_kotor), 0) FROM tr_linen_transaction_detail d WHERE d.transaction_id = t.id) as total_qty_kotor,
         (SELECT COALESCE(SUM(qty_bersih), 0) FROM tr_linen_transaction_detail d WHERE d.transaction_id = t.id) as total_qty_bersih
@@ -178,7 +179,8 @@ export const getTransactionDetail = async (req, res) => {
     const { id } = req.params;
 
     const [transactions] = await ikmPool.query(
-      `SELECT t.*, h.hospital_name, h.billing_by_kg, h.allow_express 
+      `SELECT t.*, h.hospital_name, h.billing_by_kg, h.allow_express, h.kg_agreement,
+              CASE WHEN t.total_kg_valet IS NULL THEN NULL ELSE t.total_kg_valet + COALESCE(h.kg_agreement, 0) END AS kg_total
        FROM tr_linen_transaction t
        INNER JOIN mst_hospital h ON t.hospital_id = h.id
        WHERE t.id = ?`,

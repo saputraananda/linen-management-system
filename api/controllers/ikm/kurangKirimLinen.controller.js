@@ -384,7 +384,8 @@ export const getShortageDeliveries = async (req, res) => {
 
         const query = `
       SELECT d.*, t.form_number as original_form_number, t.pickup_date as original_pickup_date,
-             t.total_kg_valet, t.is_express, h.hospital_name,
+             t.total_kg_valet, t.is_express, h.kg_agreement,
+             CASE WHEN t.total_kg_valet IS NULL THEN NULL ELSE t.total_kg_valet + COALESCE(h.kg_agreement, 0) END AS kg_total, h.hospital_name,
         (SELECT SUM(dd.qty_delivered) FROM tr_kurang_kirim_delivery_detail dd WHERE dd.delivery_id = d.id) as total_qty_delivered
       FROM tr_kurang_kirim_delivery d
       INNER JOIN tr_linen_transaction t ON d.transaction_id = t.id
@@ -430,7 +431,8 @@ export const getShortageDeliveryDetail = async (req, res) => {
 
         const queryHeader = `
       SELECT d.*, t.form_number as original_form_number, t.pickup_date as original_pickup_date,
-             t.total_kg_valet, t.is_express,
+             t.total_kg_valet, t.is_express, h.kg_agreement,
+             CASE WHEN t.total_kg_valet IS NULL THEN NULL ELSE t.total_kg_valet + COALESCE(h.kg_agreement, 0) END AS kg_total,
              h.hospital_name, h.address as hospital_address
       FROM tr_kurang_kirim_delivery d
       INNER JOIN tr_linen_transaction t ON d.transaction_id = t.id
