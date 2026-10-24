@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import {
@@ -24,6 +24,25 @@ export default function UnitDashboard() {
   // User session details
   const hospitalId = localStorage.getItem('employeeId'); // for hospital / unit, employeeId stores the hospital's PK in mst_hospital
   const hospitalName = localStorage.getItem('fullName') || 'Rumah Sakit';
+  // Login akun perawat: nama terkunci, hanya ruangan miliknya yang aktif
+  const lockedNurse = localStorage.getItem('nurseName') || '';
+  const myRoomIds = (() => {
+    try { return JSON.parse(localStorage.getItem('unitRoomIds') || '[]').map(String); } catch { return []; }
+  })();
+  const isMyRoom = (room) => !lockedNurse || myRoomIds.includes(String(room.id));
+  const [crossRoom, setCrossRoom] = useState(null);
+
+  // Scroll berada di container PageLayout (bukan window): reset ke atas saat pindah layar pilih unit <-> dashboard
+  const mainRef = useRef(null);
+  useEffect(() => {
+    let el = mainRef.current?.parentElement;
+    while (el && el !== document.body) {
+      const oy = getComputedStyle(el).overflowY;
+      if (oy === 'auto' || oy === 'scroll') break;
+      el = el.parentElement;
+    }
+    (el && el !== document.body ? el : window).scrollTo({ top: 0 });
+  }, [selectedRoom]);
 
   // API Data States
   const [loadingData, setLoadingData] = useState(false);
@@ -38,7 +57,7 @@ export default function UnitDashboard() {
 
   // Active Nurse States
   const [activeNurse, setActiveNurse] = useState(() => {
-    return sessionStorage.getItem('unit_nurse_name') || '';
+    return lockedNurse || sessionStorage.getItem('unit_nurse_name') || '';
   });
   const [nurseInput, setNurseInput] = useState('');
 
@@ -207,7 +226,7 @@ export default function UnitDashboard() {
     sessionStorage.removeItem('unit_selected_room');
     sessionStorage.removeItem('unit_nurse_name');
     setSelectedRoom(null);
-    setActiveNurse('');
+    setActiveNurse(lockedNurse);
     setNurseInput('');
     setSearchTerm('');
   };
@@ -505,7 +524,7 @@ export default function UnitDashboard() {
 
   return (
     <>
-      <main className="min-h-screen bg-slate-50 py-6 sm:py-10">
+      <main ref={mainRef} className="min-h-screen bg-slate-50 py-6 sm:py-10">
         <div className="mx-auto max-w-screen-2xl px-4 sm:px-6 lg:px-8">
 
           {/* Error Message */}
@@ -567,8 +586,8 @@ export default function UnitDashboard() {
                   {filteredRooms.map((room) => (
                     <div
                       key={room.id}
-                      onClick={() => handleSelectRoom(room)}
-                      className="cursor-pointer group relative bg-white border border-slate-200 p-4 sm:p-6 rounded-xl sm:rounded-2xl shadow-sm hover:shadow-md hover:border-teal-500/30 active:scale-[0.99] transition-all overflow-hidden flex flex-col justify-between min-h-[120px] sm:min-h-[140px]"
+                      onClick={() => (isMyRoom(room) ? handleSelectRoom(room) : setCrossRoom(room))}
+                      className={`cursor-pointer group relative border p-4 sm:p-6 rounded-xl sm:rounded-2xl shadow-sm active:scale-[0.99] transition-all overflow-hidden flex flex-col justify-between min-h-[120px] sm:min-h-[140px] ${isMyRoom(room) ? 'bg-white border-slate-200 hover:shadow-md hover:border-teal-500/30' : 'bg-slate-100 border-slate-200 opacity-60 grayscale'}`}
                     >
                       {/* Decorative elements */}
                       <div className="absolute top-0 right-0 w-20 h-20 sm:w-24 sm:h-24 bg-teal-500/[0.02] rounded-full translate-x-8 -translate-y-8 pointer-events-none transition-transform group-hover:scale-110" />
@@ -595,7 +614,7 @@ export default function UnitDashboard() {
                       </div>
 
                       <div className="flex items-center gap-1 text-[9px] sm:text-[11px] font-bold text-teal-600 mt-2 sm:mt-4 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
-                        Masuk Ruangan
+                        {isMyRoom(room) ? 'Masuk Ruangan' : 'Ruangan Lain (Cross Unit)'}
                         <ChevronRight className="h-3 w-3" />
                       </div>
                     </div>
@@ -691,6 +710,7 @@ export default function UnitDashboard() {
                     <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-100">
                       <CheckCircle2 className="h-3 w-3" />
                       Petugas: {activeNurse}
+                      {!lockedNurse && (
                       <button
                         onClick={() => {
                           setActiveNurse('');
@@ -700,6 +720,7 @@ export default function UnitDashboard() {
                       >
                         (Ganti)
                       </button>
+                      )}
                     </span>
                   </div>
                   <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight mt-2">
@@ -1778,6 +1799,16 @@ export default function UnitDashboard() {
         message="Apakah Anda yakin ingin membatalkan transfer ini? Stok bersih akan dikembalikan ke ruangan transit asal."
         confirmText="Ya, Batalkan"
         cancelText="Kembali"
+      />
+
+      <ConfirmDialog
+        isOpen={crossRoom !== null}
+        onClose={() => setCrossRoom(null)}
+        onConfirm={() => handleSelectRoom(crossRoom)}
+        title="Cross Unit"
+        message={`Ruangan "${crossRoom?.room_name}" bukan unit Anda. Aktivitas tetap dicatat atas nama ${lockedNurse}. Lanjutkan?`}
+        confirmText="Ya, Lanjutkan"
+        cancelText="Batal"
       />
 
       <ConfirmDialog

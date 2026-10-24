@@ -70,6 +70,41 @@ export const login = async (req, res) => {
       }
     }
 
+    // 1b. User perawat unit (mst_users_rs) - nama terkunci ke akun
+    const [nurses] = await ikmPool.query(
+      `SELECT u.id, u.hospital_id, u.nurse_name, u.username, u.password, u.role, u.is_active,
+              h.hospital_name, h.hospital_id AS hospital_code
+       FROM mst_users_rs u
+       INNER JOIN mst_hospital h ON h.id = u.hospital_id
+       WHERE u.username = ?`, [username]);
+    const nurse = nurses.find(n => n.password === password);
+    if (nurse) {
+      if (!nurse.is_active) {
+        return res.status(403).json({ success: false, message: "Akun dinonaktifkan. Hubungi Tim Linen Rumah Sakit." });
+      }
+      const isRs = nurse.role === 'rs';
+      const [rr] = isRs ? [[]] : await ikmPool.query("SELECT room_id FROM mst_users_rs_rooms WHERE user_id = ?", [nurse.id]);
+      const roomIds = rr.map(r => r.room_id);
+      const info = {
+        id: nurse.hospital_id,
+        userUnitId: nurse.id,
+        username: nurse.username,
+        fullName: nurse.hospital_name,
+        nurseName: nurse.nurse_name,
+        roomIds,
+        hospitalId: nurse.hospital_code
+      };
+      const token = jwt.sign({ ...info, role: isRs ? "rs" : "unit" }, process.env.SESSION_SECRET || 'ikmsecret', { expiresIn: '24h' });
+      return res.status(200).json({
+        success: true,
+        message: isRs ? "Login berhasil sebagai User RS" : "Login berhasil sebagai Perawat Unit",
+        role: isRs ? "rs" : "unit",
+        redirect: isRs ? "/rs" : "/unit",
+        token,
+        user: info
+      });
+    }
+
     // 2. Cek di ikmPool (mst_hospital)
     const hospitalQuery = `
       SELECT id, hospital_name, hospital_id, username, password

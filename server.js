@@ -19,6 +19,8 @@ import rsSerahTerimaRoutes from './api/routes/rs/rs-serahTerima.routes.js';
 import rsSerahTerimaKomersilRoutes from './api/routes/rs/rs-serahTerimaKomersil.routes.js';
 import rsBastLinenSewaRoutes from './api/routes/rs/rs-bastLinenSewa.routes.js';
 import unitDashboardRoutes from './api/routes/unit/unit.dashboard.routes.js';
+import rsProfileRoutes from './api/routes/rs/rs-profile.routes.js';
+import unitProfileRoutes from './api/routes/unit/unit-profile.routes.js';
 import socketNotifyRoutes from './api/routes/internal/socketNotify.routes.js';
 
 // Resolve directory paths
@@ -104,7 +106,9 @@ app.use('/api/rs', rsDashboardRoutes);
 app.use('/api/rs', rsSerahTerimaRoutes);
 app.use('/api/rs', rsSerahTerimaKomersilRoutes);
 app.use('/api/rs', rsBastLinenSewaRoutes);
+app.use('/api/rs', rsProfileRoutes);
 app.use('/api/unit', unitDashboardRoutes);
+app.use('/api/unit', unitProfileRoutes);
 app.use('/api/internal', socketNotifyRoutes);
 
 // ==========================

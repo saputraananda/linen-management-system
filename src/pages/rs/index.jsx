@@ -1,7 +1,13 @@
-import { HeartPulse, FileText, ScrollText } from 'lucide-react';
+import { HeartPulse, FileText, ScrollText, Users } from 'lucide-react';
 import PageLayout from '../../components/PageLayout';
 
 const MENU_ITEMS = [
+  {
+    category: "Master",
+    items: [
+      { to: "/rs/master-user-unit", icon: Users, label: "Master User Unit", description: "Akun perawat per ruangan", end: false },
+    ]
+  },
   {
     category: "Linen",
     items: [

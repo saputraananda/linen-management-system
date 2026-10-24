@@ -1,11 +1,14 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
+import useBodyScrollLock from '../utils/useBodyScrollLock';
 import { AlertTriangle, X } from 'lucide-react';
 
 export default function ConfirmDialog({ isOpen, onClose, onConfirm, title, message, confirmText = 'Ya', cancelText = 'Batal' }) {
+  useBodyScrollLock(isOpen);
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm">
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center overscroll-contain bg-black/20 backdrop-blur-sm">
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xl px-8 py-8 text-center max-w-sm w-full mx-4 animate-pop">
         <div className="mx-auto w-12 h-12 bg-amber-50 rounded-full flex items-center justify-center mb-4">
           <AlertTriangle className="h-6 w-6 text-amber-500" />
@@ -37,6 +40,7 @@ export default function ConfirmDialog({ isOpen, onClose, onConfirm, title, messa
         }
         .animate-pop { animation: pop 0.2s ease-out; }
       `}</style>
-    </div>
+    </div>,
+    document.body
   );
 }

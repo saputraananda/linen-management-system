@@ -14,6 +14,8 @@ import RSSerahTerima from './pages/rs/components/RS-SerahTerima.jsx';
 import RSSerahTerimaKomersil from './pages/rs/components/RS-SerahTerimaKomersil.jsx';
 import RSBastLinenSewa from './pages/rs/components/RS-BastLinenSewa.jsx';
 // import RSKurangKirimKomersil from './pages/rs/components/RS-KurangKirimKomersil.jsx';
+import RSProfile from './pages/rs/components/RS-Profile.jsx';
+import UnitProfile from './pages/unit/components/Unit-Profile.jsx';
 import { ProtectedRoute, GuestRoute } from './components/RouteGuards.jsx';
 import UnitPage from './pages/unit/index.jsx';
 import UnitDashboard from './pages/unit/components/Unit-Dashboard.jsx';
@@ -49,6 +51,7 @@ function App() {
             <Route path="serah-terima-linen" element={<RSSerahTerima />} />
             <Route path="serah-terima-komersil" element={<RSSerahTerimaKomersil />} />
             <Route path="bast-linen-sewa" element={<RSBastLinenSewa />} />
+            <Route path="master-user-unit" element={<RSProfile />} />
             {/* <Route path="kurang-kirim-komersil" element={<RSKurangKirimKomersil />} /> */}
           </Route>
         </Route>
@@ -57,6 +60,7 @@ function App() {
         <Route element={<ProtectedRoute allowedRoles={['unit']} />}>
           <Route path="/unit" element={<UnitPage />}>
             <Route index element={<UnitDashboard />} />
+            <Route path="profile" element={<UnitProfile />} />
           </Route>
         </Route>
 

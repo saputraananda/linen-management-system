@@ -66,6 +66,12 @@ export default function Login() {
           localStorage.setItem('department', user.department || '');
           localStorage.setItem('profilePath', user.profilePath || '');
           localStorage.setItem('hospitalId', user.hospitalId || '');
+          localStorage.removeItem('nurseName');
+          localStorage.removeItem('unitRoomIds');
+          if (user.userUnitId) {
+            localStorage.setItem('nurseName', user.nurseName || '');
+            localStorage.setItem('unitRoomIds', JSON.stringify(user.roomIds || []));
+          }
         }
         setToast({ isOpen: true, title: 'Login Berhasil!', message, icon: 'success' });
         setTimeout(() => navigate(redirect, { replace: true }), 1500);

@@ -11,7 +11,10 @@ axios.interceptors.response.use(
   (error) => {
     if (error.response && error.response.status === 403) {
       const message = error.response.data?.message;
-      if (message === 'Token tidak valid atau kadaluwarsa. Silakan masuk kembali.') {
+      if (
+        message === 'Token tidak valid atau kadaluwarsa. Silakan masuk kembali.' ||
+        message === 'Akun dinonaktifkan. Hubungi Tim Linen Rumah Sakit.'
+      ) {
         localStorage.clear();
         sessionStorage.clear();
         window.location.href = '/login';

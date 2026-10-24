@@ -156,7 +156,8 @@ export default function PageLayout({ menuItems, moduleName = "Module", bgColor =
   const [mobileDropdownOpen, setMobileDropdownOpen] = useState(false);
 
   // Retrieve user details from localStorage
-  const fullName = localStorage.getItem('fullName') || localStorage.getItem('username') || 'User';
+  const nurseName = localStorage.getItem('nurseName');
+  const fullName = nurseName || localStorage.getItem('fullName') || localStorage.getItem('username') || 'User';
   const role = localStorage.getItem('userRole');
   const profilePath = localStorage.getItem('profilePath');
   const hospitalId = localStorage.getItem('hospitalId');
@@ -169,6 +170,8 @@ export default function PageLayout({ menuItems, moduleName = "Module", bgColor =
     subtitle = position || department || 'Staff IKM';
   } else if (role === 'rs') {
     subtitle = hospitalId || 'Rumah Sakit';
+  } else if (role === 'unit') {
+    subtitle = 'Unit';
   } else {
     subtitle = 'Portal User';
   }
