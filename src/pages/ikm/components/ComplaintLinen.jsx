@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
-import { Search, ChevronDown, RefreshCw, MessageSquareWarning, Camera, Clock, Package, Eye } from 'lucide-react';
+import { Search, RefreshCw, MessageSquareWarning, Camera, Clock, Package, Eye, Info } from 'lucide-react';
 import {
   STATUS, ACTION, OWNERSHIP, PhotoGrid, labelCls, inputCls, fmtDate, fmtDateTime, auth, errMsg, Badge, Modal,
 } from '../../../components/ComplaintShared';
@@ -12,20 +12,21 @@ const API = '/api/ikm/complaint';
 // atau mst_leader.role = 'management'; hak ditentukan server, bukan sekadar disembunyikan di UI.
 export default function ComplaintLinen() {
   const [items, setItems] = useState([]);
-  const [hospitals, setHospitals] = useState([]);
   const [canManage, setCanManage] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
-  const [hospitalId, setHospitalId] = useState('');
+  const hospitalId = sessionStorage.getItem('valet_hospital_id') || '';
+  const hospitalName = sessionStorage.getItem('valet_hospital_name') || 'Rumah Sakit';
   const [detail, setDetail] = useState(null);
 
   const load = useCallback(async () => {
+    if (!hospitalId) { setItems([]); setLoading(false); return; }
     setLoading(true);
     try {
       const { data } = await axios.get(API, {
-        ...auth(), params: { q: search || undefined, status: status || undefined, hospitalId: hospitalId || undefined },
+        ...auth(), params: { q: search || undefined, status: status || undefined, hospitalId },
       });
       setItems(data.data);
       setCanManage(!!data.canManage);
@@ -38,58 +39,63 @@ export default function ComplaintLinen() {
   }, [search, status, hospitalId]);
 
   useEffect(() => { const t = setTimeout(load, 250); return () => clearTimeout(t); }, [load]);
-  useEffect(() => {
-    axios.get(`${API}/access`, auth()).then(({ data }) => setHospitals(data.hospitals)).catch(() => {});
-  }, []);
-
   const openDetail = async (id) => {
     try {
-      const { data } = await axios.get(`${API}/${id}`, auth());
+      const { data } = await axios.get(`${API}/${id}`, { ...auth(), params: { hospitalId } });
       setDetail(data.data);
     } catch (e) { setError(errMsg(e, 'Gagal membuka komplain')); }
   };
 
   return (
-    <div className="min-h-full bg-slate-50/50 py-6 text-slate-800" style={{ colorScheme: 'light' }}>
+    <div className="min-h-screen bg-slate-50 py-6 text-slate-800 sm:py-10" style={{ colorScheme: 'light' }}>
       <div className="mx-auto max-w-screen-2xl space-y-6 px-4 sm:px-6 lg:px-8">
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-xl font-bold tracking-tight text-slate-800 sm:text-2xl">Komplain Rumah Sakit</h2>
-            {!loading && (
-              <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-bold ${canManage ? 'border-emerald-100 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-slate-100 text-slate-500'}`}>
-                {!canManage && <Eye className="h-3 w-3" />} {canManage ? 'Dapat menindaklanjuti' : 'View only'}
-              </span>
-            )}
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-2xl font-extrabold tracking-tight text-slate-900">{hospitalId ? hospitalName : 'Komplain Rumah Sakit'}</h2>
+                {!loading && hospitalId && (
+                  <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-bold ${canManage ? 'border-emerald-100 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-slate-100 text-slate-500'}`}>
+                    {!canManage && <Eye className="h-3 w-3" />} {canManage ? 'Dapat menindaklanjuti' : 'View only'}
+                  </span>
+                )}
+              </div>
+              <p className="text-xs font-medium text-slate-400">Pantau komplain linen rumah sakit yang sedang dipilih.</p>
+            </div>
+            <button type="button" onClick={load} disabled={!hospitalId || loading} className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 self-start rounded-xl border border-slate-200 bg-white px-4 text-xs font-bold text-slate-600 shadow-sm transition hover:bg-slate-50 active:scale-[0.98] disabled:opacity-50 md:self-center">
+              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              Segarkan
+            </button>
           </div>
-          <p className="mt-1 text-xs font-medium text-slate-400">Pantau komplain dari seluruh rumah sakit mitra.</p>
         </div>
 
         {error && <div className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{error}</div>}
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex flex-col items-stretch gap-3 lg:flex-row lg:items-center">
-            <div className="relative flex-1">
-              <Search className="absolute inset-y-0 left-3.5 my-auto h-4 w-4 text-slate-400" />
-              <input type="text" placeholder="Cari nomor, jenis, pelapor, deskripsi, atau rumah sakit..." value={search} onChange={(e) => setSearch(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-xs font-semibold text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-[#1ea59e] focus:ring-4 focus:ring-[#1ea59e]/10" />
+        {!hospitalId ? (
+          <div className="flex items-start gap-4 rounded-3xl border border-amber-200 bg-amber-50 p-6 text-amber-800">
+            <Info className="mt-0.5 h-6 w-6 shrink-0 text-amber-500" />
+            <div>
+              <p className="text-sm font-bold">Rumah Sakit Belum Dipilih</p>
+              <p className="mt-1 text-xs leading-relaxed text-amber-700/90">Silakan pilih salah satu Rumah Sakit di sidebar atau kembali ke Dashboard terlebih dahulu untuk memproses data.</p>
             </div>
-            <div className="relative">
-              <select value={hospitalId} onChange={(e) => setHospitalId(e.target.value)} className="w-full min-w-[180px] cursor-pointer appearance-none rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-3.5 pr-9 text-xs font-semibold text-slate-700 outline-none focus:border-[#1ea59e] focus:ring-4 focus:ring-[#1ea59e]/10 lg:w-auto">
-                <option value="">Semua Rumah Sakit</option>
-                {hospitals.map((h) => <option key={h.id} value={h.id}>{h.hospital_name}</option>)}
-              </select>
-              <ChevronDown className="pointer-events-none absolute inset-y-0 right-3 my-auto h-3.5 w-3.5 text-slate-400" />
+          </div>
+        ) : (<>
+        <div className="space-y-4 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400">Cari Komplain</label>
+              <div className="relative">
+                <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="No. komplain / Jenis / Pelapor / Deskripsi..." className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-4 text-xs font-semibold text-slate-800 transition-all focus:border-teal-500 focus:outline-none focus:ring-4 focus:ring-teal-500/5" />
+                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400"><Search className="h-4 w-4" /></div>
+              </div>
             </div>
-            <div className="relative">
-              <select value={status} onChange={(e) => setStatus(e.target.value)} className="w-full min-w-[160px] cursor-pointer appearance-none rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-3.5 pr-9 text-xs font-semibold text-slate-700 outline-none focus:border-[#1ea59e] focus:ring-4 focus:ring-[#1ea59e]/10 lg:w-auto">
+            <div className="space-y-1.5">
+              <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400">Status</label>
+              <select value={status} onChange={(e) => setStatus(e.target.value)} className="block w-full cursor-pointer rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold text-slate-700 transition-all focus:border-teal-500 focus:outline-none focus:ring-4 focus:ring-teal-500/5">
                 <option value="">Semua Status</option>
                 {Object.entries(STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
               </select>
-              <ChevronDown className="pointer-events-none absolute inset-y-0 right-3 my-auto h-3.5 w-3.5 text-slate-400" />
             </div>
-            <button type="button" title="Muat ulang" onClick={() => { setSearch(''); setStatus(''); setHospitalId(''); load(); }} className="inline-flex cursor-pointer items-center justify-center rounded-xl border border-slate-200 bg-slate-100 p-2.5 text-slate-500 transition hover:bg-slate-200">
-              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-            </button>
           </div>
         </div>
 
@@ -131,6 +137,7 @@ export default function ComplaintLinen() {
             ))}
           </div>
         )}
+        </>)}
       </div>
 
       {detail && <DetailModal detail={detail} onClose={() => setDetail(null)} onChanged={async () => { await load(); await openDetail(detail.id); }} />}

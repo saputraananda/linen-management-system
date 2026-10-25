@@ -85,20 +85,20 @@ export default function RSProfile() {
   };
 
   return (
-    <div className="min-h-full bg-slate-50/50 py-6 text-slate-800" style={{ colorScheme: 'light' }}>
+    <div className="min-h-screen bg-slate-50 py-6 text-slate-800 sm:py-10" style={{ colorScheme: 'light' }}>
       <div className="mx-auto max-w-screen-2xl space-y-6 px-4 sm:px-6 lg:px-8">
         {/* Header */}
-        <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0">
-            <h2 className="text-xl font-bold tracking-tight text-slate-800 sm:text-2xl">Master User Unit</h2>
-            <p className="mt-1 text-xs font-medium text-slate-400">
+        <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm md:flex-row md:items-center md:justify-between">
+          <div className="min-w-0 space-y-2">
+            <h2 className="text-2xl font-extrabold tracking-tight text-slate-900">Master User Unit</h2>
+            <p className="text-xs font-medium text-slate-400">
               {hospitalName} · Akun perawat per ruangan. Unit yang dipilih tampil hijau di dashboard; unit lain tetap bisa diakses (cross unit).
             </p>
           </div>
           <button
             type="button"
             onClick={() => { setError(''); setForm({ ...EMPTY }); }}
-            className="inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#126776] to-[#1ea59e] px-4 py-2.5 text-sm font-bold text-white shadow-md shadow-[#126776]/20 transition hover:shadow-lg active:scale-[0.98]"
+            className="inline-flex h-10 shrink-0 cursor-pointer items-center justify-center gap-2 self-start rounded-xl bg-gradient-to-r from-[#126776] to-[#1ea59e] px-4 text-sm md:self-center font-bold text-white shadow-md shadow-[#126776]/20 transition hover:shadow-lg active:scale-[0.98]"
           >
             <Plus className="h-4 w-4" /> Tambah User
           </button>

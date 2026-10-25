@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import axios from 'axios';
-import { Calendar, ChevronDown, Clock, Download, Eye, PlusCircle, RefreshCw, Search, Trash2 } from 'lucide-react';
+import { Calendar, ChevronDown, Clock, Download, Eye, Info, PlusCircle, RefreshCw, Search, Trash2 } from 'lucide-react';
 import exportBastLinenSewa, { renderBastHtml } from '../utils/exportBastLinenSewa';
 import kopSuratIkm from '../../../assets/images/kop_surat_ikm.png';
 
@@ -492,12 +492,12 @@ export default function BastLinenSewa() {
   });
 
   return (
-    <div className="min-h-full bg-slate-50/50 py-6 text-slate-800" style={{ colorScheme: 'light' }}>
+    <div className="min-h-screen bg-slate-50 py-6 text-slate-800 sm:py-10" style={{ colorScheme: 'light' }}>
       <div className="mx-auto max-w-screen-2xl space-y-6 px-4 sm:px-6 lg:px-8">
       {toast && <div className={`rounded-xl px-4 py-3 text-sm font-medium ${toast.type === 'error' ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'}`}>{toast.message}</div>}
-      <div className="flex flex-col gap-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:flex-row md:items-center md:justify-between">
+      <div className="flex flex-col gap-5 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm md:flex-row md:items-center md:justify-between">
         <div>
-          <h2 className="text-xl font-bold tracking-tight text-slate-800 sm:text-2xl">{hospitalName}</h2>
+          <h2 className="text-2xl font-extrabold tracking-tight text-slate-900">{hospitalName}</h2>
           <p className="mt-1 text-xs font-medium text-slate-400">Berita Acara Serah Terima Linen Sewa. Pengiriman menambah stok, penarikan mengurangi stok.</p>
         </div>
         <div className="flex h-fit shrink-0 self-start rounded-xl border border-slate-200 bg-slate-100 p-1.5 md:self-center">
@@ -511,14 +511,22 @@ export default function BastLinenSewa() {
           </button>
         </div>
       </div>
-      {activeTab === 'form' && (
+      {!hospitalId && (
+        <div className="flex items-start gap-4 rounded-3xl border border-amber-200 bg-amber-50 p-6 text-amber-800">
+          <Info className="mt-0.5 h-6 w-6 shrink-0 text-amber-500" />
+          <div>
+            <p className="text-sm font-bold">Rumah Sakit Belum Dipilih</p>
+            <p className="mt-1 text-xs leading-relaxed text-amber-700/90">Silakan pilih salah satu Rumah Sakit di sidebar atau kembali ke Dashboard terlebih dahulu untuk memproses data.</p>
+          </div>
+        </div>
+      )}
+      {hospitalId && activeTab === 'form' && (
       <section className="rounded-3xl border border-slate-200 bg-white shadow-sm">
         <div className="rounded-t-3xl bg-gradient-to-r from-[#126776] to-[#1ea59e] p-5 sm:p-6">
           <h1 className="text-lg font-bold text-white">{editingId ? 'Ubah Berita Acara Serah Terima Linen Sewa' : 'Form Berita Acara Serah Terima Linen Sewa'}</h1>
           <p className="mt-1 text-xs font-medium text-white/80">{hospitalName}. Pengiriman menambah stok, penarikan mengurangi stok.</p>
         </div>
         <div className="space-y-6 p-5 text-slate-800 sm:p-6">
-        {!hospitalId && <p className="text-sm font-medium text-amber-700">Buka rumah sakit dari dashboard valet terlebih dahulu.</p>}
         <label className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <span className="w-28 shrink-0 text-xs font-semibold text-slate-500">Tanggal</span>
           <input type="datetime-local" value={bastDate} onChange={(e) => setBastDate(e.target.value)} className={`${fieldClass} sm:max-w-xs`} />
@@ -648,7 +656,7 @@ export default function BastLinenSewa() {
         </div>
       </section>
       )}
-      {activeTab === 'view' && viewRow && (
+      {hospitalId && activeTab === 'view' && viewRow && (
       <section className="rounded-3xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3 rounded-t-3xl bg-gradient-to-r from-[#126776] to-[#1ea59e] p-5 sm:p-6">
           <div>
@@ -676,7 +684,7 @@ export default function BastLinenSewa() {
         </div>
       </section>
       )}
-      {activeTab === 'history' && (
+      {hospitalId && activeTab === 'history' && (
       <div className="space-y-6">
         <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex flex-col items-stretch justify-between gap-4 lg:flex-row lg:items-center">

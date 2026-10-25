@@ -645,13 +645,13 @@ export default function KurangKirimKomersil() {
   });
 
   return (
-    <div className="min-h-full py-6 bg-slate-50/50">
+    <div className="min-h-screen bg-slate-50 py-6 sm:py-10">
       <div className="mx-auto max-w-screen-2xl px-4 sm:px-6 lg:px-8 space-y-6">
 
         {/* Header Banner Card */}
-        <div className="bg-white rounded-2xl border border-slate-150 p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-5 transition-all no-print">
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-5 transition-all no-print">
           <div>
-            <h2 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight">
+            <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">
               {hospitalName || 'Rumah Sakit'}
             </h2>
             <p className="text-xs text-slate-400 mt-1 font-medium">

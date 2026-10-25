@@ -42,7 +42,8 @@ export const listBast = async (req, res) => {
        LIMIT 200`,
       [hospitalId]
     );
-    res.json({ success: true, data: rows });
+    const [hosp] = await ikmPool.query('SELECT hospital_name FROM mst_hospital WHERE id = ? LIMIT 1', [hospitalId]);
+    res.json({ success: true, data: rows, hospital_name: hosp[0]?.hospital_name || '' });
   } catch (err) {
     sendError(res, err);
   }

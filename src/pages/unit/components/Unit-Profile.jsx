@@ -39,10 +39,10 @@ export default function UnitProfile() {
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
   return (
-    <div className="min-h-full bg-slate-50/50 py-6 text-slate-800" style={{ colorScheme: 'light' }}>
+    <div className="min-h-screen bg-slate-50 py-6 text-slate-800 sm:py-10" style={{ colorScheme: 'light' }}>
       <div className="mx-auto max-w-screen-2xl space-y-6 px-4 sm:px-6 lg:px-8">
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="text-xl font-bold tracking-tight text-slate-800 sm:text-2xl">Profil Saya</h2>
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="text-2xl font-extrabold tracking-tight text-slate-900">Profil Saya</h2>
           <p className="mt-1 text-xs font-medium text-slate-400">
             {hospitalName} · Ubah nama, no. telepon, username, dan password akun Anda. Perubahan username/password berlaku di login berikutnya.
           </p>

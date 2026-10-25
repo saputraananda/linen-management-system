@@ -50,9 +50,10 @@ export const getAccess = async (req, res) => {
 export const listComplaints = async (req, res) => {
   try {
     const a = await resolveAccess(req.user);
-    const where = [];
-    const params = [];
-    if (Number(req.query.hospitalId)) { where.push('c.hospital_id = ?'); params.push(Number(req.query.hospitalId)); }
+    const hospitalId = Number(req.query.hospitalId);
+    if (!hospitalId) return res.status(400).json({ success: false, message: 'Rumah sakit wajib dipilih' });
+    const where = ['c.hospital_id = ?'];
+    const params = [hospitalId];
     if (STATUSES.includes(req.query.status)) { where.push('c.status = ?'); params.push(req.query.status); }
     const q = clean(req.query.q, 100);
     if (q) {
@@ -68,7 +69,9 @@ export const listComplaints = async (req, res) => {
 export const getComplaint = async (req, res) => {
   try {
     const a = await resolveAccess(req.user);
-    const [rows] = await ikmPool.query(`${SELECT_IKM} WHERE c.id = ?`, [req.params.id]);
+    const hospitalId = Number(req.query.hospitalId);
+    if (!hospitalId) return res.status(400).json({ success: false, message: 'Rumah sakit wajib dipilih' });
+    const [rows] = await ikmPool.query(`${SELECT_IKM} WHERE c.id = ? AND c.hospital_id = ?`, [req.params.id, hospitalId]);
     if (!rows.length) return res.status(404).json({ success: false, message: 'Komplain tidak ditemukan' });
     const [docs] = await ikmPool.query('SELECT id, file_name, original_name FROM tr_complaint_doc WHERE complaint_id = ? ORDER BY id', [req.params.id]);
     const [logs] = await ikmPool.query(
