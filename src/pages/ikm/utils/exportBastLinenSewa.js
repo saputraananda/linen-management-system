@@ -83,7 +83,7 @@ function signatureImage(src) {
   return `<img src="${value}" alt="" />`;
 }
 
-function render(bast, kopUrl) {
+export function renderBastHtml(bast, kopUrl) {
   const hospital = String(bast.hospital_name || '').trim();
   const room = String(bast.room_name || '').trim();
   const place = !room || /seluruh|beberapa/i.test(room) ? hospital : `${hospital} ${room}`;
@@ -193,7 +193,7 @@ export default function exportBastLinenSewa(bast) {
   if (!win) return false;
   const kopUrl = new URL(kopSuratIkm, window.location.href).href;
   win.document.open();
-  win.document.write(render(bast, kopUrl));
+  win.document.write(renderBastHtml(bast, kopUrl));
   win.document.close();
   const print = () => {
     const go = () => setTimeout(() => win.print(), 200);

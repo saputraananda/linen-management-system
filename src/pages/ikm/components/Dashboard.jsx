@@ -661,7 +661,7 @@ export default function ValetDashboard() {
                     <button
                     onClick={() => fetchDashboardData(selectedHospitalId)}
                     disabled={loadingData}
-                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-500 transition shadow-sm cursor-pointer disabled:opacity-50"
+                    className="inline-flex md:hidden h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-500 transition shadow-sm cursor-pointer disabled:opacity-50"
                     title="Refresh Data"
                   >
                     <RefreshCw className={`h-4 w-4 ${loadingData ? 'animate-spin' : ''}`} />
@@ -679,6 +679,14 @@ export default function ValetDashboard() {
                   >
                     <ArrowLeft className="h-3.5 w-3.5" />
                     Kunci Portal
+                  </button>
+                  <button
+                    onClick={() => fetchDashboardData(selectedHospitalId)}
+                    disabled={loadingData}
+                    className="hidden md:inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-500 transition shadow-sm cursor-pointer disabled:opacity-50"
+                    title="Refresh Data"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${loadingData ? 'animate-spin' : ''}`} />
                   </button>
                 </div>
               </div>

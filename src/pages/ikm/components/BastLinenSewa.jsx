@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import axios from 'axios';
 import { Calendar, ChevronDown, Clock, Download, Eye, PlusCircle, RefreshCw, Search, Trash2 } from 'lucide-react';
-import exportBastLinenSewa from '../utils/exportBastLinenSewa';
+import exportBastLinenSewa, { renderBastHtml } from '../utils/exportBastLinenSewa';
+import kopSuratIkm from '../../../assets/images/kop_surat_ikm.png';
 
 function nowLocal() {
   const d = new Date();
@@ -82,7 +83,7 @@ function SenderSelect({ value, onChange, employees }) {
   );
 }
 
-function SignaturePad({ label, role, caption, value, onChange }) {
+function SignaturePad({ label, role, name, caption, value, onChange }) {
   const canvasRef = useRef(null);
   const drawing = useRef(false);
 
@@ -143,7 +144,12 @@ function SignaturePad({ label, role, caption, value, onChange }) {
       <canvas ref={canvasRef} width={640} height={240} className="h-44 w-full touch-none cursor-crosshair rounded-lg border-2 border-dashed border-slate-200 bg-slate-50"
         onMouseDown={start} onMouseMove={move} onMouseUp={end} onMouseLeave={end}
         onTouchStart={start} onTouchMove={move} onTouchEnd={end} />
-      {caption && <p className="mt-3 border-t border-slate-800 pt-2 text-center text-xs font-bold text-slate-800">{caption}</p>}
+      {(name || caption) && (
+        <div className="mt-3 border-t border-slate-800 pt-2 text-center">
+          {name && <p className="text-xs font-bold text-slate-800">{name}</p>}
+          {caption && <p className={`text-xs ${name ? 'font-medium text-slate-500' : 'font-bold text-slate-800'}`}>{caption}</p>}
+        </div>
+      )}
     </div>
   );
 }
@@ -244,6 +250,8 @@ export default function BastLinenSewa() {
   const [preview, setPreview] = useState(null);
   const [previewSaving, setPreviewSaving] = useState(false);
   const [activeTab, setActiveTab] = useState('history');
+  const activeTabRef = useRef('history');
+  const [viewRow, setViewRow] = useState(null);
 
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
@@ -313,6 +321,38 @@ export default function BastLinenSewa() {
     setSenderName(toTitleCase(localStorage.getItem('fullName') || localStorage.getItem('username') || ''));
   };
 
+  // Tab form masuk riwayat browser supaya tombol back kembali ke daftar riwayat BAST.
+  const openForm = () => {
+    if (activeTabRef.current === 'history') window.history.pushState({ bastForm: true }, '');
+    setActiveTab('form');
+  };
+  const closeForm = () => {
+    if (window.history.state?.bastForm) window.history.back();
+    else { resetForm(); setViewRow(null); setActiveTab('history'); }
+  };
+  const openView = async (id) => {
+    try {
+      const { data } = await axios.get(`/api/ikm/bast-linen-sewa/${id}`, { headers: authHeaders() });
+      if (!data.success) return showToast('Gagal membuka BAST', 'error');
+      if (String(data.data.hospital_id) !== String(hospitalId)) return showToast('BAST ini milik rumah sakit lain', 'error');
+      setViewRow(data.data);
+      if (activeTabRef.current === 'history') window.history.pushState({ bastForm: true }, '');
+      setActiveTab('view');
+    } catch (err) {
+      showToast(err.response?.data?.message || err.message, 'error');
+    }
+  };
+  useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
+  useEffect(() => {
+    const onPop = (e) => {
+      if (e.state?.bastForm) return;
+      resetForm();
+      setViewRow(null);
+      setActiveTab('history');
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
   const openPreview = async (id) => {
     try {
       const { data } = await axios.get(`/api/ikm/bast-linen-sewa/${id}`, { headers: authHeaders() });
@@ -376,7 +416,7 @@ export default function BastLinenSewa() {
       setSigSender('');
       setSigReceiver('');
       setSigGa('');
-      setActiveTab('form');
+      openForm();
     } catch (err) {
       showToast(err.response?.data?.message || err.message, 'error');
     }
@@ -393,6 +433,7 @@ export default function BastLinenSewa() {
     if (!gaHeadName.trim()) return showToast('Nama yang mengetahui wajib diisi', 'error');
     if (!isTitleCase(gaHeadName)) return showToast('Nama yang mengetahui harus Capital Each Word', 'error');
     if (!gaHeadPosition.trim()) return showToast('Jabatan yang mengetahui wajib diisi', 'error');
+    if (editingId && (!sigSender || !sigReceiver || !sigGa)) return showToast('Perubahan BAST wajib ditandatangani ulang oleh ketiga pihak', 'error');
     const details = detailsFromEntries(entries);
     if (!details.length) return showToast('Isi minimal satu pengiriman atau penarikan', 'error');
     setSaving(true);
@@ -415,8 +456,7 @@ export default function BastLinenSewa() {
       const url = editingId ? `/api/ikm/bast-linen-sewa/${editingId}` : '/api/ikm/bast-linen-sewa';
       const { data } = await axios({ url, method: editingId ? 'put' : 'post', data: body, headers: authHeaders() });
       showToast(data.message || 'BAST tersimpan');
-      resetForm();
-      setActiveTab('history');
+      closeForm();
       await loadHistory();
       await loadLinens('', null);
     } catch (err) {
@@ -461,11 +501,11 @@ export default function BastLinenSewa() {
           <p className="mt-1 text-xs font-medium text-slate-400">Berita Acara Serah Terima Linen Sewa. Pengiriman menambah stok, penarikan mengurangi stok.</p>
         </div>
         <div className="flex h-fit shrink-0 self-start rounded-xl border border-slate-200 bg-slate-100 p-1.5 md:self-center">
-          <button type="button" onClick={() => { setActiveTab('history'); if (editingId) resetForm(); }} className={`flex cursor-pointer items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-xs font-semibold transition-all ${activeTab === 'history' ? 'bg-gradient-to-r from-[#126776] to-[#1ea59e] text-white shadow-md shadow-[#126776]/10' : 'text-slate-500 hover:bg-slate-200/55 hover:text-slate-800'}`}>
+          <button type="button" onClick={() => { if (activeTab !== 'history') closeForm(); }} className={`flex cursor-pointer items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-xs font-semibold transition-all ${activeTab === 'history' ? 'bg-gradient-to-r from-[#126776] to-[#1ea59e] text-white shadow-md shadow-[#126776]/10' : 'text-slate-500 hover:bg-slate-200/55 hover:text-slate-800'}`}>
             <Clock className="h-4 w-4" />
             Riwayat
           </button>
-          <button type="button" onClick={() => { resetForm(); setActiveTab('form'); }} className={`flex cursor-pointer items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-xs font-semibold transition-all ${activeTab === 'form' ? 'bg-gradient-to-r from-[#126776] to-[#1ea59e] text-white shadow-md shadow-[#126776]/10' : 'text-slate-500 hover:bg-slate-200/55 hover:text-slate-800'}`}>
+          <button type="button" onClick={() => { resetForm(); openForm(); }} className={`flex cursor-pointer items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-xs font-semibold transition-all ${activeTab === 'form' ? 'bg-gradient-to-r from-[#126776] to-[#1ea59e] text-white shadow-md shadow-[#126776]/10' : 'text-slate-500 hover:bg-slate-200/55 hover:text-slate-800'}`}>
             <PlusCircle className="h-4 w-4" />
             Form BAST
           </button>
@@ -596,15 +636,43 @@ export default function BastLinenSewa() {
           </div>
         </div>
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-          <SignaturePad label="Yang menyerahkan," role="Pihak Kedua" caption={senderPosition} value={sigSender} onChange={setSigSender} />
-          <SignaturePad label="Yang menerima," role="Pihak Pertama" caption={receiverPosition} value={sigReceiver} onChange={setSigReceiver} />
-          <SignaturePad label="Mengetahui," caption={gaHeadPosition} value={sigGa} onChange={setSigGa} />
+          <SignaturePad label="Yang menyerahkan," role="Pihak Kedua" name={senderName} caption={senderPosition} value={sigSender} onChange={setSigSender} />
+          <SignaturePad label="Yang menerima," role="Pihak Pertama" name={receiverName} caption={receiverPosition} value={sigReceiver} onChange={setSigReceiver} />
+          <SignaturePad label="Mengetahui," name={gaHeadName} caption={gaHeadPosition} value={sigGa} onChange={setSigGa} />
         </div>
-        <p className="text-xs text-slate-400">Tanda tangan boleh dikosongkan dan dilengkapi nanti. Kanvas kosong saat edit mempertahankan tanda tangan yang sudah tersimpan.</p>
+        <p className="text-xs text-slate-400">{editingId ? 'Perubahan BAST wajib ditandatangani ulang oleh ketiga pihak.' : 'Tanda tangan boleh dikosongkan dan dilengkapi nanti.'}</p>
         <div className="flex gap-2">
           <button type="button" disabled={saving || !hospitalId} onClick={save} className="rounded-xl bg-gradient-to-r from-[#126776] to-[#1ea59e] px-6 py-2.5 text-sm font-semibold text-white shadow-sm disabled:opacity-60">{saving ? 'Menyimpan...' : editingId ? 'Simpan Perubahan' : 'Simpan BAST'}</button>
-          {editingId && <button type="button" onClick={() => { resetForm(); setActiveTab('history'); }} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700">Batal</button>}
+          {editingId && <button type="button" onClick={closeForm} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700">Batal</button>}
         </div>
+        </div>
+      </section>
+      )}
+      {activeTab === 'view' && viewRow && (
+      <section className="rounded-3xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-3 rounded-t-3xl bg-gradient-to-r from-[#126776] to-[#1ea59e] p-5 sm:p-6">
+          <div>
+            <h1 className="text-lg font-bold text-white">{viewRow.bast_number}</h1>
+            <p className="mt-1 text-xs font-medium text-white/80">{fullDate(viewRow.bast_date)} · {viewRow.hospital_name}</p>
+          </div>
+          <div className="flex gap-2">
+            <button type="button" onClick={() => downloadBast(viewRow.id)} className="rounded-xl bg-white/15 px-4 py-2 text-xs font-semibold text-white hover:bg-white/25">Unduh</button>
+            <button type="button" onClick={() => startEdit(viewRow.id)} className="rounded-xl bg-white px-4 py-2 text-xs font-semibold text-[#126776] hover:bg-slate-50">Ubah (TTD ulang)</button>
+          </div>
+        </div>
+        <div className="overflow-auto rounded-b-3xl bg-slate-200/70 p-4 sm:p-8">
+          <iframe
+            title={viewRow.bast_number}
+            srcDoc={renderBastHtml(viewRow, new URL(kopSuratIkm, window.location.href).href)}
+            onLoad={(e) => {
+              const f = e.currentTarget;
+              const fit = () => { if (f.contentDocument?.body) f.style.height = `${f.contentDocument.documentElement.scrollHeight}px`; };
+              fit();
+              setTimeout(fit, 600);
+            }}
+            className="mx-auto block w-[210mm] max-w-none border-0 bg-white shadow-lg"
+            style={{ minHeight: '297mm' }}
+          />
         </div>
       </section>
       )}
@@ -651,7 +719,7 @@ export default function BastLinenSewa() {
         ) : (
           <div className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             {visibleHistory.map((row) => (
-              <div key={row.id} onClick={() => startEdit(row.id)} className="group relative flex cursor-pointer items-center gap-4 px-5 py-3.5 transition hover:bg-slate-50/70">
+              <div key={row.id} onClick={() => openView(row.id)} className="group relative flex cursor-pointer items-center gap-4 px-5 py-3.5 transition hover:bg-slate-50/70">
                 <div className="absolute bottom-0 left-0 top-0 w-1 rounded-r-full bg-[#126776]" />
                 <div className="min-w-0 flex-1 pl-2">
                   <p className="truncate text-sm font-semibold text-slate-800">{row.bast_number}</p>
