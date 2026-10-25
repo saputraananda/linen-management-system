@@ -14,6 +14,9 @@ import RSSerahTerima from './pages/rs/components/RS-SerahTerima.jsx';
 import RSSerahTerimaKomersil from './pages/rs/components/RS-SerahTerimaKomersil.jsx';
 import RSBastLinenSewa from './pages/rs/components/RS-BastLinenSewa.jsx';
 // import RSKurangKirimKomersil from './pages/rs/components/RS-KurangKirimKomersil.jsx';
+import ComplaintLinen from './pages/ikm/components/ComplaintLinen.jsx';
+import RSComplaintLinen from './pages/rs/components/RS-ComplaintLinen.jsx';
+import UnitComplaintLinen from './pages/unit/components/Unit-ComplaintLinen.jsx';
 import RSProfile from './pages/rs/components/RS-Profile.jsx';
 import UnitProfile from './pages/unit/components/Unit-Profile.jsx';
 import { ProtectedRoute, GuestRoute } from './components/RouteGuards.jsx';
@@ -40,6 +43,7 @@ function App() {
             <Route path="serah-terima-komersil" element={<SerahTerimaKomersil />} />
             <Route path="kurang-kirim-komersil" element={<KurangKirimKomersil />} />
             <Route path="bast-linen-sewa" element={<BastLinenSewa />} />
+            <Route path="complaint" element={<ComplaintLinen />} />
           </Route>
         </Route>
 
@@ -52,6 +56,7 @@ function App() {
             <Route path="serah-terima-komersil" element={<RSSerahTerimaKomersil />} />
             <Route path="bast-linen-sewa" element={<RSBastLinenSewa />} />
             <Route path="master-user-unit" element={<RSProfile />} />
+            <Route path="complaint" element={<RSComplaintLinen />} />
             {/* <Route path="kurang-kirim-komersil" element={<RSKurangKirimKomersil />} /> */}
           </Route>
         </Route>
@@ -61,6 +66,7 @@ function App() {
           <Route path="/unit" element={<UnitPage />}>
             <Route index element={<UnitDashboard />} />
             <Route path="profile" element={<UnitProfile />} />
+            <Route path="complaint" element={<UnitComplaintLinen />} />
           </Route>
         </Route>
 

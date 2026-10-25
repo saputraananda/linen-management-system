@@ -654,9 +654,19 @@ export default function ValetDashboard() {
               {/* Title & Change RS Header */}
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                  <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+                  <div className="flex items-start justify-between gap-3">
+                    <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
                     {hospitalName || dashboardData?.hospital?.hospital_name || 'Linen Rumah Sakit'}
                   </h1>
+                    <button
+                    onClick={() => fetchDashboardData(selectedHospitalId)}
+                    disabled={loadingData}
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-500 transition shadow-sm cursor-pointer disabled:opacity-50"
+                    title="Refresh Data"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${loadingData ? 'animate-spin' : ''}`} />
+                  </button>
+                  </div>
                   <p className="text-sm text-slate-500 mt-1 font-medium">
                     {dashboardData?.hospital?.address || 'Monitoring status inventaris linen dan stok per ruangan.'}
                   </p>
@@ -669,15 +679,6 @@ export default function ValetDashboard() {
                   >
                     <ArrowLeft className="h-3.5 w-3.5" />
                     Kunci Portal
-                  </button>
-
-                  <button
-                    onClick={() => fetchDashboardData(selectedHospitalId)}
-                    disabled={loadingData}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-500 transition shadow-sm cursor-pointer disabled:opacity-50"
-                    title="Refresh Data"
-                  >
-                    <RefreshCw className={`h-4 w-4 ${loadingData ? 'animate-spin' : ''}`} />
                   </button>
                 </div>
               </div>
@@ -915,11 +916,11 @@ export default function ValetDashboard() {
                         <th className="py-4 px-6 text-center">No</th>
                         <th className="py-4 px-6">Nama Linen</th>
                         <th className="py-4 px-6 text-center">Kepemilikan</th>
-                        <th className="py-4 px-6 text-center">{selectedRoomFilter === 'all' ? 'Stok Awal' : 'Stok Awal Ruangan'}</th>
+                        <th className="py-4 px-6 text-center">{selectedRoomFilter === 'all' ? 'Stok Total RS' : 'Stok Awal Ruangan'}</th>
                         <th className="py-4 px-6 text-center">Terpakai</th>
                         <th className="py-4 px-6 text-center">Dirty Utility</th>
                         <th className="py-4 px-6 text-center">
-                          {selectedRoomFilter === 'all' ? 'Lemari Bersih' : `Lemari (${getSelectedRoomName()})`}
+                          {selectedRoomFilter === 'all' ? 'Lemari Ruangan' : `Lemari (${getSelectedRoomName()})`}
                         </th>
                         <th className="py-4 px-6 text-center">Cuci IKM</th>
                         <th className="py-4 px-6 text-center">Gudang RS</th>
@@ -1207,9 +1208,10 @@ export default function ValetDashboard() {
                         const qtyTerpakai = roomLinen ? parseInt(roomLinen.qty_terpakai || 0) : 0;
                         const qtyDirty = roomLinen ? parseInt(roomLinen.qty_dirty || 0) : 0;
                         const lemariStock = room.is_gudang_linen === 1 ? stockInRs : Math.max(0, stockInRs - qtyTerpakai - qtyDirty);
+                        const hasStock = lemariStock + qtyTerpakai + qtyDirty > 0;
 
                         return (
-                          <tr key={room.id} className="hover:bg-slate-50/50 transition-colors">
+                          <tr key={room.id} className={`transition-colors ${hasStock ? 'bg-amber-50 hover:bg-amber-100/80 shadow-[inset_3px_0_0_#f59e0b]' : 'hover:bg-slate-50/50'}`}>
                             <td className="py-2.5 px-3 font-semibold text-slate-800">
                               {room.room_name}
                             </td>

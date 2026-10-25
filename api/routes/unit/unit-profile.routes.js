@@ -3,8 +3,7 @@ import { getProfile, updateProfile } from '../../controllers/unit/unit-profile.c
 import { authenticateToken } from '../../middleware/auth.js';
 
 const router = express.Router();
-router.use(authenticateToken);
-router.use((req, res, next) => (req.user.userUnitId ? next() : res.status(403).json({ success: false, message: 'Hanya untuk akun perawat' })));
+router.use('/profile', authenticateToken, (req, res, next) => (req.user.userUnitId ? next() : res.status(403).json({ success: false, message: 'Hanya untuk akun perawat' })));
 
 router.get('/profile', getProfile);
 router.put('/profile', updateProfile);

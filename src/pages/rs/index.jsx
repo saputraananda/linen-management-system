@@ -1,4 +1,4 @@
-import { HeartPulse, FileText, ScrollText, Users } from 'lucide-react';
+import { HeartPulse, FileText, ScrollText, Users, MessageSquareWarning } from 'lucide-react';
 import PageLayout from '../../components/PageLayout';
 
 const MENU_ITEMS = [
@@ -14,6 +14,7 @@ const MENU_ITEMS = [
       { to: "/rs/dashboard", icon: HeartPulse, label: "Dashboard", description: "Ringkasan stok linen", end: true },
       { to: "/rs/serah-terima-linen", icon: FileText, label: "Serah Terima Linen", description: "Form Serah Terima Linen", end: false },
       { to: "/rs/bast-linen-sewa", icon: ScrollText, label: "BAST Linen Sewa", description: "Riwayat pengiriman & penarikan", end: false },
+      { to: "/rs/complaint", icon: MessageSquareWarning, label: "Komplain", description: "Setujui & pantau komplain", end: false },
     ]
   },
   {

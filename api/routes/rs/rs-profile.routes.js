@@ -3,8 +3,7 @@ import { listUnitUsers, createUnitUser, updateUnitUser, toggleUnitUser, deleteUn
 import { authenticateToken } from '../../middleware/auth.js';
 
 const router = express.Router();
-router.use(authenticateToken);
-router.use((req, res, next) => (req.user.role === 'rs' ? next() : res.status(403).json({ success: false, message: 'Akses ditolak' })));
+router.use('/unit-users', authenticateToken, (req, res, next) => (req.user.role === 'rs' ? next() : res.status(403).json({ success: false, message: 'Akses ditolak' })));
 
 router.get('/unit-users', listUnitUsers);
 router.post('/unit-users', createUnitUser);

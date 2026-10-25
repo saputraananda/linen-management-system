@@ -21,6 +21,9 @@ import rsBastLinenSewaRoutes from './api/routes/rs/rs-bastLinenSewa.routes.js';
 import unitDashboardRoutes from './api/routes/unit/unit.dashboard.routes.js';
 import rsProfileRoutes from './api/routes/rs/rs-profile.routes.js';
 import unitProfileRoutes from './api/routes/unit/unit-profile.routes.js';
+import ikmComplaintRoutes from './api/routes/ikm/complaintLinen.routes.js';
+import rsComplaintRoutes from './api/routes/rs/rs-complaintLinen.routes.js';
+import unitComplaintRoutes from './api/routes/unit/unit-complaint.routes.js';
 import socketNotifyRoutes from './api/routes/internal/socketNotify.routes.js';
 
 // Resolve directory paths
@@ -102,13 +105,16 @@ app.use('/api/ikm', ikmKurangKirimRoutes);
 app.use('/api/ikm', ikmSerahTerimaKomersilRoutes);
 app.use('/api/ikm', ikmKurangKirimKomersilRoutes);
 app.use('/api/ikm', ikmBastLinenSewaRoutes);
+app.use('/api/ikm', ikmComplaintRoutes);
 app.use('/api/rs', rsDashboardRoutes);
 app.use('/api/rs', rsSerahTerimaRoutes);
 app.use('/api/rs', rsSerahTerimaKomersilRoutes);
 app.use('/api/rs', rsBastLinenSewaRoutes);
 app.use('/api/rs', rsProfileRoutes);
+app.use('/api/rs', rsComplaintRoutes);
 app.use('/api/unit', unitDashboardRoutes);
 app.use('/api/unit', unitProfileRoutes);
+app.use('/api/unit', unitComplaintRoutes);
 app.use('/api/internal', socketNotifyRoutes);
 
 // ==========================

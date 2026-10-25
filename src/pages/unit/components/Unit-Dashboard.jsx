@@ -702,12 +702,13 @@ export default function UnitDashboard() {
               {/* Header Title */}
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-teal-50 text-teal-700 border border-teal-100">
+                  <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap min-w-0">
+                    <span className="inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 rounded-full text-[11px] sm:text-xs font-bold bg-teal-50 text-teal-700 border border-teal-100">
                       <Home className="h-3 w-3" />
                       Ruangan: {selectedRoom.room_name}
                     </span>
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-100">
+                    <span className="inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 rounded-full text-[11px] sm:text-xs font-bold bg-amber-50 text-amber-700 border border-amber-100">
                       <CheckCircle2 className="h-3 w-3" />
                       Petugas: {activeNurse}
                       {!lockedNurse && (
@@ -723,6 +724,15 @@ export default function UnitDashboard() {
                       )}
                     </span>
                   </div>
+                    <button
+                      onClick={() => fetchDashboardData(hospitalId)}
+                      disabled={loadingData}
+                      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-500 transition shadow-sm cursor-pointer disabled:opacity-50"
+                      title="Refresh Data"
+                    >
+                      <RefreshCw className={`h-4 w-4 ${loadingData ? 'animate-spin' : ''}`} />
+                    </button>
+                  </div>
                   <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight mt-2">
                     {hospitalName}
                   </h1>
@@ -731,7 +741,7 @@ export default function UnitDashboard() {
                   </p>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     onClick={handleResetRoom}
                     className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs font-bold shadow-sm transition active:scale-95 cursor-pointer"
@@ -753,79 +763,70 @@ export default function UnitDashboard() {
                     <Layers className="h-3.5 w-3.5" />
                     Ambil Linen dari Transit
                   </button>
-
-                  <button
-                    onClick={() => fetchDashboardData(hospitalId)}
-                    disabled={loadingData}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-500 transition shadow-sm cursor-pointer disabled:opacity-50"
-                    title="Refresh Data"
-                  >
-                    <RefreshCw className={`h-4 w-4 ${loadingData ? 'animate-spin' : ''}`} />
-                  </button>
                 </div>
               </div>
 
               {/* Metrics cards for selected room */}
-              <div className="grid grid-cols-4 gap-3 sm:gap-6">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
 
                 {/* Metric 1: Total Linen Types */}
-                <div className="relative overflow-hidden p-3.5 sm:p-5 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-950 text-white shadow-sm border border-slate-700/25">
+                <div className="relative overflow-hidden p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-950 text-white shadow-sm border border-slate-700/25">
                   <div className="absolute top-0 right-0 w-16 h-16 sm:w-24 sm:h-24 bg-white/10 rounded-full translate-x-8 -translate-y-8 sm:translate-x-10 sm:-translate-y-10 pointer-events-none" />
                   <div className="flex items-center gap-1 sm:gap-1.5">
                     <div className="p-1 bg-white/10 text-white border border-white/20 rounded-md sm:rounded-lg">
-                      <Database className="h-3 w-3 sm:h-4 sm:w-4" />
+                      <Database className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                     </div>
-                    <span className="text-[8px] sm:text-xs font-bold tracking-wider sm:tracking-widest uppercase text-white/90">JENIS LINEN</span>
+                    <span className="text-[10px] sm:text-xs font-bold tracking-wider sm:tracking-widest uppercase text-white/90">JENIS LINEN</span>
                   </div>
-                  <h3 className="text-lg sm:text-2xl font-black mt-1 sm:mt-2">
+                  <h3 className="text-2xl font-black mt-1 sm:mt-2">
                     {loadingData ? '...' : formatNumber(totalLinenTypes)}
                   </h3>
-                  <p className="text-[8px] sm:text-xs text-white/60 font-semibold mt-0.5">aktif di ruangan ini</p>
+                  <p className="text-[10px] sm:text-xs text-white/60 font-semibold mt-0.5">aktif di ruangan ini</p>
                 </div>
 
                 {/* Metric 2: Total Lemari */}
-                <div className="relative overflow-hidden p-3.5 sm:p-5 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white shadow-sm border border-blue-500/25">
+                <div className="relative overflow-hidden p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white shadow-sm border border-blue-500/25">
                   <div className="absolute top-0 right-0 w-16 h-16 sm:w-24 sm:h-24 bg-white/10 rounded-full translate-x-8 -translate-y-8 sm:translate-x-10 sm:-translate-y-10 pointer-events-none" />
                   <div className="flex items-center gap-1 sm:gap-1.5">
                     <div className="p-1 bg-white/10 text-white border border-white/20 rounded-md sm:rounded-lg">
-                      <Building className="h-3 w-3 sm:h-4 sm:w-4" />
+                      <Building className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                     </div>
-                    <span className="text-[8px] sm:text-xs font-bold tracking-wider sm:tracking-widest uppercase text-white/90">STOK LEMARI</span>
+                    <span className="text-[10px] sm:text-xs font-bold tracking-wider sm:tracking-widest uppercase text-white/90">STOK LEMARI</span>
                   </div>
-                  <h3 className="text-lg sm:text-2xl font-black mt-1 sm:mt-2">
+                  <h3 className="text-2xl font-black mt-1 sm:mt-2">
                     {loadingData ? '...' : formatNumber(totalLemariStock)}
                   </h3>
-                  <p className="text-[8px] sm:text-xs text-white/60 font-semibold mt-0.5">tersedia di lemari</p>
+                  <p className="text-[10px] sm:text-xs text-white/60 font-semibold mt-0.5">tersedia di lemari</p>
                 </div>
 
                 {/* Metric 3: Total Terpakai */}
-                <div className="relative overflow-hidden p-3.5 sm:p-5 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-sm border border-amber-500/25">
+                <div className="relative overflow-hidden p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-sm border border-amber-500/25">
                   <div className="absolute top-0 right-0 w-16 h-16 sm:w-24 sm:h-24 bg-white/10 rounded-full translate-x-8 -translate-y-8 sm:translate-x-10 sm:-translate-y-10 pointer-events-none" />
                   <div className="flex items-center gap-1 sm:gap-1.5">
                     <div className="p-1 bg-white/10 text-white border border-white/20 rounded-md sm:rounded-lg">
-                      <CheckCircle2 className="h-3 w-3 sm:h-4 sm:w-4" />
+                      <CheckCircle2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                     </div>
-                    <span className="text-[8px] sm:text-xs font-bold tracking-wider sm:tracking-widest uppercase text-white/90">TERPAKAI</span>
+                    <span className="text-[10px] sm:text-xs font-bold tracking-wider sm:tracking-widest uppercase text-white/90">TERPAKAI</span>
                   </div>
-                  <h3 className="text-lg sm:text-2xl font-black mt-1 sm:mt-2">
+                  <h3 className="text-2xl font-black mt-1 sm:mt-2">
                     {loadingData ? '...' : formatNumber(totalTerpakaiStock)}
                   </h3>
-                  <p className="text-[8px] sm:text-xs text-white/60 font-semibold mt-0.5">sedang digunakan unit</p>
+                  <p className="text-[10px] sm:text-xs text-white/60 font-semibold mt-0.5">sedang digunakan unit</p>
                 </div>
 
                 {/* Metric 4: Dirty Utility */}
-                <div className="relative overflow-hidden p-3.5 sm:p-5 rounded-2xl bg-gradient-to-br from-rose-600 to-red-700 text-white shadow-sm border border-rose-500/25">
+                <div className="relative overflow-hidden p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-rose-600 to-red-700 text-white shadow-sm border border-rose-500/25">
                   <div className="absolute top-0 right-0 w-16 h-16 sm:w-24 sm:h-24 bg-white/10 rounded-full translate-x-8 -translate-y-8 sm:translate-x-10 sm:-translate-y-10 pointer-events-none" />
                   <div className="flex items-center gap-1 sm:gap-1.5">
                     <div className="p-1 bg-white/10 text-white border border-white/20 rounded-md sm:rounded-lg">
-                      <AlertTriangle className="h-3 w-3 sm:h-4 sm:w-4" />
+                      <AlertTriangle className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                     </div>
-                    <span className="text-[8px] sm:text-xs font-bold tracking-wider sm:tracking-widest uppercase text-white/90">DIRTY UTILITY</span>
+                    <span className="text-[10px] sm:text-xs font-bold tracking-wider sm:tracking-widest uppercase text-white/90">DIRTY UTILITY</span>
                   </div>
-                  <h3 className="text-lg sm:text-2xl font-black mt-1 sm:mt-2">
+                  <h3 className="text-2xl font-black mt-1 sm:mt-2">
                     {loadingData ? '...' : formatNumber(totalDirtyStock)}
                   </h3>
-                  <p className="text-[8px] sm:text-xs text-white/60 font-semibold mt-0.5">kotor siap dicuci</p>
+                  <p className="text-[10px] sm:text-xs text-white/60 font-semibold mt-0.5">kotor siap dicuci</p>
                 </div>
               </div>
 

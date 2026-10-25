@@ -85,9 +85,11 @@ export default function Login() {
   };
 
   return (
-    <div className="relative min-h-screen bg-slate-950 lg:bg-white overflow-hidden flex flex-col lg:flex-row items-center justify-center lg:items-stretch lg:justify-start font-sans">
+    <div className="relative min-h-[100dvh] bg-gradient-to-br from-[#126776] via-[#17858a] to-[#1ea59e] lg:bg-none lg:bg-white overflow-hidden flex flex-col lg:flex-row items-center justify-center lg:items-stretch lg:justify-start font-sans">
       {/* Mobile subtle grid pattern */}
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(30,165,158,0.06)_0%,transparent_60%)] lg:hidden pointer-events-none" />
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.18)_0%,transparent_60%)] lg:hidden pointer-events-none" />
+      <div className="absolute -top-24 -right-20 w-72 h-72 rounded-full bg-white/10 lg:hidden pointer-events-none" />
+      <div className="absolute -bottom-28 -left-24 w-80 h-80 rounded-full bg-white/10 lg:hidden pointer-events-none" />
 
       {/* ── LEFT: Hero Carousel (Desktop Only) ── */}
       <div className="hidden lg:flex relative w-[55%] flex-shrink-0 overflow-hidden bg-[#126776] select-none">
@@ -175,7 +177,7 @@ export default function Login() {
             <img src={ikmWhiteLogo} alt="IKM" className="h-7 object-contain drop-shadow" />
             <div>
               <p className="text-white font-bold text-sm tracking-tight leading-none">Linen Management</p>
-              <p className="text-[#1ea59e]/60 text-xs font-bold tracking-wider mt-0.5 uppercase">PT Intersolusi Karya Mandiri</p>
+              <p className="text-white/80 text-xs font-bold tracking-wider mt-0.5 uppercase">PT Intersolusi Karya Mandiri</p>
             </div>
           </div>
 
@@ -196,9 +198,9 @@ export default function Login() {
             <div className="mb-5">
               <div className="flex items-center gap-2 mb-1">
                 <h2 className="text-xl sm:text-2xl font-bold text-white lg:text-slate-800 tracking-tight">Selamat Datang</h2>
-                <Sparkles className="h-4 w-4 text-[#1ea59e] lg:text-[#1ea59e]" />
+                <Sparkles className="h-4 w-4 text-white lg:text-[#1ea59e]" />
               </div>
-              <p className="text-xs sm:text-sm text-white/70 lg:text-slate-500">
+              <p className="text-xs sm:text-sm text-white/90 lg:text-slate-500">
                 Masuk ke portal manajemen linen terintegrasi.
               </p>
             </div>
@@ -214,7 +216,7 @@ export default function Login() {
             {/* Login Inputs Form */}
             <form onSubmit={handleLogin} className="space-y-3.5">
               <div className="space-y-1">
-                <label className="block text-xs font-bold text-white/50 lg:text-slate-400 uppercase tracking-wider" htmlFor="username">
+                <label className="block text-xs font-bold text-white/90 lg:text-slate-400 uppercase tracking-wider" htmlFor="username">
                   Username
                 </label>
                 <div className="relative group">
@@ -224,17 +226,17 @@ export default function Login() {
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     placeholder="Masukkan username Anda"
-                    className="block w-full pl-10 pr-4 py-2.5 lg:py-3 bg-white/10 lg:bg-white border border-white/15 lg:border-slate-200 rounded-xl text-white lg:text-slate-800 placeholder-white/40 lg:placeholder-slate-400/80 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/20 lg:focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] lg:focus:border-[#1ea59e] transition-all duration-300 text-sm font-medium hover:border-white/30 lg:hover:border-slate-300 backdrop-blur-sm"
+                    className="block w-full pl-10 pr-4 py-2.5 lg:py-3 bg-white/20 lg:bg-white border border-white/30 lg:border-slate-200 rounded-xl text-white lg:text-slate-800 placeholder-white/70 lg:placeholder-slate-400/80 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/20 lg:focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] lg:focus:border-[#1ea59e] transition-all duration-300 text-sm font-medium hover:border-white/30 lg:hover:border-slate-300 backdrop-blur-sm"
                     required
                   />
                   <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                    <User className="h-4 w-4 text-white/70 lg:text-slate-400 group-focus-within:text-[#1ea59e] lg:group-focus-within:text-[#1ea59e] transition-all duration-300" />
+                    <User className="h-4 w-4 text-white/90 lg:text-slate-400 group-focus-within:text-white lg:group-focus-within:text-[#1ea59e] transition-all duration-300" />
                   </div>
                 </div>
               </div>
 
               <div className="space-y-1">
-                <label className="block text-xs font-bold text-white/50 lg:text-slate-400 uppercase tracking-wider" htmlFor="password">
+                <label className="block text-xs font-bold text-white/90 lg:text-slate-400 uppercase tracking-wider" htmlFor="password">
                   Kata Sandi
                 </label>
                 <div className="relative group">
@@ -244,17 +246,17 @@ export default function Login() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Masukkan kata sandi"
-                    className="block w-full pl-10 pr-10 py-2.5 lg:py-3 bg-white/10 lg:bg-white border border-white/15 lg:border-slate-200 rounded-xl text-white lg:text-slate-800 placeholder-white/40 lg:placeholder-slate-400/80 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/20 lg:focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] lg:focus:border-[#1ea59e] transition-all duration-300 text-sm font-medium hover:border-white/30 lg:hover:border-slate-300 backdrop-blur-sm"
+                    className="block w-full pl-10 pr-10 py-2.5 lg:py-3 bg-white/20 lg:bg-white border border-white/30 lg:border-slate-200 rounded-xl text-white lg:text-slate-800 placeholder-white/70 lg:placeholder-slate-400/80 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/20 lg:focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] lg:focus:border-[#1ea59e] transition-all duration-300 text-sm font-medium hover:border-white/30 lg:hover:border-slate-300 backdrop-blur-sm"
                     required
                   />
                   <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                    <Lock className="h-4 w-4 text-white/70 lg:text-slate-400 group-focus-within:text-[#1ea59e] lg:group-focus-within:text-[#1ea59e] transition-all duration-300" />
+                    <Lock className="h-4 w-4 text-white/90 lg:text-slate-400 group-focus-within:text-white lg:group-focus-within:text-[#1ea59e] transition-all duration-300" />
                   </div>
                   <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="text-white/70 lg:text-slate-400 hover:text-white lg:hover:text-slate-600 transition-colors p-1"
+                      className="text-white/90 lg:text-slate-400 hover:text-white lg:hover:text-slate-600 transition-colors p-1"
                       tabIndex={-1}
                     >
                       {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -267,13 +269,13 @@ export default function Login() {
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full relative flex items-center justify-center gap-2 px-4 py-2.5 lg:py-3 bg-gradient-to-r from-[#126776] to-[#1ea59e] hover:from-[#0e5562] hover:to-[#188b85] text-white rounded-xl font-bold text-sm shadow-md shadow-[#126776]/20 hover:shadow-lg hover:shadow-[#126776]/30 active:scale-[0.98] transition-all duration-200 group overflow-hidden mt-2"
+                className="w-full relative flex items-center justify-center gap-2 px-4 py-2.5 lg:py-3 bg-white text-[#126776] lg:text-white lg:bg-gradient-to-r lg:from-[#126776] lg:to-[#1ea59e] lg:hover:from-[#0e5562] lg:hover:to-[#188b85] rounded-xl font-bold text-sm shadow-md shadow-[#126776]/20 hover:shadow-lg hover:shadow-[#126776]/30 active:scale-[0.98] transition-all duration-200 group overflow-hidden mt-2"
               >
                 <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 bg-gradient-to-r from-transparent via-white/20 to-transparent" />
 
                 {isLoading ? (
                   <div className="flex items-center gap-2">
-                    <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
                     <span>Memproses...</span>
                   </div>
                 ) : (
@@ -285,7 +287,7 @@ export default function Login() {
               </button>
             </form>
 
-            <p className="mt-6 text-center text-xs text-white/40 lg:text-slate-400 font-medium">
+            <p className="mt-6 text-center text-xs text-white/80 lg:text-slate-400 font-medium">
               &copy; 2026 PT Intersolusi Karya Mandiri. All rights reserved.
             </p>
           </div>
