@@ -405,6 +405,19 @@ export const createTransaction = async (req, res) => {
         ]
       );
 
+      // Kembalikan Dirty Utility dari rincian lama sebelum dihitung ulang
+      const [prevDetails] = await connection.query(
+        `SELECT hospital_linen_id, room_id, qty_kotor FROM tr_linen_transaction_detail WHERE transaction_id = ?`,
+        [transactionId]
+      );
+      for (const prev of prevDetails) {
+        if (!prev.room_id || !(prev.qty_kotor > 0)) continue;
+        await connection.query(
+          `UPDATE mst_hospital_linen_rooms SET qty_dirty = qty_dirty + ? WHERE hospital_linen_id = ? AND room_id = ?`,
+          [prev.qty_kotor, prev.hospital_linen_id, prev.room_id]
+        );
+      }
+
       // Delete existing details so we can re-insert
       await connection.query(
         `DELETE FROM tr_linen_transaction_detail WHERE transaction_id = ?`,
@@ -468,6 +481,14 @@ export const createTransaction = async (req, res) => {
          VALUES (?, ?, ?, ?, NULL, ?)`,
         [transactionId, item.hospitalLinenId, item.roomId || null, parseInt(item.qtyKotor || 0), item.notes || null]
       );
+      // Linen kotor diambil IKM: keluar dari Dirty Utility ruangan, tercatat sebagai Cuci IKM
+      const qtyKotor = parseInt(item.qtyKotor || 0);
+      if (item.roomId && qtyKotor > 0) {
+        await connection.query(
+          `UPDATE mst_hospital_linen_rooms SET qty_dirty = GREATEST(qty_dirty - ?, 0) WHERE hospital_linen_id = ? AND room_id = ?`,
+          [qtyKotor, item.hospitalLinenId, item.roomId]
+        );
+      }
     }
 
 
@@ -730,20 +751,10 @@ export const updateTransactionDelivery = async (req, res) => {
       ]
     );
 
-    // Query for any special unit/transit room in this hospital
-    let specialRoomId = null;
-    if (!isTemporary) {
-      const [specialRooms] = await connection.query(
-        "SELECT id FROM mst_rooms_rs WHERE hospital_id = ? AND is_special_unit = 1 LIMIT 1",
-        [oldHeader.hospital_id]
-      );
-      if (specialRooms.length > 0) {
-        specialRoomId = specialRooms[0].id;
-      }
-    }
-
     // Update Details (support updating both qty_kotor and qty_bersih)
     for (const item of details) {
+      const newKotor = parseInt(item.qtyKotor !== undefined ? item.qtyKotor : 0);
+      const prev = oldDetails.find((row) => String(row.id) === String(item.id));
       await connection.query(
         `UPDATE tr_linen_transaction_detail 
          SET qty_kotor = ?, 
@@ -751,61 +762,21 @@ export const updateTransactionDelivery = async (req, res) => {
              notes = ?
          WHERE id = ? AND transaction_id = ?`,
         [
-          parseInt(item.qtyKotor !== undefined ? item.qtyKotor : 0),
+          newKotor,
           item.qtyBersih !== null && item.qtyBersih !== undefined ? parseInt(item.qtyBersih) : null,
           item.notes || null,
           item.id,
           id
         ]
       );
-
-      // Mutate room stocks if final save (status === 'SELESAI')
-      if (!isTemporary && item.qtyBersih !== null && item.qtyBersih !== undefined) {
-        const qtyCleaned = parseInt(item.qtyBersih || 0);
-        if (qtyCleaned > 0) {
-          // Get hospital_linen_id and room_id from detail record
-          const [detailRows] = await connection.query(
-            "SELECT hospital_linen_id, room_id FROM tr_linen_transaction_detail WHERE id = ?",
-            [item.id]
-          );
-
-          if (detailRows.length > 0) {
-            const { hospital_linen_id, room_id } = detailRows[0];
-
-            if (room_id) {
-              // 1. Clear dirty utility in originating unit
-              await connection.query(
-                `UPDATE mst_hospital_linen_rooms 
-                 SET qty_dirty = IF(qty_dirty >= ?, qty_dirty - ?, 0) 
-                 WHERE hospital_linen_id = ? AND room_id = ?`,
-                [qtyCleaned, qtyCleaned, hospital_linen_id, room_id]
-              );
-
-              // 2. Route clean stock
-              if (specialRoomId && specialRoomId !== room_id) {
-                // If there's a special unit, decrease allocated stock in unit
-                await connection.query(
-                  `UPDATE mst_hospital_linen_rooms 
-                   SET stock_in_rs = IF(stock_in_rs >= ?, stock_in_rs - ?, 0) 
-                   WHERE hospital_linen_id = ? AND room_id = ?`,
-                  [qtyCleaned, qtyCleaned, hospital_linen_id, room_id]
-                );
-
-                // And increase stock in special unit (transit room)
-                await connection.query(
-                  `INSERT INTO mst_hospital_linen_rooms (hospital_linen_id, room_id, stock_in_rs, qty_terpakai, qty_dirty) 
-                   VALUES (?, ?, ?, 0, 0) 
-                   ON DUPLICATE KEY UPDATE stock_in_rs = stock_in_rs + VALUES(stock_in_rs)`,
-                  [hospital_linen_id, specialRoomId, qtyCleaned]
-                );
-              }
-            }
-          }
-        }
+      // Koreksi kotor oleh admin: samakan Dirty Utility dengan selisihnya
+      if (prev?.room_id && prev.qty_kotor !== newKotor) {
+        await connection.query(
+          `UPDATE mst_hospital_linen_rooms SET qty_dirty = GREATEST(qty_dirty + ?, 0) WHERE hospital_linen_id = ? AND room_id = ?`,
+          [prev.qty_kotor - newKotor, prev.hospital_linen_id, prev.room_id]
+        );
       }
     }
-
-
 
     // Fetch new values for the audit log
     const [newHeaderRows] = await connection.query(
