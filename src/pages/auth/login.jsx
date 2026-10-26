@@ -85,7 +85,7 @@ export default function Login() {
   };
 
   return (
-    <div className="relative h-dvh overflow-y-auto bg-gradient-to-br from-[#126776] via-[#17858a] to-[#1ea59e] lg:bg-none lg:bg-white flex flex-col lg:flex-row items-center justify-center lg:items-stretch lg:justify-start font-sans">
+    <div className="relative h-dvh overflow-y-auto overflow-x-hidden bg-gradient-to-br from-[#126776] via-[#17858a] to-[#1ea59e] lg:bg-none lg:bg-white flex flex-col lg:flex-row items-center justify-center lg:items-stretch lg:justify-start font-sans">
       {/* Mobile subtle grid pattern */}
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.18)_0%,transparent_60%)] lg:hidden pointer-events-none" />
       <div className="absolute -top-24 -right-20 w-72 h-72 rounded-full bg-white/10 lg:hidden pointer-events-none" />
@@ -163,7 +163,7 @@ export default function Login() {
       </div>
 
       {/* ── RIGHT: Form (Responsive Mobile Card Layout) ── */}
-      <div className="w-full lg:flex-1 flex items-center justify-center p-4 lg:p-10 relative">
+      <div className="w-full lg:flex-1 flex items-center justify-center p-4 lg:p-10 relative overflow-hidden">
 
         {/* Decorative background blurs for desktop */}
         <div className="hidden lg:block absolute top-0 right-0 w-96 h-96 bg-[#1ea59e]/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
