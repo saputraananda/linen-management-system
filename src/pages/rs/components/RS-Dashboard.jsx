@@ -368,7 +368,7 @@ export default function RSDashboard() {
   let totalStockSewa = 0;
   if (dashboardData && dashboardData.linens) {
     dashboardData.linens.forEach(item => {
-      const itemTotal = parseInt(item.stock_in_ikm || 0) + parseInt(item.stock_in_rs || 0);
+      const itemTotal = parseInt(item.stock_in_rs || 0);
       if (item.ownership_type === 'MILIK_RS') {
         totalStockMilikRs += itemTotal;
       } else if (item.ownership_type === 'SEWA') {
