@@ -12,6 +12,15 @@
   }
 }
 
+/* Tinggi layout mengikuti layar yang terlihat; hanya area konten di PageLayout yang scroll
+   (mencegah dua scroll di Safari iOS: scroll bawaan browser + scroll konten). */
+html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+
 /* Custom premium backdrop-blur animations or gradient background glow */
 .glow-spot {
   position: absolute;

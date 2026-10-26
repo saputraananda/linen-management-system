@@ -226,7 +226,7 @@ export default function PageLayout({ menuItems, moduleName = "Module", bgColor =
   }, []);
 
   return (
-    <div className={`flex h-screen overflow-hidden ${bgColor}`}>
+    <div className={`flex h-dvh overflow-hidden ${bgColor}`}>
       {/* Desktop sidebar */}
       <aside className={cn(
         "hidden lg:flex shrink-0 flex-col border-r border-slate-200 bg-white shadow-sm transition-[width] duration-300 ease-in-out overflow-hidden",

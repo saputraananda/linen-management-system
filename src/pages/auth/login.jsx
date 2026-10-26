@@ -85,7 +85,7 @@ export default function Login() {
   };
 
   return (
-    <div className="relative min-h-[100dvh] bg-gradient-to-br from-[#126776] via-[#17858a] to-[#1ea59e] lg:bg-none lg:bg-white overflow-hidden flex flex-col lg:flex-row items-center justify-center lg:items-stretch lg:justify-start font-sans">
+    <div className="relative h-dvh overflow-y-auto bg-gradient-to-br from-[#126776] via-[#17858a] to-[#1ea59e] lg:bg-none lg:bg-white flex flex-col lg:flex-row items-center justify-center lg:items-stretch lg:justify-start font-sans">
       {/* Mobile subtle grid pattern */}
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.18)_0%,transparent_60%)] lg:hidden pointer-events-none" />
       <div className="absolute -top-24 -right-20 w-72 h-72 rounded-full bg-white/10 lg:hidden pointer-events-none" />
