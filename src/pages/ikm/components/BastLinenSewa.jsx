@@ -751,7 +751,7 @@ export default function BastLinenSewa() {
                   <button type="button" aria-label="Unduh berita acara" onClick={() => downloadBast(row.id)} className="rounded-lg p-1.5 text-slate-500 transition hover:bg-slate-100 hover:text-[#126776]">
                     <Download className="h-4 w-4" />
                   </button>
-                  <button type="button" aria-label="Hapus berita acara" onClick={() => setDeleteId(row.id)} className="rounded-lg p-1.5 text-rose-600 transition hover:bg-rose-50">
+                                    <button type="button" aria-label="Hapus berita acara" onClick={() => setDeleteId(row.id)} className="rounded-lg p-1.5 text-rose-600 transition hover:bg-rose-50">
                     <Trash2 className="h-4 w-4" />
                   </button>
                 </div>

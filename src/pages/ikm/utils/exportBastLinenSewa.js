@@ -36,6 +36,10 @@ function kalimatTanggal(value) {
   return `pada hari ${weekday} Tanggal ${terbilang(date)} ${monthName} ${terbilang(year)} ( ${pad} ${monthName} ${year})`;
 }
 
+function unitName(row) {
+  return String(row.line_room_name || row.room_name || '').trim() || 'Tanpa Unit';
+}
+
 function linenRows(details) {
   const map = new Map();
   for (const row of details || []) {
@@ -83,17 +87,8 @@ function signatureImage(src) {
   return `<img src="${value}" alt="" />`;
 }
 
-export function renderBastHtml(bast, kopUrl) {
-  const hospital = String(bast.hospital_name || '').trim();
-  const room = String(bast.room_name || '').trim();
-  const place = !room || /seluruh|beberapa/i.test(room) ? hospital : `${hospital} ${room}`;
-  const subtitle = `SERAH TERIMA LINEN SEWA ${place}`.replace(/\s+/g, ' ').trim();
-  const pertama = [];
-  if (bast.ga_head_name) pertama.push({ nama: bast.ga_head_name, jabatan: bast.ga_head_position });
-  if (bast.receiver_name) pertama.push({ nama: bast.receiver_name, jabatan: bast.receiver_position });
-  const kedua = bast.sender_name ? [{ nama: bast.sender_name, jabatan: bast.sender_position }] : [];
-  const rows = linenRows(bast.details);
-  const bodyRows = rows.length
+function itemRowsHtml(rows) {
+  return rows.length
     ? rows.map((row, index) => `
       <tr>
         <td class="mid">${index + 1}</td>
@@ -105,6 +100,28 @@ export function renderBastHtml(bast, kopUrl) {
       </tr>
     `).join('')
     : '<tr><td class="mid" colspan="6">Tidak ada barang</td></tr>';
+}
+
+const ITEMS_HEAD = `<thead>
+        <tr>
+          <th style="width:36px">No.</th>
+          <th>Nama Linen</th>
+          <th>Ukuran</th>
+          <th>Bahan</th>
+          <th>Warna</th>
+          <th style="width:72px">Jumlah</th>
+        </tr>
+      </thead>`;
+
+// Satu dokumen: halaman 1 = General (semua unit), lalu satu halaman per unit (bila lebih dari satu unit)
+export function renderBastHtml(bast, kopUrl) {
+  const hospital = String(bast.hospital_name || '').trim();
+  const room = String(bast.room_name || '').trim();
+  const place = !room || /seluruh|beberapa/i.test(room) ? hospital : `${hospital} ${room}`;
+  const pertama = [];
+  if (bast.ga_head_name) pertama.push({ nama: bast.ga_head_name, jabatan: bast.ga_head_position });
+  if (bast.receiver_name) pertama.push({ nama: bast.receiver_name, jabatan: bast.receiver_position });
+  const kedua = bast.sender_name ? [{ nama: bast.sender_name, jabatan: bast.sender_position }] : [];
   const sign = (label, role, src, name, position) => `
     <div>
       <div>${label}</div>
@@ -114,6 +131,45 @@ export function renderBastHtml(bast, kopUrl) {
       <div>${esc(position || '')}</div>
     </div>
   `;
+
+  const page = (subtitle, unit, rows) => `
+  <section class="page">
+    <div class="kop-wrap"><img class="kop" src="${esc(kopUrl)}" alt="" /></div>
+    <div class="doc">
+      <h1>BERITA ACARA</h1>
+      <h2>${esc(subtitle)}</h2>
+      ${unit ? `<h2 class="unit-title">${esc(unit)}</h2>` : ''}
+      <div class="nomor">${esc(bast.bast_number || '')}</div>
+      <p>Kami yang bertandatangan dibawah ini, ${esc(kalimatTanggal(bast.bast_date))}, yang bertanda tangan di bawah :</p>
+      ${partyBlock(pertama)}
+      <div class="called">Selanjutnya disebut Pihak Pertama</div>
+      ${partyBlock(kedua)}
+      <div class="called">Selanjutnya disebut Pihak Kedua</div>
+      <p>Pihak kedua menyerahkan barang atau linen sewa kepada pihak pertama dan pihak pertama menyatakan telah menerima barang atau linen dari pihak kedua dalam keadaan baru dan baik berupa:</p>
+      <table class="items">${ITEMS_HEAD}<tbody>${itemRowsHtml(rows)}</tbody></table>
+      <p>Demikian berita serah terima barang atau linen ini dibuat oleh kedua belah pihak. Sejak penandatanganan Berita Acara ini maka barang atau linen menjadi tanggung jawab PIHAK PERTAMA untuk memelihara dan merawatnya dengan baik.</p>
+      <div class="ttd">
+        ${sign('Yang menyerahkan,', 'PIHAK KEDUA', bast.signature_sender, bast.sender_name, bast.sender_position)}
+        ${sign('Yang menerima,', 'PIHAK PERTAMA', bast.signature_receiver, bast.receiver_name, bast.receiver_position)}
+        ${sign('Mengetahui,', '', bast.signature_ga, bast.ga_head_name, bast.ga_head_position)}
+      </div>
+    </div>
+  </section>`;
+
+  const groups = new Map();
+  for (const d of bast.details || []) {
+    const key = unitName(d);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(d);
+  }
+  const generalSubtitle = `SERAH TERIMA LINEN SEWA ${place}`.replace(/\s+/g, ' ').trim();
+  const unitSubtitle = `SERAH TERIMA LINEN SEWA ${hospital}`.replace(/\s+/g, ' ').trim();
+  const pages = [page(generalSubtitle, '', linenRows(bast.details))];
+  if (groups.size > 1) {
+    [...groups.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0], 'id'))
+      .forEach(([unit, list]) => pages.push(page(unitSubtitle, `UNIT ${unit}`, linenRows(list))));
+  }
 
   return `<!DOCTYPE html>
 <html lang="id">
@@ -127,11 +183,14 @@ export function renderBastHtml(bast, kopUrl) {
     @page { size: A4 portrait; margin: 0; }
     * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     html, body { margin: 0; background: #fff; color: #111; color-scheme: light; font-family: "Plus Jakarta Sans", Poppins, sans-serif; font-size: 12px; line-height: 1.45; }
+    .page { break-after: page; page-break-after: always; }
+    .page:last-child { break-after: auto; page-break-after: auto; }
     .kop-wrap { height: 32mm; overflow: hidden; }
     .kop { width: 100%; display: block; margin: 0; }
     .doc { margin-top: 2mm; padding: 0 14mm 14mm; }
     h1, h2 { margin: 0; text-align: center; font-size: 14px; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; }
     h2 { margin-top: 2px; }
+    .unit-title { margin-top: 4px; }
     .nomor { margin: 2px 0 12px; text-align: center; font-size: 12px; }
     p { margin: 8px 0; text-align: justify; }
     .party { margin: 2px 0 2px 36px; border-collapse: collapse; }
@@ -152,42 +211,10 @@ export function renderBastHtml(bast, kopUrl) {
     .who { margin-top: 2px; font-weight: 700; text-decoration: underline; }
   </style>
 </head>
-<body>
-  <div class="kop-wrap"><img class="kop" src="${esc(kopUrl)}" alt="" /></div>
-  <div class="doc">
-    <h1>BERITA ACARA</h1>
-    <h2>${esc(subtitle)}</h2>
-    <div class="nomor">${esc(bast.bast_number || '')}</div>
-    <p>Kami yang bertandatangan dibawah ini, ${esc(kalimatTanggal(bast.bast_date))}, yang bertanda tangan di bawah :</p>
-    ${partyBlock(pertama)}
-    <div class="called">Selanjutnya disebut Pihak Pertama</div>
-    ${partyBlock(kedua)}
-    <div class="called">Selanjutnya disebut Pihak Kedua</div>
-    <p>Pihak kedua menyerahkan barang atau linen sewa kepada pihak pertama dan pihak pertama menyatakan telah menerima barang atau linen dari pihak kedua dalam keadaan baru dan baik berupa:</p>
-    <table class="items">
-      <thead>
-        <tr>
-          <th style="width:36px">No.</th>
-          <th>Nama Linen</th>
-          <th>Ukuran</th>
-          <th>Bahan</th>
-          <th>Warna</th>
-          <th style="width:72px">Jumlah</th>
-        </tr>
-      </thead>
-      <tbody>${bodyRows}</tbody>
-    </table>
-    <p>Demikian berita serah terima barang atau linen ini dibuat oleh kedua belah pihak. Sejak penandatanganan Berita Acara ini maka barang atau linen menjadi tanggung jawab PIHAK PERTAMA untuk memelihara dan merawatnya dengan baik.</p>
-    <div class="ttd">
-      ${sign('Yang menyerahkan,', 'PIHAK KEDUA', bast.signature_sender, bast.sender_name, bast.sender_position)}
-      ${sign('Yang menerima,', 'PIHAK PERTAMA', bast.signature_receiver, bast.receiver_name, bast.receiver_position)}
-      ${sign('Mengetahui,', '', bast.signature_ga, bast.ga_head_name, bast.ga_head_position)}
-    </div>
-  </div>
+<body>${pages.join('')}
 </body>
 </html>`;
 }
-
 export default function exportBastLinenSewa(bast) {
   const win = window.open('', '_blank', 'width=900,height=1200');
   if (!win) return false;

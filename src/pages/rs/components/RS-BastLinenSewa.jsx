@@ -180,6 +180,7 @@ export default function RSBastLinenSewa() {
                   <button type="button" aria-label="Unduh berita acara" onClick={() => downloadBast(row.id)} className="rounded-lg p-1.5 text-slate-500 transition hover:bg-slate-100 hover:text-[#126776]">
                     <Download className="h-4 w-4" />
                   </button>
+                  
                 </div>
               </div>
             ))}
@@ -197,7 +198,7 @@ export default function RSBastLinenSewa() {
                 <p className="mt-1 text-sm text-white/80">{fullDate(preview.bast_date)} · {preview.hospital_name}</p>
               </div>
               <button type="button" aria-label="Tutup" onClick={() => setPreview(null)} className="rounded-xl p-1 text-white/80 transition hover:bg-white/10 hover:text-white">
-                <X className="h-6 w-6" />
+                  <X className="h-6 w-6" />
               </button>
             </div>
             <div className="flex-1 space-y-4 overflow-y-auto p-6">
