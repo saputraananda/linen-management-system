@@ -209,6 +209,7 @@ export default function SerahTerima() {
   const [kgAgreement, setKgAgreement] = useState(null);
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
   const [alertConfig, setAlertConfig] = useState({ show: false, title: 'Peringatan', message: '' });
+  const showAlert = (message, title = 'Peringatan') => setAlertConfig({ show: true, title, message });
   const [savedRooms, setSavedRooms] = useState([]);
   const [temporaryTxId, setTemporaryTxId] = useState(null);
 

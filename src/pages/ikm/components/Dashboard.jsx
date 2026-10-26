@@ -253,7 +253,7 @@ export default function ValetDashboard() {
         headers: { Authorization: `Bearer ${token}` }
       });
       await fetchDashboardData(selectedHospitalId);
-      setEditingCell(null);
+      setModalEditingCell(null);
     } catch (err) {
       console.error('Error updating terpakai:', err);
       alert(err.response?.data?.message || 'Gagal memperbarui data terpakai');
@@ -280,7 +280,7 @@ export default function ValetDashboard() {
         headers: { Authorization: `Bearer ${token}` }
       });
       await fetchDashboardData(selectedHospitalId);
-      setEditingCell(null);
+      setModalEditingCell(null);
     } catch (err) {
       console.error('Error updating gudang:', err);
       alert(err.response?.data?.message || 'Gagal memperbarui data gudang');
