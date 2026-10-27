@@ -35,14 +35,25 @@ function assertText(label, value) {
   return raw;
 }
 
+// Pejabat yang mengetahui opsional: kosong semua = tidak ada; terisi sebagian = ditolak
+function readGaHead(body) {
+  const name = String(body.ga_head_name || "").trim();
+  const position = String(body.ga_head_position || "").replace(/[<>]/g, "").trim();
+  if (!name && !position) return { gaHeadName: null, gaHeadPosition: null };
+  return {
+    gaHeadName: assertTitleCase("Nama yang mengetahui", name),
+    gaHeadPosition: assertText("Jabatan yang mengetahui", position),
+  };
+}
+
 function readParties(body) {
   return {
     senderName: assertTitleCase("Nama pengirim", body.sender_name),
     senderPosition: assertText("Jabatan pengirim", body.sender_position),
     receiverName: assertTitleCase("Nama penerima", body.receiver_name),
     receiverPosition: assertText("Jabatan penerima", body.receiver_position),
-    gaHeadName: assertTitleCase("Nama yang mengetahui", body.ga_head_name),
-    gaHeadPosition: assertText("Jabatan yang mengetahui", body.ga_head_position),
+    ...readGaHead(body),
+
   };
 }
 
@@ -589,7 +600,7 @@ export const updateBast = async (req, res) => {
       }
       const signatureSender = parseSignature(req.body.signature_sender, "Tanda tangan pihak kedua", true);
       const signatureReceiver = parseSignature(req.body.signature_receiver, "Tanda tangan pihak pertama", true);
-      const signatureGa = parseSignature(req.body.signature_ga, "Tanda tangan kepala divisi GA", true);
+      const signatureGa = parseSignature(req.body.signature_ga, "Tanda tangan pejabat yang mengetahui", Boolean(parties.gaHeadName));
       await conn.query(
         `UPDATE tr_bast_linen_sewa
          SET room_id = ?, bast_date = ?, sender_name = ?, sender_position = ?,

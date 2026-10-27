@@ -59,6 +59,19 @@ function SenderSelect({ value, onChange, employees }) {
   }, []);
 
   const list = employees.filter((emp) => emp.employee_name.toLowerCase().includes(query.trim().toLowerCase()));
+  // Nama di luar daftar petugas = isian manual
+  const isCustom = Boolean(value) && !employees.some((emp) => emp.employee_name === value);
+  const [manual, setManual] = useState(false);
+  const showInput = manual || isCustom;
+
+  if (showInput) {
+    return (
+      <div className="flex items-center gap-2">
+        <input value={value} onChange={(e) => onChange(e.target.value)} onBlur={() => onChange(toTitleCase(value))} placeholder="Ketik nama pengirim" autoFocus={manual} className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-800 outline-none focus:border-[#1ea59e] focus:ring-4 focus:ring-[#1ea59e]/10" />
+        <button type="button" onClick={() => { setManual(false); onChange(''); }} className="shrink-0 rounded-xl border border-slate-200 px-3 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">Pilih daftar</button>
+      </div>
+    );
+  }
 
   return (
     <div className="relative" ref={ref}>
@@ -70,6 +83,7 @@ function SenderSelect({ value, onChange, employees }) {
         <div className="absolute z-30 mt-1.5 w-full rounded-2xl border border-slate-200 bg-white p-2 shadow-xl">
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Cari petugas..." className="mb-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-800 outline-none focus:border-[#1ea59e]" />
           <div className="max-h-48 overflow-auto">
+            <button type="button" onClick={() => { setManual(true); setOpen(false); setQuery(''); onChange(''); }} className="mb-1 block w-full rounded-lg border border-dashed border-[#1ea59e]/50 px-3 py-2 text-left text-sm font-semibold text-[#126776] hover:bg-[#1ea59e]/10">+ Isi manual (tidak ada di daftar)</button>
             {list.length === 0 && <p className="px-3 py-2 text-sm text-slate-500">Tidak ada petugas</p>}
             {list.map((emp) => (
               <button type="button" key={emp.employee_id} onClick={() => { onChange(emp.employee_name); setOpen(false); setQuery(''); }} className="block w-full rounded-lg px-3 py-2 text-left text-sm font-semibold text-slate-800 hover:bg-[#1ea59e]/10 hover:text-[#126776]">
@@ -430,10 +444,11 @@ export default function BastLinenSewa() {
     if (!receiverName.trim()) return showToast('Nama penerima wajib diisi', 'error');
     if (!isTitleCase(receiverName)) return showToast('Nama penerima harus Capital Each Word', 'error');
     if (!receiverPosition.trim()) return showToast('Jabatan penerima wajib diisi', 'error');
-    if (!gaHeadName.trim()) return showToast('Nama yang mengetahui wajib diisi', 'error');
-    if (!isTitleCase(gaHeadName)) return showToast('Nama yang mengetahui harus Capital Each Word', 'error');
-    if (!gaHeadPosition.trim()) return showToast('Jabatan yang mengetahui wajib diisi', 'error');
-    if (editingId && (!sigSender || !sigReceiver || !sigGa)) return showToast('Perubahan BAST wajib ditandatangani ulang oleh ketiga pihak', 'error');
+    const hasGa = Boolean(gaHeadName.trim() || gaHeadPosition.trim());
+    if (hasGa && !gaHeadName.trim()) return showToast('Nama yang mengetahui wajib diisi jika jabatan diisi', 'error');
+    if (hasGa && !isTitleCase(gaHeadName)) return showToast('Nama yang mengetahui harus Capital Each Word', 'error');
+    if (hasGa && !gaHeadPosition.trim()) return showToast('Jabatan yang mengetahui wajib diisi jika nama diisi', 'error');
+    if (editingId && (!sigSender || !sigReceiver || (hasGa && !sigGa))) return showToast(hasGa ? 'Perubahan BAST wajib ditandatangani ulang oleh ketiga pihak' : 'Perubahan BAST wajib ditandatangani ulang oleh kedua pihak', 'error');
     const details = detailsFromEntries(entries);
     if (!details.length) return showToast('Isi minimal satu pengiriman atau penarikan', 'error');
     setSaving(true);
@@ -567,7 +582,7 @@ export default function BastLinenSewa() {
           <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200">
             <div className="border-b border-slate-100 bg-slate-50 px-4 py-3">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-[#126776]">Mengetahui</p>
-              <p className="text-sm font-semibold text-slate-800">Pejabat yang mengetahui</p>
+              <p className="text-sm font-semibold text-slate-800">Pejabat yang mengetahui <span className="text-xs font-normal text-slate-400">(opsional)</span></p>
             </div>
             <div className="flex flex-1 flex-col gap-3 p-4">
               <label className="block">
@@ -643,12 +658,12 @@ export default function BastLinenSewa() {
           </table>
           </div>
         </div>
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div className={`grid grid-cols-1 gap-4 ${gaHeadName.trim() && gaHeadPosition.trim() ? 'lg:grid-cols-3' : 'lg:grid-cols-2'}`}>
           <SignaturePad label="Yang menyerahkan," role="Pihak Kedua" name={senderName} caption={senderPosition} value={sigSender} onChange={setSigSender} />
           <SignaturePad label="Yang menerima," role="Pihak Pertama" name={receiverName} caption={receiverPosition} value={sigReceiver} onChange={setSigReceiver} />
-          <SignaturePad label="Mengetahui," name={gaHeadName} caption={gaHeadPosition} value={sigGa} onChange={setSigGa} />
+          {gaHeadName.trim() && gaHeadPosition.trim() && <SignaturePad label="Mengetahui," name={gaHeadName} caption={gaHeadPosition} value={sigGa} onChange={setSigGa} />}
         </div>
-        <p className="text-xs text-slate-400">{editingId ? 'Perubahan BAST wajib ditandatangani ulang oleh ketiga pihak.' : 'Tanda tangan boleh dikosongkan dan dilengkapi nanti.'}</p>
+        <p className="text-xs text-slate-400">{editingId ? (gaHeadName.trim() && gaHeadPosition.trim() ? 'Perubahan BAST wajib ditandatangani ulang oleh ketiga pihak.' : 'Perubahan BAST wajib ditandatangani ulang oleh kedua pihak.') : 'Tanda tangan boleh dikosongkan dan dilengkapi nanti.'}</p>
         <div className="flex gap-2">
           <button type="button" disabled={saving || !hospitalId} onClick={save} className="rounded-xl bg-gradient-to-r from-[#126776] to-[#1ea59e] px-6 py-2.5 text-sm font-semibold text-white shadow-sm disabled:opacity-60">{saving ? 'Menyimpan...' : editingId ? 'Simpan Perubahan' : 'Simpan BAST'}</button>
           {editingId && <button type="button" onClick={closeForm} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700">Batal</button>}

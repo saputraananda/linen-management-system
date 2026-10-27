@@ -87,10 +87,12 @@ function signatureImage(src) {
   return `<img src="${value}" alt="" />`;
 }
 
+const ROWS_PER_PAGE = 20; // maksimal baris linen per halaman; lebih dari itu pindah halaman (kop diulang)
+
 function itemRowsHtml(rows) {
   return rows.length
     ? rows.map((row, index) => `
-      <tr>
+      <tr${(index + 1) % ROWS_PER_PAGE === 0 && index + 1 < rows.length ? ' class="pb"' : ''}>
         <td class="mid">${index + 1}</td>
         <td>${esc(row.nama)}</td>
         <td class="mid">${esc(row.ukuran)}</td>
@@ -118,6 +120,7 @@ export function renderBastHtml(bast, kopUrl) {
   const hospital = String(bast.hospital_name || '').trim();
   const room = String(bast.room_name || '').trim();
   const place = !room || /seluruh|beberapa/i.test(room) ? hospital : `${hospital} ${room}`;
+  const hasGa = Boolean(String(bast.ga_head_name || '').trim());
   const pertama = [];
   if (bast.ga_head_name) pertama.push({ nama: bast.ga_head_name, jabatan: bast.ga_head_position });
   if (bast.receiver_name) pertama.push({ nama: bast.receiver_name, jabatan: bast.receiver_position });
@@ -132,30 +135,37 @@ export function renderBastHtml(bast, kopUrl) {
     </div>
   `;
 
+  // Halaman mengalir otomatis: kop ada di <thead> sehingga diulang di setiap halaman cetak.
   const page = (subtitle, unit, rows) => `
   <section class="page">
-    <div class="kop-wrap"><img class="kop" src="${esc(kopUrl)}" alt="" /></div>
-    <div class="doc">
-      <h1>BERITA ACARA</h1>
-      <h2>${esc(subtitle)}</h2>
-      ${unit ? `<h2 class="unit-title">${esc(unit)}</h2>` : ''}
-      <div class="nomor">${esc(bast.bast_number || '')}</div>
-      <p>Kami yang bertandatangan dibawah ini, ${esc(kalimatTanggal(bast.bast_date))}, yang bertanda tangan di bawah :</p>
-      ${partyBlock(pertama)}
-      <div class="called">Selanjutnya disebut Pihak Pertama</div>
-      ${partyBlock(kedua)}
-      <div class="called">Selanjutnya disebut Pihak Kedua</div>
-      <p>Pihak kedua menyerahkan barang atau linen sewa kepada pihak pertama dan pihak pertama menyatakan telah menerima barang atau linen dari pihak kedua dalam keadaan baru dan baik berupa:</p>
-      <table class="items">${ITEMS_HEAD}<tbody>${itemRowsHtml(rows)}</tbody></table>
-      <p>Demikian berita serah terima barang atau linen ini dibuat oleh kedua belah pihak. Sejak penandatanganan Berita Acara ini maka barang atau linen menjadi tanggung jawab PIHAK PERTAMA untuk memelihara dan merawatnya dengan baik.</p>
-      <div class="ttd">
-        ${sign('Yang menyerahkan,', 'PIHAK KEDUA', bast.signature_sender, bast.sender_name, bast.sender_position)}
-        ${sign('Yang menerima,', 'PIHAK PERTAMA', bast.signature_receiver, bast.receiver_name, bast.receiver_position)}
-        ${sign('Mengetahui,', '', bast.signature_ga, bast.ga_head_name, bast.ga_head_position)}
-      </div>
-    </div>
+    <table class="sheet">
+      <thead><tr><td><div class="kop-wrap"><img class="kop" src="${esc(kopUrl)}" alt="" /></div></td></tr></thead>
+      <tfoot><tr><td><div class="foot-space"></div></td></tr></tfoot>
+      <tbody><tr><td>
+        <div class="doc">
+          <h1>BERITA ACARA</h1>
+          <h2>${esc(subtitle)}</h2>
+          ${unit ? `<h2 class="unit-title">${esc(unit)}</h2>` : ''}
+          <div class="nomor">${esc(bast.bast_number || '')}</div>
+          <p>Kami yang bertandatangan dibawah ini, ${esc(kalimatTanggal(bast.bast_date))}, yang bertanda tangan di bawah :</p>
+          ${partyBlock(pertama)}
+          <div class="called">Selanjutnya disebut Pihak Pertama</div>
+          ${partyBlock(kedua)}
+          <div class="called">Selanjutnya disebut Pihak Kedua</div>
+          <p>Pihak kedua menyerahkan barang atau linen sewa kepada pihak pertama dan pihak pertama menyatakan telah menerima barang atau linen dari pihak kedua dalam keadaan baru dan baik berupa:</p>
+          <table class="items">${ITEMS_HEAD}<tbody>${itemRowsHtml(rows)}</tbody></table>
+          <div class="closing">
+            <p>Demikian berita serah terima barang atau linen ini dibuat oleh kedua belah pihak. Sejak penandatanganan Berita Acara ini maka barang atau linen menjadi tanggung jawab PIHAK PERTAMA untuk memelihara dan merawatnya dengan baik.</p>
+            <div class="ttd${hasGa ? '' : ' two'}">
+              ${sign('Yang menyerahkan,', 'PIHAK KEDUA', bast.signature_sender, bast.sender_name, bast.sender_position)}
+              ${sign('Yang menerima,', 'PIHAK PERTAMA', bast.signature_receiver, bast.receiver_name, bast.receiver_position)}
+              ${hasGa ? sign('Mengetahui,', '', bast.signature_ga, bast.ga_head_name, bast.ga_head_position) : ''}
+            </div>
+          </div>
+        </div>
+      </td></tr></tbody>
+    </table>
   </section>`;
-
   const groups = new Map();
   for (const d of bast.details || []) {
     const key = unitName(d);
@@ -186,8 +196,17 @@ export function renderBastHtml(bast, kopUrl) {
     .page { break-after: page; page-break-after: always; }
     .page:last-child { break-after: auto; page-break-after: auto; }
     .kop-wrap { height: 32mm; overflow: hidden; }
+    table.sheet { width: 100%; border-collapse: collapse; }
+    table.sheet > thead { display: table-header-group; }
+    table.sheet > tfoot { display: table-footer-group; }
+    table.sheet > thead > tr > td, table.sheet > tbody > tr > td, table.sheet > tfoot > tr > td { padding: 0; vertical-align: top; }
+    .foot-space { height: 10mm; }
+    table.items thead { display: table-header-group; }
+    table.items tr { break-inside: avoid; page-break-inside: avoid; }
+    table.items tr.pb { break-after: page; page-break-after: always; }
+    .closing { break-inside: avoid; page-break-inside: avoid; }
     .kop { width: 100%; display: block; margin: 0; }
-    .doc { margin-top: 2mm; padding: 0 14mm 14mm; }
+    .doc { margin-top: 2mm; padding: 0 14mm; }
     h1, h2 { margin: 0; text-align: center; font-size: 14px; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; }
     h2 { margin-top: 2px; }
     .unit-title { margin-top: 4px; }
@@ -199,12 +218,14 @@ export function renderBastHtml(bast, kopUrl) {
     .party td:nth-child(2) { width: 12px; }
     .called { margin: 2px 0 10px 36px; font-weight: 700; }
     table.items { width: 100%; border-collapse: collapse; margin: 8px 0 12px; }
-    table.items th, table.items td { border: 1px solid #111; padding: 4px 6px; }
+    table.items th, table.items td { border: 1px solid #111; padding: 3px 6px; }
     table.items th { text-align: center; font-weight: 700; }
     .mid { text-align: center; }
     .ket { font-size: 9px; font-style: italic; }
     .ttd { display: flex; margin-top: 22px; text-align: center; page-break-inside: avoid; }
     .ttd > div { width: 33.33%; padding: 0 8px; }
+    .ttd.two { justify-content: space-around; }
+    .ttd.two > div { width: 40%; }
     .role { font-weight: 700; }
     .sign { height: 78px; display: flex; align-items: flex-end; justify-content: center; }
     .sign img { max-height: 72px; max-width: 150px; object-fit: contain; }
