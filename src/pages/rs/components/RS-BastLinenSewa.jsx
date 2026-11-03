@@ -229,8 +229,8 @@ export default function RSBastLinenSewa() {
                   <ChevronDown className="pointer-events-none absolute inset-y-0 right-3 my-auto h-3.5 w-3.5 text-slate-400" />
                 </div>
               </div>
-              <div className="overflow-hidden rounded-2xl border border-slate-200">
-                <table className="w-full text-sm text-slate-800">
+              <div className="overflow-x-auto rounded-2xl border border-slate-200">
+                <table className="w-full min-w-[560px] text-sm text-slate-800">
                   <thead className="bg-slate-50 text-center text-[11px] font-bold uppercase tracking-wider text-slate-500">
                     <tr>
                       <th className="px-3 py-3 text-center">Ruangan</th>

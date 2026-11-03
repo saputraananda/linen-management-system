@@ -552,7 +552,9 @@ export default function ValetDashboard() {
       const stockInRs = parseInt(roomRecord?.stock_in_rs || 0);
       const terpakai = parseInt(roomRecord?.qty_terpakai || 0);
       const dirty = parseInt(roomRecord?.qty_dirty || 0);
-      totalLemariStock += Math.max(0, stockInRs - terpakai - dirty);
+      const cuciRoom = parseInt(roomRecord?.qty_cuci || 0);
+      const kurangRoom = parseInt(roomRecord?.qty_kurang || 0);
+      totalLemariStock += Math.max(0, stockInRs - terpakai - dirty - cuciRoom - kurangRoom);
       totalTerpakaiStock += terpakai;
       totalDirtyStock += dirty;
     });
@@ -976,7 +978,7 @@ export default function ValetDashboard() {
                             
                           const lemari = selectedRoomFilter === 'all'
                             ? parseInt(item.total_lemari || 0)
-                            : Math.max(0, displayStokAwal - terpakai - dirty);
+                            : Math.max(0, displayStokAwal - terpakai - dirty - parseInt(roomRecord?.qty_cuci || 0) - parseInt(roomRecord?.qty_kurang || 0));
                             
                           const cuci = selectedRoomFilter === 'all'
                              ? parseInt(item.total_cuci || 0)
@@ -1151,7 +1153,7 @@ export default function ValetDashboard() {
       {/* Details Modal */}
       {selectedLinenDetail && (
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-2xl w-full shadow-2xl overflow-hidden border border-slate-100 flex flex-col max-h-[85vh] animate-[fadeIn_0.2s_ease-out]">
+          <div className="bg-white rounded-3xl max-w-5xl w-full shadow-2xl overflow-hidden border border-slate-100 flex flex-col max-h-[85vh] animate-[fadeIn_0.2s_ease-out]">
 
             {/* Modal Header */}
             <div className="p-6 bg-gradient-to-br from-[#126776] to-[#1ea59e] text-white flex justify-between items-start relative">
@@ -1196,14 +1198,15 @@ export default function ValetDashboard() {
                   Distribusi Stok per Ruangan / Unit
                 </h4>
 
-                <div className="border border-slate-150 rounded-2xl overflow-hidden shadow-sm bg-white">
-                  <table className="w-full text-left text-xs border-collapse">
+                <div className="border border-slate-150 rounded-2xl overflow-x-auto shadow-sm bg-white">
+                  <table className="w-full min-w-[560px] text-left text-xs border-collapse whitespace-nowrap">
                     <thead>
                       <tr className="bg-slate-50 text-slate-400 font-semibold uppercase tracking-wider text-[10px] border-b border-slate-150">
                         <th className="py-2.5 px-3">Nama Ruangan</th>
                         <th className="py-2.5 px-3 text-center">Jenis</th>
                         <th className="py-2.5 px-3 text-center">Terpakai</th>
                         <th className="py-2.5 px-3 text-center">Dirty Utility</th>
+                        <th className="py-2.5 px-3 text-center">Cuci IKM</th>
                         <th className="py-2.5 px-3 text-center">Stok Lemari / Gudang</th>
                       </tr>
                     </thead>
@@ -1215,8 +1218,10 @@ export default function ValetDashboard() {
                         const stockInRs = roomLinen ? parseInt(roomLinen.stock_in_rs || 0) : 0;
                         const qtyTerpakai = roomLinen ? parseInt(roomLinen.qty_terpakai || 0) : 0;
                         const qtyDirty = roomLinen ? parseInt(roomLinen.qty_dirty || 0) : 0;
-                        const lemariStock = room.is_gudang_linen === 1 ? stockInRs : Math.max(0, stockInRs - qtyTerpakai - qtyDirty);
-                        const hasStock = lemariStock + qtyTerpakai + qtyDirty > 0;
+                        const qtyCuciRoom = roomLinen ? parseInt(roomLinen.qty_cuci || 0) : 0;
+                        const qtyKurangRoom = roomLinen ? parseInt(roomLinen.qty_kurang || 0) : 0;
+                        const lemariStock = room.is_gudang_linen === 1 ? stockInRs : Math.max(0, stockInRs - qtyTerpakai - qtyDirty - qtyCuciRoom - qtyKurangRoom);
+                        const hasStock = lemariStock + qtyTerpakai + qtyDirty + qtyCuciRoom > 0;
 
                         return (
                           <tr key={room.id} className={`transition-colors ${hasStock ? 'bg-amber-50 hover:bg-amber-100/80 shadow-[inset_3px_0_0_#f59e0b]' : 'hover:bg-slate-50/50'}`}>
@@ -1238,7 +1243,10 @@ export default function ValetDashboard() {
                             <td className="py-2.5 px-3 text-center font-medium text-rose-500">
                               {formatNumber(qtyDirty)} Pcs
                             </td>
-                            <td 
+                            <td className="py-2.5 px-3 text-center font-medium text-sky-600">
+                              {formatNumber(qtyCuciRoom)} Pcs
+                            </td>
+                            <td
                               className="py-2.5 px-3 text-center"
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -1287,8 +1295,8 @@ export default function ValetDashboard() {
                 </h4>
 
                 {dashboardData?.history?.filter(h => h.hospital_linen_id === selectedLinenDetail.id).length > 0 ? (
-                  <div className="border border-slate-150 rounded-2xl overflow-hidden shadow-sm">
-                    <table className="w-full text-left text-xs border-collapse">
+                  <div className="border border-slate-150 rounded-2xl overflow-x-auto shadow-sm">
+                    <table className="w-full min-w-[560px] text-left text-xs border-collapse">
                       <thead>
                         <tr className="bg-slate-50 text-slate-400 font-semibold uppercase tracking-wider text-[10px] border-b border-slate-150">
                           <th className="py-2.5 px-3 text-center">Tanggal</th>
@@ -1343,8 +1351,8 @@ export default function ValetDashboard() {
                 </h4>
 
                 {dashboardData?.soHistory?.filter(h => h.hospital_linen_id === selectedLinenDetail.id).length > 0 ? (
-                  <div className="border border-slate-150 rounded-2xl overflow-hidden shadow-sm">
-                    <table className="w-full text-left text-xs border-collapse">
+                  <div className="border border-slate-150 rounded-2xl overflow-x-auto shadow-sm">
+                    <table className="w-full min-w-[560px] text-left text-xs border-collapse">
                       <thead>
                         <tr className="bg-slate-50 text-slate-400 font-semibold uppercase tracking-wider text-[10px] border-b border-slate-150">
                           <th className="py-2.5 px-3 text-center">Tanggal</th>

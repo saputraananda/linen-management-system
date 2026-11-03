@@ -68,7 +68,20 @@ export const getDashboardData = async (req, res) => {
                WHERE hlr.hospital_linen_id = hl.id
              ), 0) AS total_dirty,
              COALESCE((
-               SELECT SUM(hlr.stock_in_rs - hlr.qty_terpakai - hlr.qty_dirty)
+               SELECT SUM(GREATEST(0, hlr.stock_in_rs - hlr.qty_terpakai - hlr.qty_dirty
+                 - COALESCE((SELECT SUM(td.qty_kotor)
+                             FROM tr_linen_transaction_detail td
+                             INNER JOIN tr_linen_transaction t ON td.transaction_id = t.id
+                             WHERE td.hospital_linen_id = hlr.hospital_linen_id
+                               AND td.room_id = hlr.room_id
+                               AND t.status = 'PROSES'), 0)
+                 - COALESCE((SELECT SUM(td.qty_kotor - td.qty_bersih)
+                             FROM tr_linen_transaction_detail td
+                             INNER JOIN tr_linen_transaction t ON td.transaction_id = t.id
+                             WHERE td.hospital_linen_id = hlr.hospital_linen_id
+                               AND td.room_id = hlr.room_id
+                               AND t.status = 'SELESAI'
+                               AND td.qty_bersih < td.qty_kotor), 0)))
                FROM mst_hospital_linen_rooms hlr
                INNER JOIN mst_rooms_rs r ON hlr.room_id = r.id
                WHERE hlr.hospital_linen_id = hl.id 
@@ -485,12 +498,24 @@ export const transferLinen = async (req, res) => {
 
       // Check clean stock in source room
       const [stocks] = await connection.query(
-        "SELECT stock_in_rs, qty_terpakai, qty_dirty FROM mst_hospital_linen_rooms WHERE hospital_linen_id = ? AND room_id = ?",
+        `SELECT hlr.stock_in_rs, hlr.qty_terpakai, hlr.qty_dirty,
+                COALESCE((SELECT SUM(td.qty_kotor)
+                          FROM tr_linen_transaction_detail td
+                          INNER JOIN tr_linen_transaction t ON td.transaction_id = t.id
+                          WHERE td.hospital_linen_id = hlr.hospital_linen_id AND td.room_id = hlr.room_id
+                            AND t.status = 'PROSES'), 0) AS qty_cuci,
+                COALESCE((SELECT SUM(td.qty_kotor - td.qty_bersih)
+                          FROM tr_linen_transaction_detail td
+                          INNER JOIN tr_linen_transaction t ON td.transaction_id = t.id
+                          WHERE td.hospital_linen_id = hlr.hospital_linen_id AND td.room_id = hlr.room_id
+                            AND t.status = 'SELESAI' AND td.qty_bersih < td.qty_kotor), 0) AS qty_kurang
+         FROM mst_hospital_linen_rooms hlr
+         WHERE hlr.hospital_linen_id = ? AND hlr.room_id = ?`,
         [hospitalLinenId, sourceRoomId]
       );
 
-      const stock = stocks[0] || { stock_in_rs: 0, qty_terpakai: 0, qty_dirty: 0 };
-      const cleanStock = Math.max(0, parseInt(stock.stock_in_rs || 0) - parseInt(stock.qty_terpakai || 0) - parseInt(stock.qty_dirty || 0));
+      const stock = stocks[0] || { stock_in_rs: 0, qty_terpakai: 0, qty_dirty: 0, qty_cuci: 0, qty_kurang: 0 };
+      const cleanStock = Math.max(0, parseInt(stock.stock_in_rs || 0) - parseInt(stock.qty_terpakai || 0) - parseInt(stock.qty_dirty || 0) - parseInt(stock.qty_cuci || 0) - parseInt(stock.qty_kurang || 0));
 
       if (cleanStock < qtyInt) {
         await connection.rollback();

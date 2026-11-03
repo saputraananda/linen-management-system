@@ -402,7 +402,9 @@ export default function RSDashboard() {
       const stockInRs = parseInt(roomRecord?.stock_in_rs || 0);
       const terpakai = parseInt(roomRecord?.qty_terpakai || 0);
       const dirty = parseInt(roomRecord?.qty_dirty || 0);
-      totalLemariStock += Math.max(0, stockInRs - terpakai - dirty);
+      const cuciRoom = parseInt(roomRecord?.qty_cuci || 0);
+      const kurangRoom = parseInt(roomRecord?.qty_kurang || 0);
+      totalLemariStock += Math.max(0, stockInRs - terpakai - dirty - cuciRoom - kurangRoom);
       totalTerpakaiStock += terpakai;
       totalDirtyStock += dirty;
     });
@@ -726,7 +728,7 @@ export default function RSDashboard() {
 
                         const lemari = selectedRoomFilter === 'all'
                           ? parseInt(item.total_lemari || 0)
-                          : Math.max(0, displayStokAwal - terpakai - dirty);
+                          : Math.max(0, displayStokAwal - terpakai - dirty - parseInt(roomRecord?.qty_cuci || 0) - parseInt(roomRecord?.qty_kurang || 0));
 
                         const cuci = selectedRoomFilter === 'all'
                           ? parseInt(item.total_cuci || 0)
@@ -1005,7 +1007,9 @@ export default function RSDashboard() {
                           const stockInRs = roomLinen ? parseInt(roomLinen.stock_in_rs || 0) : 0;
                           const qtyTerpakai = roomLinen ? parseInt(roomLinen.qty_terpakai || 0) : 0;
                           const qtyDirty = roomLinen ? parseInt(roomLinen.qty_dirty || 0) : 0;
-                          const lemariStock = room.is_gudang_linen === 1 ? stockInRs : Math.max(0, stockInRs - qtyTerpakai - qtyDirty);
+                          const qtyCuciRoom = roomLinen ? parseInt(roomLinen.qty_cuci || 0) : 0;
+                          const qtyKurangRoom = roomLinen ? parseInt(roomLinen.qty_kurang || 0) : 0;
+                          const lemariStock = room.is_gudang_linen === 1 ? stockInRs : Math.max(0, stockInRs - qtyTerpakai - qtyDirty - qtyCuciRoom - qtyKurangRoom);
                           const hasStock = lemariStock + qtyTerpakai + qtyDirty > 0;
 
                           return (

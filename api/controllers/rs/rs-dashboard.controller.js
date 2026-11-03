@@ -67,7 +67,20 @@ export const getDashboardData = async (req, res) => {
                WHERE hlr.hospital_linen_id = hl.id
              ), 0) AS total_dirty,
              COALESCE((
-               SELECT SUM(hlr.stock_in_rs - hlr.qty_terpakai - hlr.qty_dirty)
+               SELECT SUM(GREATEST(0, hlr.stock_in_rs - hlr.qty_terpakai - hlr.qty_dirty
+                 - COALESCE((SELECT SUM(td.qty_kotor)
+                             FROM tr_linen_transaction_detail td
+                             INNER JOIN tr_linen_transaction t ON td.transaction_id = t.id
+                             WHERE td.hospital_linen_id = hlr.hospital_linen_id
+                               AND td.room_id = hlr.room_id
+                               AND t.status = 'PROSES'), 0)
+                 - COALESCE((SELECT SUM(td.qty_kotor - td.qty_bersih)
+                             FROM tr_linen_transaction_detail td
+                             INNER JOIN tr_linen_transaction t ON td.transaction_id = t.id
+                             WHERE td.hospital_linen_id = hlr.hospital_linen_id
+                               AND td.room_id = hlr.room_id
+                               AND t.status = 'SELESAI'
+                               AND td.qty_bersih < td.qty_kotor), 0)))
                FROM mst_hospital_linen_rooms hlr
                INNER JOIN mst_rooms_rs r ON hlr.room_id = r.id
                WHERE hlr.hospital_linen_id = hl.id 
@@ -480,14 +493,29 @@ export const updateRoomStock = async (req, res) => {
     let finalStockInRs = valStock;
 
     if (!isGudang) {
-      // Query the current qty_terpakai and qty_dirty of that room to calculate Stok Awal (Alokasi)
+      // Stok Awal (Alokasi) = Lemari + Terpakai + Dirty + Cuci IKM + Kurang Kirim
       const [existing] = await ikmPool.query(
-        "SELECT qty_terpakai, qty_dirty FROM mst_hospital_linen_rooms WHERE hospital_linen_id = ? AND room_id = ?",
+        `SELECT hlr.qty_terpakai, hlr.qty_dirty,
+                COALESCE((SELECT SUM(td.qty_kotor)
+                          FROM tr_linen_transaction_detail td
+                          INNER JOIN tr_linen_transaction t ON td.transaction_id = t.id
+                          WHERE td.hospital_linen_id = hlr.hospital_linen_id AND td.room_id = hlr.room_id
+                            AND t.status = 'PROSES'), 0) AS qty_cuci,
+                COALESCE((SELECT SUM(td.qty_kotor - td.qty_bersih)
+                          FROM tr_linen_transaction_detail td
+                          INNER JOIN tr_linen_transaction t ON td.transaction_id = t.id
+                          WHERE td.hospital_linen_id = hlr.hospital_linen_id AND td.room_id = hlr.room_id
+                            AND t.status = 'SELESAI' AND td.qty_bersih < td.qty_kotor), 0) AS qty_kurang
+         FROM mst_hospital_linen_rooms hlr
+         WHERE hlr.hospital_linen_id = ? AND hlr.room_id = ?`,
         [hospitalLinenId, roomId]
       );
-      const qtyTerpakai = existing.length > 0 ? parseInt(existing[0].qty_terpakai || 0) : 0;
-      const qtyDirty = existing.length > 0 ? parseInt(existing[0].qty_dirty || 0) : 0;
-      finalStockInRs = valStock + qtyTerpakai + qtyDirty;
+      const cur = existing[0] || {};
+      finalStockInRs = valStock
+        + parseInt(cur.qty_terpakai || 0)
+        + parseInt(cur.qty_dirty || 0)
+        + parseInt(cur.qty_cuci || 0)
+        + parseInt(cur.qty_kurang || 0);
     }
 
     // Upsert into mst_hospital_linen_rooms

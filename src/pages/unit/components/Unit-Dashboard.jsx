@@ -512,7 +512,9 @@ export default function UnitDashboard() {
     const stockInRs = parseInt(roomRecord?.stock_in_rs || 0);
     const terpakai = parseInt(roomRecord?.qty_terpakai || 0);
     const dirty = parseInt(roomRecord?.qty_dirty || 0);
-    totalLemariStock += Math.max(0, stockInRs - terpakai - dirty);
+    const cuciRoom = parseInt(roomRecord?.qty_cuci || 0);
+    const kurangRoom = parseInt(roomRecord?.qty_kurang || 0);
+    totalLemariStock += Math.max(0, stockInRs - terpakai - dirty - cuciRoom - kurangRoom);
     totalTerpakaiStock += terpakai;
     totalDirtyStock += dirty;
   });
@@ -921,8 +923,8 @@ export default function UnitDashboard() {
                           const stokAwalRuangan = parseInt(roomRecord?.stock_in_rs || 0);
                           const terpakai = parseInt(roomRecord?.qty_terpakai || 0);
                           const dirty = parseInt(roomRecord?.qty_dirty || 0);
-                          const lemari = Math.max(0, stokAwalRuangan - terpakai - dirty);
                           const cuci = parseInt(roomRecord?.qty_cuci || 0);
+                          const lemari = Math.max(0, stokAwalRuangan - terpakai - dirty - cuci - totalKurang);
 
                           return (
                             <tr
@@ -1021,7 +1023,7 @@ export default function UnitDashboard() {
       {/* Details Modal */}
       {selectedLinenDetail && (
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-2xl w-full shadow-2xl overflow-hidden border border-slate-100 flex flex-col max-h-[85vh] animate-[fadeIn_0.2s_ease-out]">
+          <div className="bg-white rounded-3xl max-w-5xl w-full shadow-2xl overflow-hidden border border-slate-100 flex flex-col max-h-[85vh] animate-[fadeIn_0.2s_ease-out]">
 
             {/* Modal Header */}
             <div className="p-6 bg-gradient-to-br from-[#126776] to-[#1ea59e] text-white flex justify-between items-start relative">
@@ -1490,7 +1492,7 @@ export default function UnitDashboard() {
       {/* Linen Transit Transfer Modal */}
       {showTransferModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-[fadeIn_0.2s_ease-out]">
-          <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 max-w-2xl w-full flex flex-col max-h-[85vh] overflow-hidden">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 max-w-5xl w-full flex flex-col max-h-[85vh] overflow-hidden">
             {/* Header */}
             <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
               <div>
@@ -1576,7 +1578,9 @@ export default function UnitDashboard() {
                       const stockInRs = sourceRecord ? parseInt(sourceRecord.stock_in_rs || 0) : 0;
                       const terpakai = sourceRecord ? parseInt(sourceRecord.qty_terpakai || 0) : 0;
                       const dirty = sourceRecord ? parseInt(sourceRecord.qty_dirty || 0) : 0;
-                      const cleanStock = Math.max(0, stockInRs - terpakai - dirty);
+                      const cuci = sourceRecord ? parseInt(sourceRecord.qty_cuci || 0) : 0;
+                      const kurang = sourceRecord ? parseInt(sourceRecord.qty_kurang || 0) : 0;
+                      const cleanStock = Math.max(0, stockInRs - terpakai - dirty - cuci - kurang);
 
                       return {
                         ...linen,
@@ -1598,8 +1602,8 @@ export default function UnitDashboard() {
                         <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
                           Daftar Linen Bersih Tersedia
                         </label>
-                        <div className="border border-slate-100 rounded-2xl overflow-hidden shadow-sm">
-                          <table className="w-full text-left text-xs border-collapse">
+                        <div className="border border-slate-100 rounded-2xl overflow-x-auto shadow-sm">
+                          <table className="w-full min-w-[560px] text-left text-xs border-collapse">
                             <thead>
                               <tr className="bg-slate-50 border-b border-slate-100 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
                                 <th className="py-3 px-4">Nama Linen</th>
@@ -1699,8 +1703,8 @@ export default function UnitDashboard() {
                       Belum ada riwayat transaksi transfer untuk ruangan ini.
                     </div>
                   ) : (
-                    <div className="border border-slate-100 rounded-2xl overflow-hidden shadow-sm">
-                      <table className="w-full text-left text-xs border-collapse">
+                    <div className="border border-slate-100 rounded-2xl overflow-x-auto shadow-sm">
+                      <table className="w-full min-w-[560px] text-left text-xs border-collapse">
                         <thead>
                           <tr className="bg-slate-50 border-b border-slate-100 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
                             <th className="py-3 px-4">Tanggal & PIC</th>

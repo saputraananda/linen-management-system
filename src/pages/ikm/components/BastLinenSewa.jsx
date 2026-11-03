@@ -778,7 +778,7 @@ export default function BastLinenSewa() {
       )}
       {preview && createPortal(
         <div className="fixed inset-0 z-[9999] grid place-items-center bg-black/60 p-4 backdrop-blur-sm" style={{ colorScheme: "light" }}>
-          <div className="max-h-[90vh] w-full max-w-3xl overflow-auto rounded-2xl bg-white p-5 text-slate-800">
+          <div className="max-h-[90vh] w-full max-w-4xl overflow-auto rounded-2xl bg-white p-5 text-slate-800">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-base font-bold text-slate-800">{preview.bast_number}</p>
@@ -787,7 +787,7 @@ export default function BastLinenSewa() {
               <button type="button" onClick={() => setPreview(null)} className="text-sm text-slate-500">Tutup</button>
             </div>
             <p className="mt-3 text-xs text-slate-500">Ukuran, bahan, dan warna yang kosong bisa diisi di sini. Simpan agar laporan berikutnya memakai isian ini.</p>
-            <table className="mt-3 w-full text-sm text-slate-800">
+            <table className="mt-3 block w-full min-w-[480px] overflow-x-auto whitespace-nowrap text-sm text-slate-800">
               <thead className="text-center text-xs font-semibold uppercase text-slate-500">
                 <tr>
                   <th className="px-2 py-2 text-center">Nama Linen</th>

@@ -955,8 +955,8 @@ export default function RSSerahTerima() {
                                         </div>
 
                                         {/* Items list Table */}
-                                        <div className="border border-slate-200 rounded-3xl shadow-sm overflow-hidden bg-white">
-                                            <table className="w-full text-left text-xs border-collapse">
+                                        <div className="border border-slate-200 rounded-3xl shadow-sm overflow-x-auto bg-white">
+                                            <table className="w-full min-w-[560px] text-left text-xs border-collapse">
                                                 <thead>
                                                     <tr className="bg-slate-50 text-slate-400 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200">
                                                         <th className="py-3 px-4 text-center">No</th>
