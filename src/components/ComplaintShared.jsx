@@ -3,9 +3,10 @@ import { createPortal } from 'react-dom';
 import axios from 'axios';
 import {
   Plus, Search, ChevronDown, RefreshCw, X, Pencil, Trash2, ImagePlus, CheckCircle2, XCircle,
-  MessageSquareWarning, Package, Camera, Clock,
+  MessageSquareWarning, Package, Camera, Clock, Calendar,
 } from 'lucide-react';
 import ConfirmDialog from './ConfirmDialog';
+import Pagination, { DEFAULT_PAGE_SIZE } from './Pagination';
 import useBodyScrollLock from '../utils/useBodyScrollLock';
 import { socket } from '../utils/socket';
 
@@ -65,6 +66,17 @@ export const fmtDateTime = (s) => (s ? new Date(s).toLocaleString('id-ID', { day
 export const auth = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
 export const errMsg = (e, fallback) => e.response?.data?.message || fallback;
 
+// Input tanggal untuk bar filter (dipakai halaman Unit/RS dan IKM)
+export function DateField({ label, value, onChange, min, max }) {
+  return (
+    <div className="relative">
+      <Calendar className="pointer-events-none absolute inset-y-0 left-3 my-auto h-4 w-4 text-slate-400" />
+      <input type="date" aria-label={label} title={label} value={value} min={min} max={max} onChange={(e) => onChange(e.target.value)}
+        className="block w-full cursor-pointer rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-xs font-semibold text-slate-700 outline-none transition focus:border-[#1ea59e] focus:ring-4 focus:ring-[#1ea59e]/10" />
+    </div>
+  );
+}
+
 export function Badge({ status }) {
   const s = STATUS[status] || STATUS.DIAJUKAN;
   return <span className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[10px] font-bold ${s.cls}`}>{s.label}</span>;
@@ -105,7 +117,14 @@ export function ComplaintPage({ role }) {
   const [notice, setNotice] = useState('');
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE); // angka atau 'all'
+  const [pagination, setPagination] = useState({ page: 1, limit: DEFAULT_PAGE_SIZE, total: 0, totalPages: 1 });
   const [mine, setMine] = useState(isUnitNurse); // default: hanya unit milik sendiri
+  // Setiap filter berubah, kembali ke halaman 1 (state di-batch, jadi hanya satu request)
+  const withReset = (setter) => (v) => { setter(v); setPage(1); };
   const [opts, setOpts] = useState({ rooms: [], categories: [], myRoomIds: [] });
   const [detail, setDetail] = useState(null);
   const [form, setForm] = useState(null);
@@ -117,16 +136,23 @@ export function ComplaintPage({ role }) {
     if (!silent) setLoading(true);
     try {
       const { data } = await axios.get(base(role), {
-        ...auth(), params: { q: search || undefined, status: status || undefined, mine: mine ? 1 : undefined },
+        ...auth(), params: {
+          q: search || undefined, status: status || undefined, mine: mine ? 1 : undefined,
+          startDate: startDate || undefined, endDate: endDate || undefined,
+          page, limit: pageSize,
+        },
       });
       setItems(data.data);
+      setPagination(data.pagination);
+      // Server merapikan halaman yang di luar jangkauan (mis. setelah hapus baris terakhir halaman ini)
+      if (data.pagination.page !== page) setPage(data.pagination.page);
       setError('');
     } catch (e) {
       setError(errMsg(e, 'Gagal memuat komplain'));
     } finally {
       setLoading(false);
     }
-  }, [role, search, status, mine]);
+  }, [role, search, status, startDate, endDate, mine, page, pageSize]);
 
   useEffect(() => { const t = setTimeout(() => load(), 250); return () => clearTimeout(t); }, [load]);
 
@@ -222,23 +248,27 @@ export function ComplaintPage({ role }) {
           <div className="flex flex-col items-stretch gap-3 lg:flex-row lg:items-center">
             <div className="relative flex-1">
               <Search className="absolute inset-y-0 left-3.5 my-auto h-4 w-4 text-slate-400" />
-              <input type="text" placeholder="Cari nomor, jenis, pelapor, atau deskripsi..." value={search} onChange={(e) => setSearch(e.target.value)}
+              <input type="text" placeholder="Cari nomor, jenis, pelapor, atau deskripsi..." value={search} onChange={(e) => withReset(setSearch)(e.target.value)}
                 className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-xs font-semibold text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-[#1ea59e] focus:ring-4 focus:ring-[#1ea59e]/10" />
             </div>
             <div className="relative">
-              <select value={status} onChange={(e) => setStatus(e.target.value)} className="w-full min-w-[160px] cursor-pointer appearance-none rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-3.5 pr-9 text-xs font-semibold text-slate-700 outline-none focus:border-[#1ea59e] focus:ring-4 focus:ring-[#1ea59e]/10 lg:w-auto">
+              <select value={status} onChange={(e) => withReset(setStatus)(e.target.value)} className="w-full min-w-[160px] cursor-pointer appearance-none rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-3.5 pr-9 text-xs font-semibold text-slate-700 outline-none focus:border-[#1ea59e] focus:ring-4 focus:ring-[#1ea59e]/10 lg:w-auto">
                 <option value="">Semua Status</option>
                 {Object.entries(STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
               </select>
               <ChevronDown className="pointer-events-none absolute inset-y-0 right-3 my-auto h-3.5 w-3.5 text-slate-400" />
             </div>
+            <div className="grid grid-cols-2 gap-3 lg:flex lg:items-center">
+              <DateField label="Mulai Tanggal" value={startDate} max={endDate || undefined} onChange={withReset(setStartDate)} />
+              <DateField label="Sampai Tanggal" value={endDate} min={startDate || undefined} onChange={withReset(setEndDate)} />
+            </div>
             {isUnitNurse && (
               <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-semibold text-slate-700">
-                <input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} className="h-4 w-4 accent-[#126776]" />
+                <input type="checkbox" checked={mine} onChange={(e) => withReset(setMine)(e.target.checked)} className="h-4 w-4 accent-[#126776]" />
                 Hanya unit saya
               </label>
             )}
-            <button type="button" title="Muat ulang" onClick={() => { setSearch(''); setStatus(''); setMine(isUnitNurse); load(); }} className="inline-flex cursor-pointer items-center justify-center rounded-xl border border-slate-200 bg-slate-100 p-2.5 text-slate-500 transition hover:bg-slate-200">
+            <button type="button" title="Muat ulang" onClick={() => { setSearch(''); setStatus(''); setStartDate(''); setEndDate(''); setMine(isUnitNurse); setPage(1); load(); }} className="inline-flex cursor-pointer items-center justify-center rounded-xl border border-slate-200 bg-slate-100 p-2.5 text-slate-500 transition hover:bg-slate-200">
               <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             </button>
           </div>
@@ -280,6 +310,11 @@ export function ComplaintPage({ role }) {
               </div>
             ))}
           </div>
+        )}
+        {!loading && (
+          <Pagination pagination={pagination} shown={items.length} pageSize={pageSize}
+            onChange={(p) => { setPage(p); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+            onPageSizeChange={withReset(setPageSize)} />
         )}
       </div>
 

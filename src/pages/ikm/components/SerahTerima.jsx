@@ -7,6 +7,8 @@ import {
   Warehouse, Building, Shirt, HelpCircle, Info, X, Lock, Unlock,
   Scale, Zap
 } from 'lucide-react';
+import Pagination from '../../../components/Pagination';
+import usePaging from '../../../utils/usePaging';
 
 // Utility to convert string to Title Case
 const toTitleCase = (str) => {
@@ -239,6 +241,7 @@ export default function SerahTerima() {
   const [filterStatus, setFilterStatus] = useState('all');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const pg = usePaging();
 
   // Form tab states (New transaction - Day 1 Kotor)
   const [linensList, setLinensList] = useState([]);
@@ -302,7 +305,7 @@ export default function SerahTerima() {
   const editEmployeeSelectRef = useRef(null);
 
   // Refs to track previous filter and search query values to prevent duplicate mount runs
-  const prevFiltersRef = useRef({ startDate, endDate, filterStatus });
+  const prevFiltersRef = useRef({ startDate, endDate, filterStatus, page: pg.page, pageSize: pg.pageSize });
   const prevSearchQueryRef = useRef(searchQuery);
 
   // Click outside listener for searchable dropdowns
@@ -594,14 +597,16 @@ export default function SerahTerima() {
     const prev = prevFiltersRef.current;
     const hasChanged = prev.startDate !== startDate ||
       prev.endDate !== endDate ||
-      prev.filterStatus !== filterStatus;
+      prev.filterStatus !== filterStatus ||
+      prev.page !== pg.page ||
+      prev.pageSize !== pg.pageSize;
 
-    prevFiltersRef.current = { startDate, endDate, filterStatus };
+    prevFiltersRef.current = { startDate, endDate, filterStatus, page: pg.page, pageSize: pg.pageSize };
 
     if (hasChanged) {
       fetchHistory();
     }
-  }, [startDate, endDate, filterStatus, hospitalId]);
+  }, [startDate, endDate, filterStatus, pg.page, pg.pageSize, hospitalId]);
 
   // Auto-fetch on search query with debounce — skip initial mount by checking for actual changes
   useEffect(() => {
@@ -647,12 +652,14 @@ export default function SerahTerima() {
       if (endDate) url += `&endDate=${endDate}`;
       if (filterStatus !== 'all') url += `&status=${filterStatus}`;
       if (searchQuery) url += `&search=${encodeURIComponent(searchQuery)}`;
+      url += `&page=${pg.page}&limit=${pg.pageSize}`;
 
       const { data } = await axios.get(url, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (data?.success) {
         setTransactions(data.data);
+        pg.accept(data.pagination);
       }
     } catch (err) {
       console.error('Error fetching history:', err);
@@ -1443,7 +1450,7 @@ export default function SerahTerima() {
                     type="text"
                     placeholder="Cari nomor form, pengisi, atau catatan..."
                     value={searchQuery}
-                    onChange={e => setSearchQuery(e.target.value)}
+                    onChange={e => { setSearchQuery(e.target.value); pg.resetPage(); }}
                     className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] transition-all"
                   />
                 </div>
@@ -1457,14 +1464,14 @@ export default function SerahTerima() {
                     <input
                       type="date"
                       value={startDate}
-                      onChange={e => setStartDate(e.target.value)}
+                      onChange={e => { setStartDate(e.target.value); pg.resetPage(); }}
                       className="bg-transparent border-none text-slate-700 outline-none w-28 text-center cursor-pointer font-medium"
                     />
                     <span className="text-slate-400 font-semibold">s/d</span>
                     <input
                       type="date"
                       value={endDate}
-                      onChange={e => setEndDate(e.target.value)}
+                      onChange={e => { setEndDate(e.target.value); pg.resetPage(); }}
                       className="bg-transparent border-none text-slate-700 outline-none w-28 text-center cursor-pointer font-medium"
                     />
                   </div>
@@ -1473,7 +1480,7 @@ export default function SerahTerima() {
                   <div className="relative">
                     <select
                       value={filterStatus}
-                      onChange={e => setFilterStatus(e.target.value)}
+                      onChange={e => { setFilterStatus(e.target.value); pg.resetPage(); }}
                       className="pl-3.5 pr-9 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] cursor-pointer appearance-none min-w-[140px]"
                     >
                       <option value="all">Semua Status</option>
@@ -1490,7 +1497,7 @@ export default function SerahTerima() {
                   {/* Action Buttons */}
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => { setSearchQuery(''); setStartDate(''); setEndDate(''); setFilterStatus('all'); }}
+                      onClick={() => { setSearchQuery(''); setStartDate(''); setEndDate(''); setFilterStatus('all'); pg.resetPage(); }}
                       className="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-xl transition cursor-pointer active:scale-95 border border-slate-200"
                       title="Reset Filter"
                     >
@@ -1640,6 +1647,9 @@ export default function SerahTerima() {
                   );
                 })}
               </div>
+            )}
+            {!loadingHistory && (
+              <Pagination pagination={pg.pagination} shown={transactions.length} pageSize={pg.pageSize} onChange={pg.goTo} onPageSizeChange={pg.setPageSize} />
             )}
 
           </div>

@@ -1,5 +1,6 @@
 import { ikmPool, mainPool } from '../../db/pool.js';
 import { getSignatureUrl } from '../../middleware/upload.js';
+import { parsePaging, buildPagination, offsetOf } from '../../utils/paging.js';
 
 // Helper to format string to Capital Each Word (Title Case)
 const toTitleCase = (str) => {
@@ -73,12 +74,14 @@ export const getTransactions = async (req, res) => {
       matchedEmployeeIds = emps.map(e => e.employee_id);
     }
 
-    let query = `
+    const selectSql = `
       SELECT t.*, h.hospital_name, h.billing_by_kg, h.allow_express, h.kg_agreement,
         CASE WHEN t.total_kg_valet IS NULL THEN NULL ELSE t.total_kg_valet + COALESCE(h.kg_agreement, 0) END AS kg_total,
         (SELECT COUNT(*) FROM tr_linen_transaction_detail d WHERE d.transaction_id = t.id) as total_items,
         (SELECT COALESCE(SUM(qty_kotor), 0) FROM tr_linen_transaction_detail d WHERE d.transaction_id = t.id) as total_qty_kotor,
-        (SELECT COALESCE(SUM(qty_bersih), 0) FROM tr_linen_transaction_detail d WHERE d.transaction_id = t.id) as total_qty_bersih
+        (SELECT COALESCE(SUM(qty_bersih), 0) FROM tr_linen_transaction_detail d WHERE d.transaction_id = t.id) as total_qty_bersih`;
+    // Bagian FROM ... WHERE dipakai bersama oleh COUNT(*) dan query data
+    let query = `
       FROM tr_linen_transaction t
       INNER JOIN mst_hospital h ON t.hospital_id = h.id
       WHERE t.hospital_id = ?
@@ -111,9 +114,12 @@ export const getTransactions = async (req, res) => {
       }
     }
 
-    query += ` ORDER BY t.pickup_date DESC, t.id DESC`;
-
-    const [transactions] = await ikmPool.query(query, params);
+    const [[{ total }]] = await ikmPool.query(`SELECT COUNT(*) AS total ${query}`, params);
+    const pagination = buildPagination(parsePaging(req.query), total);
+    const [transactions] = await ikmPool.query(
+      `${selectSql} ${query} ORDER BY t.pickup_date DESC, t.id DESC LIMIT ? OFFSET ?`,
+      [...params, pagination.limit, offsetOf(pagination)]
+    );
 
     // Fetch employee name lookup
     const [employees] = await mainPool.query(
@@ -135,7 +141,8 @@ export const getTransactions = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      data: formattedTransactions
+      data: formattedTransactions,
+      pagination
     });
   } catch (error) {
     console.error("Error getting RS transactions:", error);

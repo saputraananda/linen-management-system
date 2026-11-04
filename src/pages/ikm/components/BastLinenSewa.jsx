@@ -4,6 +4,8 @@ import axios from 'axios';
 import { Calendar, ChevronDown, Clock, Download, Eye, Info, PlusCircle, RefreshCw, Search, Trash2 } from 'lucide-react';
 import exportBastLinenSewa, { renderBastHtml } from '../utils/exportBastLinenSewa';
 import kopSuratIkm from '../../../assets/images/kop_surat_ikm.png';
+import Pagination from '../../../components/Pagination';
+import usePaging from '../../../utils/usePaging';
 
 function nowLocal() {
   const d = new Date();
@@ -252,6 +254,10 @@ export default function BastLinenSewa() {
   const [linens, setLinens] = useState([]);
   const [entries, setEntries] = useState({});
   const [history, setHistory] = useState([]);
+  const [unitOptions, setUnitOptions] = useState([]);
+  const pg = usePaging();
+  // Setiap filter berubah, kembali ke halaman 1
+  const withReset = (setter) => (v) => { setter(v); pg.resetPage(); };
   const [historySearch, setHistorySearch] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -277,9 +283,17 @@ export default function BastLinenSewa() {
     const q = new URLSearchParams({ hospital_id: hospitalId });
     if (startDate) q.set('start_date', startDate);
     if (endDate) q.set('end_date', endDate);
+    if (historySearch.trim()) q.set('search', historySearch.trim());
+    if (historyUnit) q.set('unit', historyUnit);
+    q.set('page', String(pg.page));
+    q.set('limit', String(pg.pageSize));
     const { data } = await axios.get(`/api/ikm/bast-linen-sewa?${q}`, { headers: authHeaders() });
-    if (data.success) setHistory(data.data || []);
-  }, [hospitalId, startDate, endDate]);
+    if (data.success) {
+      setHistory(data.data || []);
+      setUnitOptions(data.units || []);
+      pg.accept(data.pagination);
+    }
+  }, [hospitalId, startDate, endDate, historySearch, historyUnit, pg.page, pg.pageSize, pg.accept]);
 
   const loadLinens = useCallback(async (rid, bastId) => {
     if (!hospitalId) return;
@@ -301,7 +315,10 @@ export default function BastLinenSewa() {
   }, [hospitalId]);
 
   useEffect(() => {
-    loadHistory().catch((err) => showToast(err.response?.data?.message || err.message, 'error'));
+    const t = setTimeout(() => {
+      loadHistory().catch((err) => showToast(err.response?.data?.message || err.message, 'error'));
+    }, 250);
+    return () => clearTimeout(t);
   }, [loadHistory]);
 
   useEffect(() => {
@@ -497,14 +514,7 @@ export default function BastLinenSewa() {
 
   const fieldClass = 'w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-800 outline-none focus:border-[#1ea59e] focus:ring-4 focus:ring-[#1ea59e]/10 disabled:bg-slate-100 disabled:text-slate-500';
   const visibleLinens = linens.filter((row) => String(row.linen_name || '').toLowerCase().includes(linenSearch.trim().toLowerCase()));
-  const unitOptions = [...new Set(history.map((row) => row.room_name || 'Seluruh Unit'))];
-  const visibleHistory = history.filter((row) => {
-    const unit = row.room_name || 'Seluruh Unit';
-    if (historyUnit && unit !== historyUnit) return false;
-    const q = historySearch.trim().toLowerCase();
-    if (!q) return true;
-    return [row.bast_number, row.sender_name, row.receiver_name, row.ga_head_name, unit].some((value) => String(value || '').toLowerCase().includes(q));
-  });
+  const visibleHistory = history; // pencarian, unit, tanggal, dan halaman sudah diproses di server
 
   return (
     <div className="min-h-screen bg-slate-50 py-6 text-slate-800 sm:py-10" style={{ colorScheme: 'light' }}>
@@ -709,25 +719,25 @@ export default function BastLinenSewa() {
                 type="text"
                 placeholder="Cari nomor BAST, pengirim, atau penerima..."
                 value={historySearch}
-                onChange={(e) => setHistorySearch(e.target.value)}
+                onChange={(e) => withReset(setHistorySearch)(e.target.value)}
                 className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-xs font-semibold text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-[#1ea59e] focus:ring-4 focus:ring-[#1ea59e]/10"
               />
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
                 <Calendar className="h-4 w-4 text-slate-400" />
-                <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-28 cursor-pointer border-none bg-transparent text-center font-medium text-slate-700 outline-none" />
+                <input type="date" value={startDate} onChange={(e) => withReset(setStartDate)(e.target.value)} className="w-28 cursor-pointer border-none bg-transparent text-center font-medium text-slate-700 outline-none" />
                 <span className="font-semibold text-slate-400">s/d</span>
-                <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-28 cursor-pointer border-none bg-transparent text-center font-medium text-slate-700 outline-none" />
+                <input type="date" value={endDate} onChange={(e) => withReset(setEndDate)(e.target.value)} className="w-28 cursor-pointer border-none bg-transparent text-center font-medium text-slate-700 outline-none" />
               </div>
               <div className="relative">
-                <select value={historyUnit} onChange={(e) => setHistoryUnit(e.target.value)} className="min-w-[140px] cursor-pointer appearance-none rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-3.5 pr-9 text-xs font-semibold text-slate-700 outline-none focus:border-[#1ea59e] focus:ring-4 focus:ring-[#1ea59e]/10">
+                <select value={historyUnit} onChange={(e) => withReset(setHistoryUnit)(e.target.value)} className="min-w-[140px] cursor-pointer appearance-none rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-3.5 pr-9 text-xs font-semibold text-slate-700 outline-none focus:border-[#1ea59e] focus:ring-4 focus:ring-[#1ea59e]/10">
                   <option value="">Semua Unit</option>
                   {unitOptions.map((name) => <option key={name} value={name}>{name}</option>)}
                 </select>
                 <ChevronDown className="pointer-events-none absolute inset-y-0 right-3 my-auto h-3.5 w-3.5 text-slate-400" />
               </div>
-              <button type="button" title="Reset filter" onClick={() => { setHistorySearch(''); setStartDate(''); setEndDate(''); setHistoryUnit(''); }} className="rounded-xl border border-slate-200 bg-slate-100 p-2.5 text-slate-500 transition hover:bg-slate-200">
+              <button type="button" title="Reset filter" onClick={() => { setHistorySearch(''); setStartDate(''); setEndDate(''); setHistoryUnit(''); pg.resetPage(); }} className="rounded-xl border border-slate-200 bg-slate-100 p-2.5 text-slate-500 transition hover:bg-slate-200">
                 <RefreshCw className="h-4 w-4" />
               </button>
             </div>
@@ -774,6 +784,7 @@ export default function BastLinenSewa() {
             ))}
           </div>
         )}
+        <Pagination pagination={pg.pagination} shown={visibleHistory.length} pageSize={pg.pageSize} onChange={pg.goTo} onPageSizeChange={pg.setPageSize} />
       </div>
       )}
       {preview && createPortal(

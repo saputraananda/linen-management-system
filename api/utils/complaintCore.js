@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import multer from 'multer';
 import { ikmPool } from '../db/pool.js';
+import { parsePaging, buildPagination, offsetOf } from './paging.js';
 
 const MAX_PHOTOS = 5;
 const MAX_SIZE = 5 * 1024 * 1024;
@@ -219,26 +220,42 @@ export const getLinenOptions = async (req, res) => {
   } catch (e) { serverError(res, 'getLinenOptions', e); }
 };
 
+// Filter rentang Tanggal Pengajuan (complaint_date). Nilai selain YYYY-MM-DD diabaikan.
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const addDateRange = (query, where, params) => {
+  const from = String(query.startDate || '');
+  const to = String(query.endDate || '');
+  if (DATE_RE.test(from)) { where.push('c.complaint_date >= ?'); params.push(from); }
+  if (DATE_RE.test(to)) { where.push('c.complaint_date <= ?'); params.push(to); }
+};
+
 export const listComplaints = async (req, res) => {
   try {
     const u = req.user;
     const where = ['c.hospital_id = ?'];
     const params = [u.id];
+    const paging = parsePaging(req.query);
 
     if (req.query.mine === '1' && u.role === 'unit' && u.userUnitId) {
       const rooms = (u.roomIds || []).map(Number).filter(Boolean);
-      if (!rooms.length) return res.json({ success: true, data: [] });
+      if (!rooms.length) return res.json({ success: true, data: [], pagination: buildPagination(paging, 0) });
       where.push('c.room_id IN (?)');
       params.push(rooms);
     }
     if (req.query.status) { where.push('c.status = ?'); params.push(String(req.query.status)); }
+    addDateRange(req.query, where, params);
     const q = clean(req.query.q, 100);
     if (q) {
       where.push('(c.complaint_number LIKE ? OR c.complaint_type LIKE ? OR c.reporter_name LIKE ? OR c.description LIKE ?)');
       params.push(...Array(4).fill(`%${q}%`));
     }
-    const [rows] = await ikmPool.query(`${SELECT_LIST} WHERE ${where.join(' AND ')} ORDER BY c.created_at DESC, c.id DESC LIMIT 500`, params);
-    res.json({ success: true, data: rows.map((c) => ({ ...c, ...permsOf(c, u) })) });
+    const whereSql = where.join(' AND ');
+    const [[{ total }]] = await ikmPool.query(`SELECT COUNT(*) AS total FROM tr_complaint c WHERE ${whereSql}`, params);
+    const pagination = buildPagination(paging, total);
+    const [rows] = await ikmPool.query(
+      `${SELECT_LIST} WHERE ${whereSql} ORDER BY c.created_at DESC, c.id DESC LIMIT ? OFFSET ?`,
+      [...params, pagination.limit, offsetOf(pagination)]);
+    res.json({ success: true, data: rows.map((c) => ({ ...c, ...permsOf(c, u) })), pagination });
   } catch (e) { serverError(res, 'listComplaints', e); }
 };
 
@@ -416,4 +433,4 @@ export const deleteComplaint = async (req, res) => {
 
 
 // Dipakai controller Unit / RS / IKM
-export { clean, actorOf, writeLog, emit, serverError, permsOf, photoUrl, SELECT_LIST, URL_PREFIX };
+export { clean, actorOf, writeLog, emit, serverError, permsOf, photoUrl, SELECT_LIST, URL_PREFIX, addDateRange };

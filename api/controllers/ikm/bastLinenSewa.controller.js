@@ -1,4 +1,5 @@
 import { ikmPool } from "../../db/pool.js";
+import { parsePaging, buildPagination, offsetOf } from "../../utils/paging.js";
 
 function q(sql, params) {
   return ikmPool.query(sql, params);
@@ -360,12 +361,13 @@ export const listBast = async (req, res) => {
     };
     const startDate = day(req.query.start_date);
     const endDate = day(req.query.end_date);
+    const UNIT_ALL = "Seluruh Unit";
     const where = ["b.hospital_id = ?"];
-    const params = [hospitalId];
-    if (startDate) { where.push("DATE(b.bast_date) >= ?"); params.push(startDate); }
-    if (endDate) { where.push("DATE(b.bast_date) <= ?"); params.push(endDate); }
-    const [rows] = await q(
-      `SELECT b.id, b.bast_number, b.hospital_id, b.room_id,
+    const baseParams = [hospitalId];
+    if (startDate) { where.push("DATE(b.bast_date) >= ?"); baseParams.push(startDate); }
+    if (endDate) { where.push("DATE(b.bast_date) <= ?"); baseParams.push(endDate); }
+    // Satu baris per BAST. Tanpa ORDER BY/LIMIT karena dibungkus query luar untuk filter unit/pencarian dan paging.
+    const baseSql = (whereSql) => `SELECT b.id, b.bast_number, b.hospital_id, b.room_id,
               DATE_FORMAT(b.bast_date, '%Y-%m-%d %H:%i:%s') AS bast_date,
               b.sender_name, b.sender_position, COALESCE(b.receiver_name, b.rs_inspector_name) AS receiver_name, b.receiver_position, b.ga_head_name, b.ga_head_position,
               CASE
@@ -378,14 +380,34 @@ export const listBast = async (req, res) => {
        LEFT JOIN mst_rooms_rs r ON r.id = b.room_id
        LEFT JOIN tr_bast_linen_sewa_detail d ON d.bast_id = b.id
        LEFT JOIN mst_rooms_rs rd ON rd.id = d.room_id
-       WHERE ${where.join(" AND ")}
+       WHERE ${whereSql}
        GROUP BY b.id, b.bast_number, b.hospital_id, b.room_id, b.bast_date,
-                b.sender_name, b.sender_position, b.receiver_name, b.receiver_position, b.ga_head_name, b.ga_head_position, b.rs_inspector_name, r.room_name
-       ORDER BY b.bast_date DESC, b.id DESC
-       LIMIT 200`,
-      params
+                b.sender_name, b.sender_position, b.receiver_name, b.receiver_position, b.ga_head_name, b.ga_head_position, b.rs_inspector_name, r.room_name`;
+
+    // Label Unit dihitung di query dasar, jadi unit dan pencarian disaring di query luar
+    const outer = [];
+    const outerParams = [];
+    const unit = String(req.query.unit || "").trim();
+    if (unit) { outer.push("COALESCE(t.room_name, ?) = ?"); outerParams.push(UNIT_ALL, unit); }
+    const search = String(req.query.search || "").trim().slice(0, 100).toLowerCase().replace(/[\\%_]/g, "\\$&");
+    if (search) {
+      outer.push("LOWER(CONCAT_WS(' ', t.bast_number, t.sender_name, t.receiver_name, t.ga_head_name, COALESCE(t.room_name, ?))) LIKE ?");
+      outerParams.push(UNIT_ALL, `%${search}%`);
+    }
+    const outerSql = outer.length ? `WHERE ${outer.join(" AND ")}` : "";
+    const params = [...baseParams, ...outerParams];
+    const base = baseSql(where.join(" AND "));
+
+    const [[{ total }]] = await q(`SELECT COUNT(*) AS total FROM (${base}) t ${outerSql}`, params);
+    const pagination = buildPagination(parsePaging(req.query), total);
+    const [rows] = await q(
+      `SELECT t.* FROM (${base}) t ${outerSql} ORDER BY t.bast_date DESC, t.id DESC LIMIT ? OFFSET ?`,
+      [...params, pagination.limit, offsetOf(pagination)]
     );
-    res.json({ success: true, data: rows });
+    // Opsi dropdown Unit: seluruh unit yang pernah muncul di rumah sakit ini (tidak ikut filter)
+    const [unitRows] = await q(
+      `SELECT DISTINCT COALESCE(t.room_name, ?) AS unit FROM (${baseSql("b.hospital_id = ?")}) t ORDER BY unit`, [UNIT_ALL, hospitalId]);
+    res.json({ success: true, data: rows, pagination, units: unitRows.map((u) => u.unit) });
   } catch (err) {
     sendError(res, err);
   }

@@ -1,6 +1,7 @@
 import { mainPool, ikmPool } from '../../db/pool.js';
+import { parsePaging, buildPagination, offsetOf } from '../../utils/paging.js';
 import {
-  clean, actorOf, writeLog, emit, serverError, photoUrl, SELECT_LIST,
+  clean, actorOf, writeLog, emit, serverError, photoUrl, SELECT_LIST, addDateRange,
 } from '../../utils/complaintCore.js';
 
 // Tim IKM (valet) melihat komplain semua rumah sakit — hanya baca.
@@ -55,14 +56,20 @@ export const listComplaints = async (req, res) => {
     const where = ['c.hospital_id = ?'];
     const params = [hospitalId];
     if (STATUSES.includes(req.query.status)) { where.push('c.status = ?'); params.push(req.query.status); }
+    addDateRange(req.query, where, params);
     const q = clean(req.query.q, 100);
     if (q) {
       where.push('(c.complaint_number LIKE ? OR c.complaint_type LIKE ? OR c.reporter_name LIKE ? OR c.description LIKE ? OR h.hospital_name LIKE ?)');
       params.push(...Array(5).fill(`%${q}%`));
     }
+    const whereSql = where.join(' AND ');
+    const [[{ total }]] = await ikmPool.query(
+      `SELECT COUNT(*) AS total FROM tr_complaint c LEFT JOIN mst_hospital h ON h.id = c.hospital_id WHERE ${whereSql}`, params);
+    const pagination = buildPagination(parsePaging(req.query), total);
     const [rows] = await ikmPool.query(
-      `${SELECT_IKM} ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY c.created_at DESC, c.id DESC LIMIT 500`, params);
-    res.json({ success: true, canManage: a.canManage, data: rows });
+      `${SELECT_IKM} WHERE ${whereSql} ORDER BY c.created_at DESC, c.id DESC LIMIT ? OFFSET ?`,
+      [...params, pagination.limit, offsetOf(pagination)]);
+    res.json({ success: true, canManage: a.canManage, data: rows, pagination });
   } catch (e) { serverError(res, 'ikm listComplaints', e); }
 };
 
