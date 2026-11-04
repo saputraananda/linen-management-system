@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom';
 import axios from 'axios';
 import { Calendar, ChevronDown, Download, Eye, RefreshCw, Search, X } from 'lucide-react';
 import exportBastLinenSewa from '../utils/exportBastLinenSewa';
+import Pagination from '../../../components/Pagination';
+import usePaging from '../../../utils/usePaging';
 
 function authHeaders() {
   return { Authorization: `Bearer ${localStorage.getItem('token') || ''}` };
@@ -21,6 +23,10 @@ function fullDate(value) {
 
 export default function RSBastLinenSewa() {
   const [history, setHistory] = useState([]);
+  const [unitOptions, setUnitOptions] = useState([]);
+  const pg = usePaging();
+  // Setiap filter berubah, kembali ke halaman 1
+  const withReset = (setter) => (v) => { setter(v); pg.resetPage(); };
   const [historySearch, setHistorySearch] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -42,30 +48,30 @@ export default function RSBastLinenSewa() {
     return () => window.removeEventListener('keydown', onKey);
   }, [preview]);
 
+  // Pencarian, unit, tanggal, dan halaman diproses di server
   const loadHistory = useCallback(() => {
-    axios.get('/api/rs/bast-linen-sewa', { headers: authHeaders() })
+    axios.get('/api/rs/bast-linen-sewa', {
+      headers: authHeaders(),
+      params: {
+        search: historySearch.trim() || undefined, unit: historyUnit || undefined,
+        start_date: startDate || undefined, end_date: endDate || undefined,
+        page: pg.page, limit: pg.pageSize,
+      },
+    })
       .then(({ data }) => {
         if (!data.success) return;
         setHistory(data.data || []);
+        setUnitOptions(data.units || []);
         setHospitalLabel(data.hospital_name || '');
+        pg.accept(data.pagination);
       })
       .catch((err) => showToast(err.response?.data?.message || 'Gagal memuat riwayat', 'error'));
-  }, []);
+  }, [historySearch, historyUnit, startDate, endDate, pg.page, pg.pageSize, pg.accept]);
 
-  useEffect(() => { loadHistory(); }, [loadHistory]);
+  useEffect(() => { const t = setTimeout(loadHistory, 250); return () => clearTimeout(t); }, [loadHistory]);
 
   const hospitalName = hospitalLabel || history[0]?.hospital_name || 'Rumah Sakit';
-  const unitOptions = [...new Set(history.map((row) => row.room_name || 'Seluruh Unit'))];
-  const visibleHistory = history.filter((row) => {
-    const day = String(row.bast_date || '').slice(0, 10);
-    if (startDate && day < startDate) return false;
-    if (endDate && day > endDate) return false;
-    const unit = row.room_name || 'Seluruh Unit';
-    if (historyUnit && unit !== historyUnit) return false;
-    const q = historySearch.trim().toLowerCase();
-    if (!q) return true;
-    return [row.bast_number, row.sender_name, row.receiver_name, row.ga_head_name, unit].some((value) => String(value || '').toLowerCase().includes(q));
-  });
+  const visibleHistory = history;
 
   const openPreview = async (id) => {
     try {
@@ -121,13 +127,13 @@ export default function RSBastLinenSewa() {
             <div className="col-span-1 space-y-1.5 sm:col-span-2 lg:col-span-1">
               <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400">Cari BAST</label>
               <div className="relative">
-                <input type="text" value={historySearch} onChange={(e) => setHistorySearch(e.target.value)} placeholder="No. BAST / Pengirim / Penerima..." className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-4 text-xs font-semibold text-slate-800 transition-all focus:border-teal-500 focus:outline-none focus:ring-4 focus:ring-teal-500/5" />
+                <input type="text" value={historySearch} onChange={(e) => withReset(setHistorySearch)(e.target.value)} placeholder="No. BAST / Pengirim / Penerima..." className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-4 text-xs font-semibold text-slate-800 transition-all focus:border-teal-500 focus:outline-none focus:ring-4 focus:ring-teal-500/5" />
                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400"><Search className="h-4 w-4" /></div>
               </div>
             </div>
             <div className="space-y-1.5">
               <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400">Unit</label>
-              <select value={historyUnit} onChange={(e) => setHistoryUnit(e.target.value)} className="block w-full cursor-pointer rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold text-slate-700 transition-all focus:border-teal-500 focus:outline-none focus:ring-4 focus:ring-teal-500/5">
+              <select value={historyUnit} onChange={(e) => withReset(setHistoryUnit)(e.target.value)} className="block w-full cursor-pointer rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold text-slate-700 transition-all focus:border-teal-500 focus:outline-none focus:ring-4 focus:ring-teal-500/5">
                 <option value="">Semua Unit</option>
                 {unitOptions.map((name) => <option key={name} value={name}>{name}</option>)}
               </select>
@@ -135,14 +141,14 @@ export default function RSBastLinenSewa() {
             <div className="space-y-1.5">
               <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400">Mulai Tanggal</label>
               <div className="relative">
-                <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="block w-full cursor-pointer rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-4 text-xs font-semibold text-slate-700 transition-all focus:border-teal-500 focus:outline-none focus:ring-4 focus:ring-teal-500/5" />
+                <input type="date" value={startDate} onChange={(e) => withReset(setStartDate)(e.target.value)} className="block w-full cursor-pointer rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-4 text-xs font-semibold text-slate-700 transition-all focus:border-teal-500 focus:outline-none focus:ring-4 focus:ring-teal-500/5" />
                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400"><Calendar className="h-4 w-4" /></div>
               </div>
             </div>
             <div className="space-y-1.5">
               <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400">Sampai Tanggal</label>
               <div className="relative">
-                <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="block w-full cursor-pointer rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-4 text-xs font-semibold text-slate-700 transition-all focus:border-teal-500 focus:outline-none focus:ring-4 focus:ring-teal-500/5" />
+                <input type="date" value={endDate} onChange={(e) => withReset(setEndDate)(e.target.value)} className="block w-full cursor-pointer rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-4 text-xs font-semibold text-slate-700 transition-all focus:border-teal-500 focus:outline-none focus:ring-4 focus:ring-teal-500/5" />
                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400"><Calendar className="h-4 w-4" /></div>
               </div>
             </div>
@@ -186,6 +192,7 @@ export default function RSBastLinenSewa() {
             ))}
           </div>
         )}
+        <Pagination pagination={pg.pagination} shown={visibleHistory.length} pageSize={pg.pageSize} onChange={pg.goTo} onPageSizeChange={pg.setPageSize} />
       </div>
 
       {preview && createPortal(

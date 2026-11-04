@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
-import { Search, RefreshCw, MessageSquareWarning, Camera, Clock, Package, Eye, Info, ChevronDown } from 'lucide-react';
+import { Search, RefreshCw, MessageSquareWarning, Camera, Clock, Package, Eye, Info, ChevronDown, X } from 'lucide-react';
 import {
-  STATUS, ACTION, OWNERSHIP, PhotoGrid, labelCls, inputCls, fmtDate, fmtDateTime, auth, errMsg, Badge, Modal,
+  STATUS, ACTION, OWNERSHIP, PhotoGrid, labelCls, inputCls, fmtDate, fmtDateTime, auth, errMsg, Badge, Modal, DateField,
 } from '../../../components/ComplaintShared';
+import Pagination from '../../../components/Pagination';
+import usePaging from '../../../utils/usePaging';
 
 const API = '/api/ikm/complaint';
 
@@ -17,6 +19,11 @@ export default function ComplaintLinen() {
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const pg = usePaging();
+  // Setiap filter berubah, kembali ke halaman 1
+  const withReset = (setter) => (v) => { setter(v); pg.resetPage(); };
   const hospitalId = sessionStorage.getItem('valet_hospital_id') || '';
   const hospitalName = sessionStorage.getItem('valet_hospital_name') || 'Rumah Sakit';
   const [detail, setDetail] = useState(null);
@@ -26,17 +33,22 @@ export default function ComplaintLinen() {
     setLoading(true);
     try {
       const { data } = await axios.get(API, {
-        ...auth(), params: { q: search || undefined, status: status || undefined, hospitalId },
+        ...auth(), params: {
+          q: search || undefined, status: status || undefined, hospitalId,
+          startDate: startDate || undefined, endDate: endDate || undefined,
+          page: pg.page, limit: pg.pageSize,
+        },
       });
       setItems(data.data);
       setCanManage(!!data.canManage);
+      pg.accept(data.pagination);
       setError('');
     } catch (e) {
       setError(errMsg(e, 'Gagal memuat komplain'));
     } finally {
       setLoading(false);
     }
-  }, [search, status, hospitalId]);
+  }, [search, status, startDate, endDate, hospitalId, pg.page, pg.pageSize, pg.accept]);
 
   useEffect(() => { const t = setTimeout(load, 250); return () => clearTimeout(t); }, [load]);
   const openDetail = async (id) => {
@@ -81,22 +93,38 @@ export default function ComplaintLinen() {
           </div>
         ) : (<>
         <div className="space-y-4 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="col-span-1 space-y-1.5 sm:col-span-2 lg:col-span-1">
               <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400">Cari Komplain</label>
               <div className="relative">
-                <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="No. komplain / Jenis / Pelapor / Deskripsi..." className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-4 text-xs font-semibold text-slate-800 transition-all focus:border-teal-500 focus:outline-none focus:ring-4 focus:ring-teal-500/5" />
+                <input type="text" value={search} onChange={(e) => withReset(setSearch)(e.target.value)} placeholder="No. komplain / Jenis / Pelapor / Deskripsi..." className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-4 text-xs font-semibold text-slate-800 transition-all focus:border-teal-500 focus:outline-none focus:ring-4 focus:ring-teal-500/5" />
                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400"><Search className="h-4 w-4" /></div>
               </div>
             </div>
             <div className="space-y-1.5">
               <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400">Status</label>
-              <select value={status} onChange={(e) => setStatus(e.target.value)} className="block w-full cursor-pointer rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold text-slate-700 transition-all focus:border-teal-500 focus:outline-none focus:ring-4 focus:ring-teal-500/5">
+              <select value={status} onChange={(e) => withReset(setStatus)(e.target.value)} className="block w-full cursor-pointer rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold text-slate-700 transition-all focus:border-teal-500 focus:outline-none focus:ring-4 focus:ring-teal-500/5">
                 <option value="">Semua Status</option>
                 {Object.entries(STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
               </select>
             </div>
+            <div className="space-y-1.5">
+              <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400">Mulai Tanggal</label>
+              <DateField label="Mulai Tanggal" value={startDate} max={endDate || undefined} onChange={withReset(setStartDate)} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400">Sampai Tanggal</label>
+              <DateField label="Sampai Tanggal" value={endDate} min={startDate || undefined} onChange={withReset(setEndDate)} />
+            </div>
           </div>
+          {(search || status || startDate || endDate) && (
+            <div className="flex justify-end">
+              <button type="button" onClick={() => { setSearch(''); setStatus(''); setStartDate(''); setEndDate(''); pg.resetPage(); }}
+                className="flex cursor-pointer items-center gap-1 text-xs font-bold text-teal-600 transition hover:text-teal-700">
+                <X className="h-3 w-3" /> Bersihkan Filter
+              </button>
+            </div>
+          )}
         </div>
 
         {loading ? (
@@ -137,6 +165,7 @@ export default function ComplaintLinen() {
             ))}
           </div>
         )}
+        {!loading && <Pagination pagination={pg.pagination} shown={items.length} pageSize={pg.pageSize} onChange={pg.goTo} onPageSizeChange={pg.setPageSize} />}
         </>)}
       </div>
 

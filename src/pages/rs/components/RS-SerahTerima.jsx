@@ -12,6 +12,8 @@ import kopSuratIkm from '../../../assets/images/kop_surat_ikm.png';
 import exportSerahTerimaLinen from '../utils/exportSerahTerimaLinen.js';
 import exportSerahTerimaLinenPDF from '../utils/exportSerahTerimaLinenPDF.js';
 import { socket } from '../../../utils/socket';
+import Pagination from '../../../components/Pagination';
+import usePaging from '../../../utils/usePaging';
 
 // Helper to convert string to Title Case
 const toTitleCase = (str) => {
@@ -30,6 +32,10 @@ export default function RSSerahTerima() {
     const [filterStatus, setFilterStatus] = useState('all');
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
+    const pg = usePaging();
+    // Nilai filter/halaman terbaru; dibaca fetchHistory agar pemanggil lama (socket, setelah edit) tidak memakai state basi
+    const queryRef = useRef({});
+    queryRef.current = { searchQuery, filterStatus, startDate, endDate, page: pg.page, pageSize: pg.pageSize };
     const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
     // Details Modal States
@@ -230,7 +236,7 @@ export default function RSSerahTerima() {
     const [downloadingTxId, setDownloadingTxId] = useState(null);
     const [downloadingPdfTxId, setDownloadingPdfTxId] = useState(null);
 
-    const prevFiltersRef = useRef({ startDate, endDate, filterStatus });
+    const prevFiltersRef = useRef({ startDate, endDate, filterStatus, page: pg.page, pageSize: pg.pageSize });
 
     const showToast = (message, type = 'success') => {
         setToast({ show: true, message, type });
@@ -266,11 +272,12 @@ export default function RSSerahTerima() {
         setLoadingHistory(true);
         try {
             const token = localStorage.getItem('token');
-            const params = {};
-            if (startDate) params.startDate = startDate;
-            if (endDate) params.endDate = endDate;
-            if (filterStatus !== 'all') params.status = filterStatus;
-            if (searchQuery.trim()) params.search = searchQuery;
+            const f = queryRef.current;
+            const params = { page: f.page, limit: f.pageSize };
+            if (f.startDate) params.startDate = f.startDate;
+            if (f.endDate) params.endDate = f.endDate;
+            if (f.filterStatus !== 'all') params.status = f.filterStatus;
+            if (f.searchQuery.trim()) params.search = f.searchQuery;
 
             const { data } = await axios.get('/api/rs/transactions', {
                 headers: { Authorization: `Bearer ${token}` },
@@ -279,6 +286,7 @@ export default function RSSerahTerima() {
 
             if (data?.success) {
                 setTransactions(data.data || []);
+                pg.accept(data.pagination);
             }
         } catch (err) {
             console.error('Error fetching transactions:', err);
@@ -450,14 +458,16 @@ export default function RSSerahTerima() {
         const prev = prevFiltersRef.current;
         const hasChanged = prev.startDate !== startDate ||
             prev.endDate !== endDate ||
-            prev.filterStatus !== filterStatus;
+            prev.filterStatus !== filterStatus ||
+            prev.page !== pg.page ||
+            prev.pageSize !== pg.pageSize;
 
-        prevFiltersRef.current = { startDate, endDate, filterStatus };
+        prevFiltersRef.current = { startDate, endDate, filterStatus, page: pg.page, pageSize: pg.pageSize };
 
         if (hasChanged) {
             fetchHistory();
         }
-    }, [startDate, endDate, filterStatus]);
+    }, [startDate, endDate, filterStatus, pg.page, pg.pageSize]);
 
     // Debounced search query
     useEffect(() => {
@@ -473,6 +483,7 @@ export default function RSSerahTerima() {
         setFilterStatus('all');
         setStartDate('');
         setEndDate('');
+        pg.resetPage();
     };
 
     return (
@@ -513,7 +524,7 @@ export default function RSSerahTerima() {
                                     <input
                                         type="text"
                                         value={searchQuery}
-                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        onChange={(e) => { setSearchQuery(e.target.value); pg.resetPage(); }}
                                         placeholder="No. Form / Catatan / Nama..."
                                         className="block w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-4 focus:ring-teal-500/5 focus:border-teal-500 transition-all text-slate-800"
                                     />
@@ -528,7 +539,7 @@ export default function RSSerahTerima() {
                                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Status</label>
                                 <select
                                     value={filterStatus}
-                                    onChange={(e) => setFilterStatus(e.target.value)}
+                                    onChange={(e) => { setFilterStatus(e.target.value); pg.resetPage(); }}
                                     className="block w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-4 focus:ring-teal-500/5 focus:border-teal-500 transition-all text-slate-700 cursor-pointer"
                                 >
                                     <option value="all">Semua Status</option>
@@ -544,7 +555,7 @@ export default function RSSerahTerima() {
                                     <input
                                         type="date"
                                         value={startDate}
-                                        onChange={(e) => setStartDate(e.target.value)}
+                                        onChange={(e) => { setStartDate(e.target.value); pg.resetPage(); }}
                                         className="block w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-4 focus:ring-teal-500/5 focus:border-teal-500 transition-all text-slate-700 cursor-pointer"
                                     />
                                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
@@ -560,7 +571,7 @@ export default function RSSerahTerima() {
                                     <input
                                         type="date"
                                         value={endDate}
-                                        onChange={(e) => setEndDate(e.target.value)}
+                                        onChange={(e) => { setEndDate(e.target.value); pg.resetPage(); }}
                                         className="block w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-4 focus:ring-teal-500/5 focus:border-teal-500 transition-all text-slate-700 cursor-pointer"
                                     />
                                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
@@ -628,7 +639,7 @@ export default function RSSerahTerima() {
                                                     className="hover:bg-slate-50/40 transition-colors cursor-pointer group"
                                                 >
                                                     <td className="py-4 px-4 text-center text-slate-400 font-medium">
-                                                        {index + 1}
+                                                        {(pg.pagination.page - 1) * pg.pagination.limit + index + 1}
                                                     </td>
                                                     <td className="py-4 px-4 font-bold text-slate-900 group-hover:text-teal-700 transition-colors">
                                                         {tx.form_number}
@@ -747,6 +758,9 @@ export default function RSSerahTerima() {
                                 </table>
                             </div>
                         </div>
+                    )}
+                    {!loadingHistory && (
+                        <Pagination pagination={pg.pagination} shown={transactions.length} pageSize={pg.pageSize} onChange={pg.goTo} onPageSizeChange={pg.setPageSize} />
                     )}
 
                 </div>

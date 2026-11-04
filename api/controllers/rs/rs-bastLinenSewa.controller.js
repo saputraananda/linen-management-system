@@ -1,4 +1,5 @@
 import { ikmPool } from '../../db/pool.js';
+import { parsePaging, buildPagination, offsetOf } from '../../utils/paging.js';
 
 function linenDisplayName(row) {
   const custom = String(row.hospital_linen_name || "").trim();
@@ -16,12 +17,11 @@ function sendError(res, err) {
   return res.status(500).json({ success: false, message: 'Gagal memuat BAST' });
 }
 
-export const listBast = async (req, res) => {
-  try {
-    const hospitalId = Number(req.user?.id);
-    if (!hospitalId) return res.status(401).json({ success: false, message: 'Akses ditolak' });
-    const [rows] = await ikmPool.query(
-      `SELECT b.id, b.bast_number, b.hospital_id, h.hospital_name, b.room_id,
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const UNIT_ALL = 'Seluruh Unit';
+
+// Satu baris per BAST (ringkasan). dateSql opsional membatasi tanggal BAST (sudah divalidasi pemanggil).
+const bastBaseSql = (dateSql = '') => `SELECT b.id, b.bast_number, b.hospital_id, h.hospital_name, b.room_id,
               DATE_FORMAT(b.bast_date, '%Y-%m-%d %H:%i:%s') AS bast_date,
               b.sender_name, b.sender_position, COALESCE(b.receiver_name, b.rs_inspector_name) AS receiver_name, b.receiver_position, b.ga_head_name, b.ga_head_position,
               CASE
@@ -35,15 +35,51 @@ export const listBast = async (req, res) => {
        LEFT JOIN mst_rooms_rs r ON r.id = b.room_id
        LEFT JOIN tr_bast_linen_sewa_detail d ON d.bast_id = b.id
        LEFT JOIN mst_rooms_rs rd ON rd.id = d.room_id
-       WHERE b.hospital_id = ?
+       WHERE b.hospital_id = ? ${dateSql}
        GROUP BY b.id, b.bast_number, b.hospital_id, h.hospital_name, b.room_id, b.bast_date,
-                b.sender_name, b.sender_position, b.receiver_name, b.receiver_position, b.ga_head_name, b.ga_head_position, b.rs_inspector_name, r.room_name
-       ORDER BY b.bast_date DESC, b.id DESC
-       LIMIT 200`,
-      [hospitalId]
+                b.sender_name, b.sender_position, b.receiver_name, b.receiver_position, b.ga_head_name, b.ga_head_position, b.rs_inspector_name, r.room_name`;
+
+// Query: search (no. BAST/pengirim/penerima/kepala GA/unit), unit, start_date, end_date, page, limit.
+// Respons menyertakan `units` (semua unit yang pernah muncul) untuk dropdown filter.
+export const listBast = async (req, res) => {
+  try {
+    const hospitalId = Number(req.user?.id);
+    if (!hospitalId) return res.status(401).json({ success: false, message: 'Akses ditolak' });
+    const paging = parsePaging(req.query);
+
+    const dateSql = [];
+    const baseParams = [hospitalId];
+    const from = String(req.query.start_date || '');
+    const to = String(req.query.end_date || '');
+    if (DATE_RE.test(from)) { dateSql.push('AND DATE(b.bast_date) >= ?'); baseParams.push(from); }
+    if (DATE_RE.test(to)) { dateSql.push('AND DATE(b.bast_date) <= ?'); baseParams.push(to); }
+    const base = bastBaseSql(dateSql.join(' '));
+
+    // Label Unit dihitung di query dasar, jadi unit dan pencarian disaring di query luar
+    const outer = [];
+    const outerParams = [];
+    const unit = String(req.query.unit || '').trim();
+    if (unit) { outer.push('COALESCE(t.room_name, ?) = ?'); outerParams.push(UNIT_ALL, unit); }
+    const q = String(req.query.search || '').trim().slice(0, 100).toLowerCase().replace(/[\\%_]/g, '\\$&');
+    if (q) {
+      outer.push("LOWER(CONCAT_WS(' ', t.bast_number, t.sender_name, t.receiver_name, t.ga_head_name, COALESCE(t.room_name, ?))) LIKE ?");
+      outerParams.push(UNIT_ALL, `%${q}%`);
+    }
+    const whereSql = outer.length ? `WHERE ${outer.join(' AND ')}` : '';
+    const params = [...baseParams, ...outerParams];
+
+    const [[{ total }]] = await ikmPool.query(`SELECT COUNT(*) AS total FROM (${base}) t ${whereSql}`, params);
+    const pagination = buildPagination(paging, total);
+    const [rows] = await ikmPool.query(
+      `SELECT t.* FROM (${base}) t ${whereSql} ORDER BY t.bast_date DESC, t.id DESC LIMIT ? OFFSET ?`,
+      [...params, pagination.limit, offsetOf(pagination)]
     );
+    const [unitRows] = await ikmPool.query(
+      `SELECT DISTINCT COALESCE(t.room_name, ?) AS unit FROM (${bastBaseSql()}) t ORDER BY unit`, [UNIT_ALL, hospitalId]);
     const [hosp] = await ikmPool.query('SELECT hospital_name FROM mst_hospital WHERE id = ? LIMIT 1', [hospitalId]);
-    res.json({ success: true, data: rows, hospital_name: hosp[0]?.hospital_name || '' });
+    res.json({
+      success: true, data: rows, pagination, units: unitRows.map((u) => u.unit), hospital_name: hosp[0]?.hospital_name || '',
+    });
   } catch (err) {
     sendError(res, err);
   }
