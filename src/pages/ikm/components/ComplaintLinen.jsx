@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
-import { Search, RefreshCw, MessageSquareWarning, Camera, Clock, Package, Eye, Info, ChevronDown, X } from 'lucide-react';
+import { Search, RefreshCw, MessageSquareWarning, Camera, Clock, Eye, Info, ChevronDown, X } from 'lucide-react';
 import {
-  STATUS, ACTION, OWNERSHIP, PhotoGrid, labelCls, inputCls, fmtDate, fmtDateTime, auth, errMsg, Badge, Modal, DateField,
+  STATUS, ACTION, PhotoGrid, labelCls, inputCls, fmtDate, fmtDateTime, auth, errMsg, Badge, Modal, DateField, ItemsSummary, LinenItems,
 } from '../../../components/ComplaintShared';
 import Pagination from '../../../components/Pagination';
 import usePaging from '../../../utils/usePaging';
@@ -92,80 +92,75 @@ export default function ComplaintLinen() {
             </div>
           </div>
         ) : (<>
-        <div className="space-y-4 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="col-span-1 space-y-1.5 sm:col-span-2 lg:col-span-1">
-              <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400">Cari Komplain</label>
-              <div className="relative">
-                <input type="text" value={search} onChange={(e) => withReset(setSearch)(e.target.value)} placeholder="No. komplain / Jenis / Pelapor / Deskripsi..." className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-4 text-xs font-semibold text-slate-800 transition-all focus:border-teal-500 focus:outline-none focus:ring-4 focus:ring-teal-500/5" />
-                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400"><Search className="h-4 w-4" /></div>
+          <div className="space-y-4 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="col-span-1 space-y-1.5 sm:col-span-2 lg:col-span-1">
+                <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400">Cari Komplain</label>
+                <div className="relative">
+                  <input type="text" value={search} onChange={(e) => withReset(setSearch)(e.target.value)} placeholder="No. komplain / Jenis / Pelapor / Deskripsi..." className="block w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-4 text-xs font-semibold text-slate-800 transition-all focus:border-teal-500 focus:outline-none focus:ring-4 focus:ring-teal-500/5" />
+                  <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400"><Search className="h-4 w-4" /></div>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400">Status</label>
+                <select value={status} onChange={(e) => withReset(setStatus)(e.target.value)} className="block w-full cursor-pointer rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold text-slate-700 transition-all focus:border-teal-500 focus:outline-none focus:ring-4 focus:ring-teal-500/5">
+                  <option value="">Semua Status</option>
+                  {Object.entries(STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400">Mulai Tanggal</label>
+                <DateField label="Mulai Tanggal" value={startDate} max={endDate || undefined} onChange={withReset(setStartDate)} />
+              </div>
+              <div className="space-y-1.5">
+                <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400">Sampai Tanggal</label>
+                <DateField label="Sampai Tanggal" value={endDate} min={startDate || undefined} onChange={withReset(setEndDate)} />
               </div>
             </div>
-            <div className="space-y-1.5">
-              <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400">Status</label>
-              <select value={status} onChange={(e) => withReset(setStatus)(e.target.value)} className="block w-full cursor-pointer rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold text-slate-700 transition-all focus:border-teal-500 focus:outline-none focus:ring-4 focus:ring-teal-500/5">
-                <option value="">Semua Status</option>
-                {Object.entries(STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400">Mulai Tanggal</label>
-              <DateField label="Mulai Tanggal" value={startDate} max={endDate || undefined} onChange={withReset(setStartDate)} />
-            </div>
-            <div className="space-y-1.5">
-              <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-400">Sampai Tanggal</label>
-              <DateField label="Sampai Tanggal" value={endDate} min={startDate || undefined} onChange={withReset(setEndDate)} />
-            </div>
+            {(search || status || startDate || endDate) && (
+              <div className="flex justify-end">
+                <button type="button" onClick={() => { setSearch(''); setStatus(''); setStartDate(''); setEndDate(''); pg.resetPage(); }}
+                  className="flex cursor-pointer items-center gap-1 text-xs font-bold text-teal-600 transition hover:text-teal-700">
+                  <X className="h-3 w-3" /> Bersihkan Filter
+                </button>
+              </div>
+            )}
           </div>
-          {(search || status || startDate || endDate) && (
-            <div className="flex justify-end">
-              <button type="button" onClick={() => { setSearch(''); setStatus(''); setStartDate(''); setEndDate(''); pg.resetPage(); }}
-                className="flex cursor-pointer items-center gap-1 text-xs font-bold text-teal-600 transition hover:text-teal-700">
-                <X className="h-3 w-3" /> Bersihkan Filter
-              </button>
+
+          {loading ? (
+            <div className="rounded-3xl border border-slate-200 bg-white p-16 text-center shadow-sm"><RefreshCw className="mx-auto h-6 w-6 animate-spin text-[#1ea59e]" /></div>
+          ) : items.length === 0 ? (
+            <div className="rounded-3xl border border-slate-200 bg-white p-16 text-center shadow-sm">
+              <MessageSquareWarning className="mx-auto mb-2 h-8 w-8 text-slate-300" />
+              <h4 className="text-base font-bold text-slate-700">Tidak ada komplain</h4>
+              <p className="mt-1 text-xs text-slate-400">Ubah filter atau tunggu pengajuan baru dari rumah sakit.</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+              {items.map((c) => (
+                <div key={c.id} onClick={() => openDetail(c.id)} className="relative flex cursor-pointer flex-col gap-2 px-5 py-4 transition hover:bg-slate-50/70 lg:flex-row lg:items-center lg:gap-6">
+                  <div className={`absolute bottom-0 left-0 top-0 w-1 rounded-r-full ${(STATUS[c.status] || STATUS.DIAJUKAN).bar}`} />
+                  <div className="min-w-0 pl-2 lg:w-1/3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="truncate text-sm font-bold text-slate-800">{c.complaint_number}</p>
+                      <Badge status={c.status} />
+                    </div>
+                    <p className="mt-0.5 truncate text-[11px] font-semibold text-slate-500">{c.hospital_name} · {c.room_name || '-'}</p>
+                  </div>
+                  <div className="min-w-0 flex-1 pl-2 lg:pl-0">
+                    <p className="text-xs font-bold text-slate-700">{c.complaint_type}</p>
+                    <ItemsSummary items={c.items} />
+                  </div>
+                  <div className="pl-2 text-[11px] font-medium text-slate-500 lg:w-52 lg:pl-0">
+                    <p className="font-semibold text-slate-700">{c.reporter_name}</p>
+                    <p>{fmtDate(c.complaint_date)}</p>
+                    {c.photo_count > 0 && <p className="mt-0.5 flex items-center gap-1"><Camera className="h-3 w-3" /> {c.photo_count} foto</p>}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
-        </div>
-
-        {loading ? (
-          <div className="rounded-3xl border border-slate-200 bg-white p-16 text-center shadow-sm"><RefreshCw className="mx-auto h-6 w-6 animate-spin text-[#1ea59e]" /></div>
-        ) : items.length === 0 ? (
-          <div className="rounded-3xl border border-slate-200 bg-white p-16 text-center shadow-sm">
-            <MessageSquareWarning className="mx-auto mb-2 h-8 w-8 text-slate-300" />
-            <h4 className="text-base font-bold text-slate-700">Tidak ada komplain</h4>
-            <p className="mt-1 text-xs text-slate-400">Ubah filter atau tunggu pengajuan baru dari rumah sakit.</p>
-          </div>
-        ) : (
-          <div className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-            {items.map((c) => (
-              <div key={c.id} onClick={() => openDetail(c.id)} className="relative flex cursor-pointer flex-col gap-2 px-5 py-4 transition hover:bg-slate-50/70 lg:flex-row lg:items-center lg:gap-6">
-                <div className={`absolute bottom-0 left-0 top-0 w-1 rounded-r-full ${(STATUS[c.status] || STATUS.DIAJUKAN).bar}`} />
-                <div className="min-w-0 pl-2 lg:w-1/3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="truncate text-sm font-bold text-slate-800">{c.complaint_number}</p>
-                    <Badge status={c.status} />
-                  </div>
-                  <p className="mt-0.5 truncate text-[11px] font-semibold text-slate-500">{c.hospital_name} · {c.room_name || '-'}</p>
-                </div>
-                <div className="min-w-0 flex-1 pl-2 lg:pl-0">
-                  <p className="text-xs font-bold text-slate-700">{c.complaint_type}</p>
-                  <p className="line-clamp-2 text-xs font-medium text-slate-600">{c.description}</p>
-                  {c.linen_name && (
-                    <p className="mt-1 flex items-center gap-1 text-[11px] font-semibold text-slate-500">
-                      <Package className="h-3 w-3" /> {c.linen_name}{c.category_name ? ` · ${c.category_name}` : ''}{c.ownership_type ? ` · ${OWNERSHIP[c.ownership_type]}` : ''} · {c.quantity} pcs
-                    </p>
-                  )}
-                </div>
-                <div className="pl-2 text-[11px] font-medium text-slate-500 lg:w-52 lg:pl-0">
-                  <p className="font-semibold text-slate-700">{c.reporter_name}</p>
-                  <p>{fmtDate(c.complaint_date)}</p>
-                  {c.photo_count > 0 && <p className="mt-0.5 flex items-center gap-1"><Camera className="h-3 w-3" /> {c.photo_count} foto</p>}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-        {!loading && <Pagination pagination={pg.pagination} shown={items.length} pageSize={pg.pageSize} onChange={pg.goTo} onPageSizeChange={pg.setPageSize} />}
+          {!loading && <Pagination pagination={pg.pagination} shown={items.length} pageSize={pg.pageSize} onChange={pg.goTo} onPageSizeChange={pg.setPageSize} />}
         </>)}
       </div>
 
@@ -203,14 +198,13 @@ function DetailModal({ detail, onClose, onChanged }) {
       <div className="flex flex-wrap items-center gap-2"><Badge status={detail.status} /><span className="text-xs font-semibold text-slate-500">{detail.complaint_type}</span></div>
       <div className="grid grid-cols-1 gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-xs sm:grid-cols-3">
         {[['Rumah Sakit', detail.hospital_name], ['Unit', detail.room_name || '-'], ['Pelapor', detail.reporter_name],
-          ['Tanggal Pengajuan', fmtDate(detail.complaint_date)],
-          ...(detail.linen_name ? [['Linen', detail.linen_name], ['Kategori', detail.category_name || '-'], ['Kepemilikan', OWNERSHIP[detail.ownership_type] || '-'], ['Quantity', `${detail.quantity} pcs`]] : []),
+        ['Tanggal Pengajuan', fmtDate(detail.complaint_date)],
         ].map(([l, v]) => <div key={l}><p className={labelCls}>{l}</p><p className="font-bold text-slate-800">{v}</p></div>)}
       </div>
-      <div><p className={labelCls}>Deskripsi</p><p className="whitespace-pre-wrap text-sm font-medium text-slate-700">{detail.description}</p></div>
+      <LinenItems items={detail.items} />
       {detail.photos.length > 0 && (
         <div>
-          <p className={labelCls}>Foto Bukti ({detail.photos.length})</p>
+          <p className={labelCls}>Foto Lainnya ({detail.photos.length})</p>
           <PhotoGrid photos={detail.photos} />
         </div>
       )}

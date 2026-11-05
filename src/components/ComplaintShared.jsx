@@ -11,8 +11,12 @@ import useBodyScrollLock from '../utils/useBodyScrollLock';
 import { socket } from '../utils/socket';
 
 const base = (role) => `/api/${role}/complaint`;
-const MAX_PHOTOS = 5;
+const PHOTOS_PER_ITEM = 5; // foto bukti per baris linen (sama dengan batas di server)
 const MAX_SIZE = 5 * 1024 * 1024;
+const MAX_ITEMS = 10; // baris linen per komplain (sama dengan batas di server)
+let itemKeySeq = 0;
+// id = id baris yang sudah tersimpan (null untuk baris baru); photos = foto tersimpan; newFiles = foto baru yang belum diunggah
+const emptyItem = () => ({ key: ++itemKeySeq, id: null, hospital_linen_id: '', ownership_type: '', quantity: '', notes: '', photos: [], newFiles: [] });
 
 export function PhotoGrid({ photos }) {
   const [idx, setIdx] = useState(null);
@@ -73,6 +77,46 @@ export function DateField({ label, value, onChange, min, max }) {
       <Calendar className="pointer-events-none absolute inset-y-0 left-3 my-auto h-4 w-4 text-slate-400" />
       <input type="date" aria-label={label} title={label} value={value} min={min} max={max} onChange={(e) => onChange(e.target.value)}
         className="block w-full cursor-pointer rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-xs font-semibold text-slate-700 outline-none transition focus:border-[#1ea59e] focus:ring-4 focus:ring-[#1ea59e]/10" />
+    </div>
+  );
+}
+
+// Ringkasan untuk daftar komplain: linen pertama beserta keterangannya + "+N linen lainnya"
+export function ItemsSummary({ items }) {
+  if (!items?.length) return null;
+  const f = items[0];
+  const more = items.length - 1;
+  return (
+    <div className="space-y-0.5">
+      <p className="flex flex-wrap items-center gap-1 text-[11px] font-semibold text-slate-500">
+        <Package className="h-3 w-3" /> {f.linen_name}{f.category_name ? ` · ${f.category_name}` : ''}{f.ownership_type ? ` · ${OWNERSHIP[f.ownership_type]}` : ''} · {f.quantity} pcs
+        {more > 0 && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">+{more} linen lainnya</span>}
+      </p>
+      {f.notes && <p className="line-clamp-2 text-xs font-medium text-slate-600">{f.notes}</p>}
+    </div>
+  );
+}
+
+// Daftar lengkap linen yang dikomplain (detail komplain, dipakai halaman Unit/RS dan IKM)
+export function LinenItems({ items }) {
+  if (!items?.length) return null;
+  const total = items.reduce((s, i) => s + (Number(i.quantity) || 0), 0);
+  return (
+    <div>
+      <p className={labelCls}>Linen yang Dikomplain ({items.length} baris · {total} pcs)</p>
+      <div className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200">
+        {items.map((it, i) => (
+          <div key={it.id ?? i} className="flex flex-col gap-1 bg-white px-4 py-3 text-xs sm:flex-row sm:items-center sm:gap-4">
+            <div className="min-w-0 flex-1">
+              <p className="font-bold text-slate-800">{it.linen_name || '-'}</p>
+              <p className="text-[11px] font-medium text-slate-500">{[it.category_name, OWNERSHIP[it.ownership_type]].filter(Boolean).join(' · ') || '-'}</p>
+              {it.notes && <p className="mt-1 whitespace-pre-wrap text-xs font-medium text-slate-700">{it.notes}</p>}
+              {it.photos?.length > 0 && <div className="mt-2 max-w-[260px]"><PhotoGrid photos={it.photos} /></div>}
+            </div>
+            <span className="shrink-0 self-start rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[11px] font-bold text-slate-700 sm:self-center">{it.quantity} pcs</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -157,7 +201,7 @@ export function ComplaintPage({ role }) {
   useEffect(() => { const t = setTimeout(() => load(), 250); return () => clearTimeout(t); }, [load]);
 
   useEffect(() => {
-    axios.get(`${base(role)}/options`, auth()).then(({ data }) => setOpts(data)).catch(() => {});
+    axios.get(`${base(role)}/options`, auth()).then(({ data }) => setOpts(data)).catch(() => { });
   }, []);
 
   useEffect(() => {
@@ -197,15 +241,20 @@ export function ComplaintPage({ role }) {
     if (c) {
       setForm({
         id: c.id, reporter_name: c.reporter_name, complaint_date: String(c.complaint_date).slice(0, 10),
-        room_id: String(c.room_id), complaint_type: c.complaint_type, description: c.description,
-        hospital_linen_id: c.hospital_linen_id ? String(c.hospital_linen_id) : '', ownership_type: c.ownership_type || '', quantity: c.quantity ? String(c.quantity) : '',
-        photos: c.photos || [], removeIds: [], newFiles: [],
+        room_id: String(c.room_id), complaint_type: c.complaint_type,
+        items: c.items?.length
+          ? c.items.map((i) => ({
+            key: ++itemKeySeq, id: i.id, hospital_linen_id: String(i.hospital_linen_id), ownership_type: i.ownership_type || '',
+            quantity: String(i.quantity), notes: i.notes || '', photos: i.photos || [], newFiles: [],
+          }))
+          : [emptyItem()],
+        removeIds: [], // id foto tersimpan yang dibuang pengguna (lintas baris)
       });
     } else {
       setForm({
         id: null, reporter_name: defaultReporter, complaint_date: todayStr(),
-        room_id: String(opts.myRoomIds[0] || ''), complaint_type: '', description: '',
-        hospital_linen_id: '', ownership_type: '', quantity: '', photos: [], removeIds: [], newFiles: [],
+        room_id: String(opts.myRoomIds[0] || ''), complaint_type: '',
+        items: [emptyItem()], removeIds: [],
       });
     }
   };
@@ -295,12 +344,7 @@ export function ComplaintPage({ role }) {
                   <p className="mt-0.5 truncate text-[11px] font-medium text-slate-500">{c.complaint_type}</p>
                 </div>
                 <div className="min-w-0 flex-1 pl-2 lg:pl-0">
-                  <p className="line-clamp-2 text-xs font-medium text-slate-600">{c.description}</p>
-                  {c.linen_name && (
-                    <p className="mt-1 flex items-center gap-1 text-[11px] font-semibold text-slate-500">
-                      <Package className="h-3 w-3" /> {c.linen_name}{c.category_name ? ` · ${c.category_name}` : ''}{c.ownership_type ? ` · ${OWNERSHIP[c.ownership_type]}` : ''} · {c.quantity} pcs
-                    </p>
-                  )}
+                  <ItemsSummary items={c.items} />
                 </div>
                 <div className="pl-2 text-[11px] font-medium text-slate-500 lg:w-56 lg:pl-0">
                   <p className="font-semibold text-slate-700">{c.room_name || '-'}</p>
@@ -343,19 +387,11 @@ export function ComplaintPage({ role }) {
             <div><p className={labelCls}>Pelapor</p><p className="font-bold text-slate-800">{detail.reporter_name}</p></div>
             <div><p className={labelCls}>Tanggal Pengajuan</p><p className="font-bold text-slate-800">{fmtDate(detail.complaint_date)}</p></div>
             <div><p className={labelCls}>Unit</p><p className="font-bold text-slate-800">{detail.room_name || '-'}</p></div>
-            {detail.linen_name && (
-              <>
-                <div><p className={labelCls}>Linen</p><p className="font-bold text-slate-800">{detail.linen_name}</p></div>
-                <div><p className={labelCls}>Kategori</p><p className="font-bold text-slate-800">{detail.category_name || '-'}</p></div>
-                <div><p className={labelCls}>Kepemilikan</p><p className="font-bold text-slate-800">{OWNERSHIP[detail.ownership_type] || '-'}</p></div>
-                <div><p className={labelCls}>Quantity</p><p className="font-bold text-slate-800">{detail.quantity} pcs</p></div>
-              </>
-            )}
           </div>
-          <div><p className={labelCls}>Deskripsi</p><p className="whitespace-pre-wrap text-sm font-medium text-slate-700">{detail.description}</p></div>
+          <LinenItems items={detail.items} />
           {detail.photos.length > 0 && (
             <div>
-              <p className={labelCls}>Foto Bukti ({detail.photos.length})</p>
+              <p className={labelCls}>Foto Lainnya ({detail.photos.length})</p>
               <PhotoGrid photos={detail.photos} />
             </div>
           )}
@@ -423,6 +459,56 @@ function RejectModal({ role, complaint, onClose, onDone }) {
   );
 }
 
+// Foto bukti satu baris linen: foto tersimpan (bisa dibuang) + foto baru, maksimal PHOTOS_PER_ITEM per linen
+function ItemPhotos({ item, removedIds, disabled, onAdd, onRemoveNew, onRemoveSaved, setError }) {
+  const kept = item.photos.filter((p) => !removedIds.includes(p.id));
+  const total = kept.length + item.newFiles.length;
+  const previews = useMemo(() => item.newFiles.map((f) => URL.createObjectURL(f)), [item.newFiles]);
+  useEffect(() => () => previews.forEach((u) => URL.revokeObjectURL(u)), [previews]);
+
+  const pick = (e) => {
+    const picked = Array.from(e.target.files || []);
+    e.target.value = '';
+    for (const f of picked) {
+      if (!/^image\/(jpeg|png|webp)$/.test(f.type)) { setError('Foto harus berformat JPG, PNG, atau WEBP'); return; }
+      if (f.size > MAX_SIZE) { setError('Ukuran tiap foto maksimal 5 MB'); return; }
+    }
+    if (total + picked.length > PHOTOS_PER_ITEM) { setError(`Maksimal ${PHOTOS_PER_ITEM} foto per linen`); return; }
+    setError('');
+    onAdd(picked);
+  };
+
+  const thumbCls = 'relative aspect-square overflow-hidden rounded-xl border bg-slate-100';
+  const delCls = 'absolute right-1 top-1 cursor-pointer rounded-full bg-slate-900/70 p-1 text-white transition hover:bg-rose-600';
+  return (
+    <div>
+      <label className={labelCls}>Foto Bukti ({total}/{PHOTOS_PER_ITEM})</label>
+      <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
+        {kept.map((p) => (
+          <div key={p.id} className={`${thumbCls} border-slate-200`}>
+            <img src={p.url} alt="" className="h-full w-full object-cover" />
+            <button type="button" aria-label="Hapus foto" onClick={() => onRemoveSaved(p.id)} className={delCls}><X className="h-3 w-3" /></button>
+          </div>
+        ))}
+        {previews.map((u, j) => (
+          <div key={u} className={`${thumbCls} border-[#1ea59e]/40`}>
+            <img src={u} alt="" className="h-full w-full object-cover" />
+            <button type="button" aria-label="Hapus foto" onClick={() => onRemoveNew(j)} className={delCls}><X className="h-3 w-3" /></button>
+          </div>
+        ))}
+        {total < PHOTOS_PER_ITEM && (
+          <label className={`flex aspect-square flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 text-slate-400 transition ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:border-[#1ea59e] hover:text-[#126776]'}`}>
+            <ImagePlus className="h-5 w-5" />
+            <span className="text-[10px] font-bold">Tambah</span>
+            <input type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={disabled} className="hidden" onChange={pick} />
+          </label>
+        )}
+      </div>
+      <p className="mt-1.5 text-[11px] font-medium text-slate-400">JPG, PNG, atau WEBP. Maksimal {PHOTOS_PER_ITEM} foto, 5 MB per foto. Pilih linen dulu untuk menambah foto.</p>
+    </div>
+  );
+}
+
 function ComplaintForm({ role, form, setForm, opts, roomName, error, setError, onClose, onSaved }) {
   const [linens, setLinens] = useState([]);
   const [saving, setSaving] = useState(false);
@@ -434,35 +520,28 @@ function ComplaintForm({ role, form, setForm, opts, roomName, error, setError, o
       .then(({ data }) => setLinens(data.data)).catch(() => setLinens([]));
   }, [form.room_id]);
 
-  const chosen = linens.find((l) => String(l.hospital_linen_id) === String(form.hospital_linen_id));
-  const keptPhotos = form.photos.filter((p) => !form.removeIds.includes(p.id));
-  const total = keptPhotos.length + form.newFiles.length;
-
-  const previews = useMemo(() => form.newFiles.map((f) => URL.createObjectURL(f)), [form.newFiles]);
-  useEffect(() => () => previews.forEach((u) => URL.revokeObjectURL(u)), [previews]);
-
-  const addFiles = (e) => {
-    const picked = Array.from(e.target.files || []);
-    e.target.value = '';
-    const next = [];
-    for (const f of picked) {
-      if (!/^image\/(jpeg|png|webp)$/.test(f.type)) { setError('Foto harus berformat JPG, PNG, atau WEBP'); return; }
-      if (f.size > MAX_SIZE) { setError('Ukuran tiap foto maksimal 5 MB'); return; }
-      next.push(f);
-    }
-    if (total + next.length > MAX_PHOTOS) { setError(`Maksimal ${MAX_PHOTOS} foto per komplain`); return; }
-    setError('');
-    setForm((f) => ({ ...f, newFiles: [...f.newFiles, ...next] }));
-  };
+  const setItem = (idx, patch) => setForm((f) => ({ ...f, items: f.items.map((it, i) => (i === idx ? { ...it, ...patch } : it)) }));
+  const addItem = () => setForm((f) => (f.items.length >= MAX_ITEMS ? f : { ...f, items: [...f.items, emptyItem()] }));
+  const removeItem = (idx) => setForm((f) => ({ ...f, items: f.items.filter((_, i) => i !== idx) }));
+  const addNewFiles = (idx, next) => setForm((f) => ({ ...f, items: f.items.map((it, i) => (i === idx ? { ...it, newFiles: [...it.newFiles, ...next] } : it)) }));
+  const removeNewFile = (idx, j) => setForm((f) => ({ ...f, items: f.items.map((it, i) => (i === idx ? { ...it, newFiles: it.newFiles.filter((_, k) => k !== j) } : it)) }));
+  const removeSavedPhoto = (id) => setForm((f) => ({ ...f, removeIds: [...f.removeIds, id] }));
 
   const submit = async (e) => {
     e.preventDefault();
     setError('');
-    if (form.hospital_linen_id && !(Number(form.quantity) >= 1)) { setError('Quantity wajib diisi (minimal 1) jika memilih linen'); return; }
+    // Minimal 1 linen. Baris tanpa linen dipilih diabaikan; baris yang dipilih wajib punya quantity minimal 1.
+    const rows = form.items.filter((it) => it.hospital_linen_id);
+    if (!rows.length) { setError('Pilih minimal 1 linen yang dikomplain'); return; }
+    if (rows.some((it) => !(Number(it.quantity) >= 1))) { setError('Quantity wajib diisi (minimal 1) pada setiap linen yang dipilih'); return; }
+    if (rows.some((it) => !it.notes.trim())) { setError('Deskripsi komplain wajib diisi pada setiap linen yang dipilih'); return; }
     const fd = new FormData();
-    ['reporter_name', 'complaint_date', 'room_id', 'complaint_type', 'description'].forEach((k) => fd.append(k, form[k]));
-    if (form.hospital_linen_id) { fd.append('hospital_linen_id', form.hospital_linen_id); fd.append('ownership_type', form.ownership_type); fd.append('quantity', form.quantity); }
-    form.newFiles.forEach((f) => fd.append('photos', f));
+    ['reporter_name', 'complaint_date', 'room_id', 'complaint_type'].forEach((k) => fd.append(k, form[k]));
+    fd.append('items', JSON.stringify(rows.map((it) => ({
+      id: it.id, hospital_linen_id: it.hospital_linen_id, ownership_type: it.ownership_type, quantity: it.quantity, notes: it.notes.trim(),
+    }))));
+    // Foto dilampirkan per baris linen: photos_<urutan baris pada daftar items di atas>
+    rows.forEach((it, i) => it.newFiles.forEach((file) => fd.append(`photos_${i}`, file)));
     if (form.id) fd.append('remove_doc_ids', JSON.stringify(form.removeIds));
     setSaving(true);
     try {
@@ -498,7 +577,7 @@ function ComplaintForm({ role, form, setForm, opts, roomName, error, setError, o
           <label className={labelCls}>Unit / Ruangan</label>
           <div className="relative">
             <select className={`${inputCls} cursor-pointer appearance-none pr-9`} required value={form.room_id}
-              onChange={(e) => setForm((f) => ({ ...f, room_id: e.target.value, hospital_linen_id: '', ownership_type: '', quantity: '' }))}>
+              onChange={(e) => setForm((f) => ({ ...f, room_id: e.target.value, items: [emptyItem()] }))}>
               <option value="">Pilih unit...</option>
               {opts.rooms.map((r) => <option key={r.id} value={r.id}>{r.room_name}</option>)}
             </select>
@@ -511,73 +590,67 @@ function ComplaintForm({ role, form, setForm, opts, roomName, error, setError, o
           <datalist id="complaint-types">{opts.categories.map((c) => <option key={c.id} value={c.category_name} />)}</datalist>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4 sm:col-span-2">
-          <p className="mb-3 text-[10px] font-bold uppercase tracking-wider text-slate-500">Linen yang dikomplain (opsional)</p>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-5">
-            <div className="sm:col-span-2">
-              <label className={labelCls}>Linen</label>
-              <div className="relative">
-                <select className={`${inputCls} cursor-pointer appearance-none bg-white pr-9`} value={form.hospital_linen_id} disabled={!form.room_id}
-                  onChange={(e) => {
-                    const l = linens.find((x) => String(x.hospital_linen_id) === e.target.value);
-                    setForm((f) => ({ ...f, hospital_linen_id: e.target.value, ownership_type: l ? l.ownership_type : '', quantity: e.target.value ? (f.quantity || '1') : '' }));
-                  }}>
-                  <option value="">{form.room_id ? (linens.length ? 'Pilih linen...' : 'Tidak ada linen di unit ini') : 'Pilih unit dulu'}</option>
-                  {linens.map((l) => <option key={l.hospital_linen_id} value={l.hospital_linen_id}>{l.linen_name}</option>)}
-                </select>
-                <ChevronDown className="pointer-events-none absolute inset-y-0 right-3 my-auto h-3.5 w-3.5 text-slate-400" />
-              </div>
-            </div>
-            <div>
-              <label className={labelCls}>Kategori (otomatis)</label>
-              <input className={`${inputCls} cursor-not-allowed text-slate-500`} readOnly tabIndex={-1} value={chosen ? (chosen.category_name || '-') : ''} placeholder="Terisi otomatis" />
-            </div>
-            <div>
-              <label className={labelCls}>Kepemilikan</label>
-              <div className="relative">
-                <select className={`${inputCls} cursor-pointer appearance-none bg-white pr-9`} disabled={!form.hospital_linen_id} value={form.ownership_type} onChange={set('ownership_type')}>
-                  <option value="" disabled>Pilih...</option>
-                  {Object.entries(OWNERSHIP).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                </select>
-                <ChevronDown className="pointer-events-none absolute inset-y-0 right-3 my-auto h-3.5 w-3.5 text-slate-400" />
-              </div>
-            </div>
-            <div>
-              <label className={labelCls}>Quantity</label>
-              <input type="number" min="1" className={inputCls} disabled={!form.hospital_linen_id} value={form.quantity} onChange={set('quantity')} placeholder="0" />
-            </div>
+        <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/60 p-4 sm:col-span-2">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Linen yang dikomplain · {form.items.length}/{MAX_ITEMS}</p>
+            <button type="button" onClick={addItem} disabled={!form.room_id || form.items.length >= MAX_ITEMS}
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-[#1ea59e]/40 bg-white px-3 py-1.5 text-xs font-bold text-[#126776] transition hover:bg-[#1ea59e]/5 disabled:cursor-not-allowed disabled:opacity-50">
+              <Plus className="h-3.5 w-3.5" /> Tambah Linen
+            </button>
           </div>
-        </div>
-
-        <div className="sm:col-span-2">
-          <label className={labelCls}>Deskripsi Komplain</label>
-          <textarea rows={4} className={inputCls} required maxLength={5000} placeholder="Jelaskan komplain secara rinci..." value={form.description} onChange={set('description')} />
-        </div>
-
-        <div className="sm:col-span-2">
-          <label className={labelCls}>Foto Bukti ({total}/{MAX_PHOTOS})</label>
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
-            {keptPhotos.map((p) => (
-              <div key={p.id} className="relative aspect-square overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
-                <img src={p.url} alt="" className="h-full w-full object-cover" />
-                <button type="button" aria-label="Hapus foto" onClick={() => setForm((f) => ({ ...f, removeIds: [...f.removeIds, p.id] }))} className="absolute right-1 top-1 cursor-pointer rounded-full bg-slate-900/70 p-1 text-white transition hover:bg-rose-600"><X className="h-3 w-3" /></button>
+          {form.items.map((it, idx) => {
+            const chosen = linens.find((l) => String(l.hospital_linen_id) === String(it.hospital_linen_id));
+            return (
+              <div key={it.key} className="space-y-3 rounded-xl border border-slate-200 bg-white p-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-12">
+                  <div className="sm:col-span-4">
+                    <label className={labelCls}>Linen</label>
+                    <div className="relative">
+                      <select className={`${inputCls} cursor-pointer appearance-none bg-white pr-9`} value={it.hospital_linen_id} disabled={!form.room_id}
+                        onChange={(e) => {
+                          const l = linens.find((x) => String(x.hospital_linen_id) === e.target.value);
+                          setItem(idx, { hospital_linen_id: e.target.value, ownership_type: l ? l.ownership_type : '', quantity: e.target.value ? (it.quantity || '1') : '' });
+                        }}>
+                        <option value="">{form.room_id ? (linens.length ? 'Pilih linen...' : 'Tidak ada linen di unit ini') : 'Pilih unit dulu'}</option>
+                        {linens.map((l) => <option key={l.hospital_linen_id} value={l.hospital_linen_id}>{l.linen_name}</option>)}
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute inset-y-0 right-3 my-auto h-3.5 w-3.5 text-slate-400" />
+                    </div>
+                  </div>
+                  <div className="sm:col-span-3">
+                    <label className={labelCls}>Kategori (otomatis)</label>
+                    <input className={`${inputCls} cursor-not-allowed text-slate-500`} readOnly tabIndex={-1} value={chosen ? (chosen.category_name || '-') : ''} placeholder="Terisi otomatis" />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className={labelCls}>Kepemilikan</label>
+                    <div className="relative">
+                      <select className={`${inputCls} cursor-pointer appearance-none bg-white pr-9`} disabled={!it.hospital_linen_id} value={it.ownership_type} onChange={(e) => setItem(idx, { ownership_type: e.target.value })}>
+                        <option value="" disabled>Pilih...</option>
+                        {Object.entries(OWNERSHIP).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute inset-y-0 right-3 my-auto h-3.5 w-3.5 text-slate-400" />
+                    </div>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className={labelCls}>Quantity</label>
+                    <input type="number" min="1" className={inputCls} disabled={!it.hospital_linen_id} value={it.quantity} onChange={(e) => setItem(idx, { quantity: e.target.value })} placeholder="0" />
+                  </div>
+                  <div className="flex items-end justify-end sm:col-span-1">
+                    <button type="button" aria-label="Hapus baris linen" disabled={form.items.length <= 1} onClick={() => removeItem(idx)}
+                      className="inline-flex h-[42px] w-[42px] cursor-pointer items-center justify-center rounded-xl border border-slate-200 text-slate-400 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-slate-200 disabled:hover:bg-transparent disabled:hover:text-slate-400">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label className={labelCls}>Deskripsi Komplain</label>
+                  <textarea rows={2} required className={inputCls} maxLength={1000} disabled={!it.hospital_linen_id} value={it.notes} onChange={(e) => setItem(idx, { notes: e.target.value })} placeholder="Jelaskan masalah linen ini, contoh: robek di sudut, noda tidak hilang" />
+                </div>
+                <ItemPhotos item={it} removedIds={form.removeIds} disabled={!it.hospital_linen_id} setError={setError}
+                  onAdd={(next) => addNewFiles(idx, next)} onRemoveNew={(j) => removeNewFile(idx, j)} onRemoveSaved={removeSavedPhoto} />
               </div>
-            ))}
-            {previews.map((u, i) => (
-              <div key={u} className="relative aspect-square overflow-hidden rounded-xl border border-[#1ea59e]/40 bg-slate-100">
-                <img src={u} alt="" className="h-full w-full object-cover" />
-                <button type="button" aria-label="Hapus foto" onClick={() => setForm((f) => ({ ...f, newFiles: f.newFiles.filter((_, j) => j !== i) }))} className="absolute right-1 top-1 cursor-pointer rounded-full bg-slate-900/70 p-1 text-white transition hover:bg-rose-600"><X className="h-3 w-3" /></button>
-              </div>
-            ))}
-            {total < MAX_PHOTOS && (
-              <label className="flex aspect-square cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 text-slate-400 transition hover:border-[#1ea59e] hover:text-[#126776]">
-                <ImagePlus className="h-5 w-5" />
-                <span className="text-[10px] font-bold">Tambah</span>
-                <input type="file" accept="image/jpeg,image/png,image/webp" multiple className="hidden" onChange={addFiles} />
-              </label>
-            )}
-          </div>
-          <p className="mt-1.5 text-[11px] font-medium text-slate-400">JPG, PNG, atau WEBP. Maksimal {MAX_PHOTOS} foto, 5 MB per foto.</p>
+            );
+          })}
         </div>
       </form>
     </Modal>

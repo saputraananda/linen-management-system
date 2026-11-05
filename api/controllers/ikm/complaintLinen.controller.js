@@ -1,7 +1,7 @@
 import { mainPool, ikmPool } from '../../db/pool.js';
 import { parsePaging, buildPagination, offsetOf } from '../../utils/paging.js';
 import {
-  clean, actorOf, writeLog, emit, serverError, photoUrl, SELECT_LIST, addDateRange,
+  clean, actorOf, writeLog, emit, serverError, SELECT_LIST, addDateRange, attachItems, splitPhotos,
 } from '../../utils/complaintCore.js';
 
 // Tim IKM (valet) melihat komplain semua rumah sakit — hanya baca.
@@ -69,7 +69,7 @@ export const listComplaints = async (req, res) => {
     const [rows] = await ikmPool.query(
       `${SELECT_IKM} WHERE ${whereSql} ORDER BY c.created_at DESC, c.id DESC LIMIT ? OFFSET ?`,
       [...params, pagination.limit, offsetOf(pagination)]);
-    res.json({ success: true, canManage: a.canManage, data: rows, pagination });
+    res.json({ success: true, canManage: a.canManage, data: await attachItems(rows), pagination });
   } catch (e) { serverError(res, 'ikm listComplaints', e); }
 };
 
@@ -80,17 +80,20 @@ export const getComplaint = async (req, res) => {
     if (!hospitalId) return res.status(400).json({ success: false, message: 'Rumah sakit wajib dipilih' });
     const [rows] = await ikmPool.query(`${SELECT_IKM} WHERE c.id = ? AND c.hospital_id = ?`, [req.params.id, hospitalId]);
     if (!rows.length) return res.status(404).json({ success: false, message: 'Komplain tidak ditemukan' });
-    const [docs] = await ikmPool.query('SELECT id, file_name, original_name FROM tr_complaint_doc WHERE complaint_id = ? ORDER BY id', [req.params.id]);
+    const [docs] = await ikmPool.query('SELECT id, item_id, file_name, original_name FROM tr_complaint_doc WHERE complaint_id = ? ORDER BY id', [req.params.id]);
     const [logs] = await ikmPool.query(
       `SELECT id, action, from_status, to_status, note, detail, actor_name, actor_role, created_at
          FROM tr_complaint_log WHERE complaint_id = ? ORDER BY id`, [req.params.id]);
+    const [row] = await attachItems([rows[0]]);
+    const ph = splitPhotos(docs, row.items);
     res.json({
       success: true,
       data: {
-        ...rows[0],
+        ...row,
         can_manage: a.canManage,
         next_statuses: a.canManage ? (TRANSITIONS[rows[0].status] || []) : [],
-        photos: docs.map((d) => ({ id: d.id, url: photoUrl(d.file_name), name: d.original_name })),
+        items: ph.items, // tiap baris linen membawa foto buktinya sendiri
+        photos: ph.general, // foto tingkat komplain (tanpa baris linen), mis. data lama
         logs,
       },
     });
