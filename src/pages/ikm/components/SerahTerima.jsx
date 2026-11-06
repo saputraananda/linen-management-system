@@ -1359,17 +1359,16 @@ export default function SerahTerima() {
     pickupRoomStatus[rl.room_id] = cur;
   });
 
-  // Form Pengiriman: hanya ruangan di transaksi yang sedang dibuka, sebesar sisa yang belum dikirim bersih
+  // Form Pengiriman: hanya ruangan di transaksi yang sedang dibuka, sebesar total linen kotornya.
+  // Badge tetap tampil walau sudah dikirim bersih / transaksi SELESAI.
   const deliveryRoomStatus = {};
-  if (editingTransaction && editingTransaction.transaction.status === 'PROSES') {
+  if (editingTransaction) {
     editingTransaction.details.forEach(d => {
       if (!d.room_id) return;
-      const typed = bersihQuantities[d.id];
-      const bersih = typed !== undefined && typed !== '' ? (parseInt(typed) || 0) : (parseInt(d.qty_bersih) || 0);
-      const sisa = Math.max(0, (parseInt(d.qty_kotor) || 0) - bersih);
-      if (sisa > 0) {
+      const kotor = parseInt(d.qty_kotor) || 0;
+      if (kotor > 0) {
         const cur = deliveryRoomStatus[d.room_id] || { kotor: 0, cuci: 0 };
-        cur.cuci += sisa;
+        cur.cuci += kotor;
         deliveryRoomStatus[d.room_id] = cur;
       }
     });
