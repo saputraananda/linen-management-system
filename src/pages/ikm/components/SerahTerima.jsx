@@ -7,6 +7,7 @@ import {
   Warehouse, Building, Shirt, HelpCircle, Info, X, Lock, Unlock,
   Scale, Zap
 } from 'lucide-react';
+import RoomStatusSelect from './RoomStatusSelect';
 import Pagination from '../../../components/Pagination';
 import usePaging from '../../../utils/usePaging';
 
@@ -716,12 +717,6 @@ export default function SerahTerima() {
         showAlert('Nama petugas RS pemeriksa (Pickup) wajib diisi.');
         return;
       }
-
-      if (!hospitalAssistantPickup.trim()) {
-        setErrorMsg('Nama Perawat RS (Pickup) wajib diisi.');
-        showAlert('Nama Perawat RS (Pickup) wajib diisi.');
-        return;
-      }
     }
 
 
@@ -959,12 +954,6 @@ export default function SerahTerima() {
       if (!hospitalStaffDelivery.trim()) {
         setErrorMsg('Nama petugas RS pemeriksa (Delivery) wajib diisi.');
         showAlert('Nama petugas RS pemeriksa (Delivery) wajib diisi.');
-        return;
-      }
-
-      if (!hospitalAssistantDelivery.trim()) {
-        setErrorMsg('Nama Perawat RS (Delivery) wajib diisi.');
-        showAlert('Nama Perawat RS (Delivery) wajib diisi.');
         return;
       }
     }
@@ -1361,6 +1350,30 @@ export default function SerahTerima() {
       uniqueRooms.push({ id: rl.room_id, name: rl.room_name });
     }
   });
+
+  // Form Pengambilan: ruangan yang punya linen kotor belum diambil (terpakai + dirty utility)
+  const pickupRoomStatus = {};
+  roomLinensList.forEach(rl => {
+    const cur = pickupRoomStatus[rl.room_id] || { kotor: 0, cuci: 0 };
+    cur.kotor += (parseInt(rl.qty_dirty) || 0) + (parseInt(rl.qty_terpakai) || 0);
+    pickupRoomStatus[rl.room_id] = cur;
+  });
+
+  // Form Pengiriman: hanya ruangan di transaksi yang sedang dibuka, sebesar sisa yang belum dikirim bersih
+  const deliveryRoomStatus = {};
+  if (editingTransaction && editingTransaction.transaction.status === 'PROSES') {
+    editingTransaction.details.forEach(d => {
+      if (!d.room_id) return;
+      const typed = bersihQuantities[d.id];
+      const bersih = typed !== undefined && typed !== '' ? (parseInt(typed) || 0) : (parseInt(d.qty_bersih) || 0);
+      const sisa = Math.max(0, (parseInt(d.qty_kotor) || 0) - bersih);
+      if (sisa > 0) {
+        const cur = deliveryRoomStatus[d.room_id] || { kotor: 0, cuci: 0 };
+        cur.cuci += sisa;
+        deliveryRoomStatus[d.room_id] = cur;
+      }
+    });
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 py-6 sm:py-10">
@@ -1836,21 +1849,7 @@ export default function SerahTerima() {
                 {/* Search bar & Room Selector above linen table */}
                 <div className="flex flex-col sm:flex-row gap-3 p-3 border-b border-slate-100 bg-slate-50/70">
                   {/* Room Selector */}
-                  <div className="relative min-w-[200px]">
-                    <select
-                      value={selectedRoomId}
-                      onChange={e => setSelectedRoomId(e.target.value)}
-                      className="w-full pl-3 pr-9 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] cursor-pointer appearance-none"
-                    >
-                      <option value="">Semua Ruangan</option>
-                      {uniqueRooms.map(room => (
-                        <option key={room.id} value={room.id}>{room.name}</option>
-                      ))}
-                    </select>
-                    <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-slate-400">
-                      <ChevronDown className="w-4 h-4" />
-                    </div>
-                  </div>
+                  <RoomStatusSelect value={selectedRoomId} onChange={setSelectedRoomId} rooms={uniqueRooms} roomStatus={pickupRoomStatus} />
 
                   {/* Search bar */}
                   <div className="relative flex-1">
@@ -2043,7 +2042,7 @@ export default function SerahTerima() {
                     Dokumentasi Tanda Tangan Serah Terima (Pickup)
                   </label>
                 </div>
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                <div className={`grid grid-cols-1 gap-5 ${hospitalAssistantPickup.trim() || signatureAssistantPickup ? 'lg:grid-cols-3' : 'lg:grid-cols-2'}`}>
                   <SignatureInput
                     title="Tanda Tangan Petugas IKM (Valet)"
                     value={signatureValetPickup}
@@ -2058,13 +2057,15 @@ export default function SerahTerima() {
                     isEditable={true}
                     name={hospitalStaffPickup}
                   />
-                  <SignatureInput
-                    title="Tanda Tangan Perawat RS (Opsional)"
-                    value={signatureAssistantPickup}
-                    onChange={setSignatureAssistantPickup}
-                    isEditable={true}
-                    name={hospitalAssistantPickup}
-                  />
+                  {(hospitalAssistantPickup.trim() || signatureAssistantPickup) && (
+                    <SignatureInput
+                      title="Tanda Tangan Perawat RS (Opsional)"
+                      value={signatureAssistantPickup}
+                      onChange={setSignatureAssistantPickup}
+                      isEditable={true}
+                      name={hospitalAssistantPickup}
+                    />
+                  )}
                 </div>
               </div>
 
@@ -2320,7 +2321,7 @@ export default function SerahTerima() {
                   <div className="space-y-1.5">
                     <div className="flex justify-between items-center h-4">
                       <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest">
-                        Perawat RS (Delivery)
+                        Perawat RS (Delivery) <span className="text-slate-400 font-normal">(Opsional)</span>
                       </label>
                       {isEditable && (
                         <button
@@ -2370,21 +2371,7 @@ export default function SerahTerima() {
                  {/* Search bar & Room Selector above bersih linen table */}
                 <div className="flex flex-col sm:flex-row gap-3 p-3 border-b border-slate-100 bg-slate-50/70">
                   {/* Room Selector */}
-                  <div className="relative min-w-[200px]">
-                    <select
-                      value={selectedRoomId}
-                      onChange={e => setSelectedRoomId(e.target.value)}
-                      className="w-full pl-3 pr-9 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] cursor-pointer appearance-none"
-                    >
-                      <option value="">Semua Ruangan</option>
-                      {uniqueRooms.map(room => (
-                        <option key={room.id} value={room.id}>{room.name}</option>
-                      ))}
-                    </select>
-                    <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-slate-400">
-                      <ChevronDown className="w-4 h-4" />
-                    </div>
-                  </div>
+                  <RoomStatusSelect value={selectedRoomId} onChange={setSelectedRoomId} rooms={uniqueRooms} roomStatus={deliveryRoomStatus} />
 
                   {/* Search bar */}
                   <div className="relative flex-1">
@@ -2824,7 +2811,7 @@ export default function SerahTerima() {
                   {/* Pickup Signatures Card */}
                   <div className="border border-slate-150 rounded-2xl p-5 bg-slate-50/50 space-y-4">
                     <span className="text-xs font-bold text-slate-700 uppercase tracking-widest block">Tanda Tangan Saat Pickup (Kotor)</span>
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                    <div className={`grid grid-cols-1 gap-5 ${editingTransaction.transaction.hospital_assistant_pickup || signatureAssistantPickup ? 'lg:grid-cols-3' : 'lg:grid-cols-2'}`}>
                       <div className="flex flex-col items-center justify-center p-4 bg-white border border-slate-200 rounded-xl min-h-[140px] shadow-sm">
                         <span className="text-[10px] font-bold text-slate-400 uppercase mb-2">Petugas IKM (Valet)</span>
                         <div className="flex-1 flex items-center justify-center mb-2">
@@ -2851,6 +2838,7 @@ export default function SerahTerima() {
                           {editingTransaction.transaction.hospital_staff_pickup ? `(${toTitleCase(editingTransaction.transaction.hospital_staff_pickup)})` : '—'}
                         </span>
                       </div>
+                      {(editingTransaction.transaction.hospital_assistant_pickup || signatureAssistantPickup) && (
                       <div className="flex flex-col items-center justify-center p-4 bg-white border border-slate-200 rounded-xl min-h-[140px] shadow-sm">
                         <span className="text-[10px] font-bold text-slate-400 uppercase mb-2">Perawat RS</span>
                         <div className="flex-1 flex items-center justify-center mb-2">
@@ -2864,6 +2852,7 @@ export default function SerahTerima() {
                           {editingTransaction.transaction.hospital_assistant_pickup ? `(${toTitleCase(editingTransaction.transaction.hospital_assistant_pickup)})` : '—'}
                         </span>
                       </div>
+                      )}
                     </div>
                   </div>
 
@@ -2871,7 +2860,7 @@ export default function SerahTerima() {
                   <div className="border border-slate-150 rounded-2xl p-5 bg-slate-50/50 space-y-4">
                     <span className="text-xs font-bold text-slate-700 uppercase tracking-widest block">Tanda Tangan Saat Delivery (Bersih)</span>
                     {editingTransaction.transaction.status === 'PROSES' ? (
-                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                      <div className={`grid grid-cols-1 gap-5 ${hospitalAssistantDelivery.trim() || signatureAssistantDelivery ? 'lg:grid-cols-3' : 'lg:grid-cols-2'}`}>
                         <SignatureInput
                           title="Petugas IKM (Valet)"
                           value={signatureValetDelivery}
@@ -2886,16 +2875,18 @@ export default function SerahTerima() {
                           isEditable={true}
                           name={hospitalStaffDelivery}
                         />
-                        <SignatureInput
-                          title="Perawat RS (Opsional)"
-                          value={signatureAssistantDelivery}
-                          onChange={setSignatureAssistantDelivery}
-                          isEditable={true}
-                          name={hospitalAssistantDelivery}
-                        />
+                        {(hospitalAssistantDelivery.trim() || signatureAssistantDelivery) && (
+                          <SignatureInput
+                            title="Perawat RS (Opsional)"
+                            value={signatureAssistantDelivery}
+                            onChange={setSignatureAssistantDelivery}
+                            isEditable={true}
+                            name={hospitalAssistantDelivery}
+                          />
+                        )}
                       </div>
                     ) : (
-                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                      <div className={`grid grid-cols-1 gap-5 ${editingTransaction.transaction.hospital_assistant_delivery || signatureAssistantDelivery ? 'lg:grid-cols-3' : 'lg:grid-cols-2'}`}>
                         <div className="flex flex-col items-center justify-center p-4 bg-white border border-slate-200 rounded-xl min-h-[140px] shadow-sm">
                           <span className="text-[10px] font-bold text-slate-400 uppercase mb-2">Petugas IKM (Valet)</span>
                           <div className="flex-1 flex items-center justify-center mb-2">
@@ -2922,6 +2913,7 @@ export default function SerahTerima() {
                             {editingTransaction.transaction.hospital_staff_delivery ? `(${toTitleCase(editingTransaction.transaction.hospital_staff_delivery)})` : '—'}
                           </span>
                         </div>
+                        {(editingTransaction.transaction.hospital_assistant_delivery || signatureAssistantDelivery) && (
                         <div className="flex flex-col items-center justify-center p-4 bg-white border border-slate-200 rounded-xl min-h-[140px] shadow-sm">
                           <span className="text-[10px] font-bold text-slate-400 uppercase mb-2">Perawat RS</span>
                           <div className="flex-1 flex items-center justify-center mb-2">
@@ -2935,6 +2927,7 @@ export default function SerahTerima() {
                             {editingTransaction.transaction.hospital_assistant_delivery ? `(${toTitleCase(editingTransaction.transaction.hospital_assistant_delivery)})` : '—'}
                           </span>
                         </div>
+                        )}
                       </div>
                     )}
                   </div>

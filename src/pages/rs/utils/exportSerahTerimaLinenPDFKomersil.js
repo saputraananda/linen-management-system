@@ -1,6 +1,13 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
+// Perawat RS bersifat opsional: kalau tidak ada nama maupun TTD, kolomnya dibuang (jadi 2 kolom)
+const sigColumns = (hasAssistant, labels, signatures, names) =>
+  hasAssistant
+    ? [labels, signatures, names]
+    : [labels.slice(0, 2), signatures.slice(0, 2), names.slice(0, 2)];
+
+
 // Helper to convert string to Title Case
 const toTitleCase = (str) => {
   if (!str) return '';
@@ -284,7 +291,7 @@ export default async function exportSerahTerimaLinenPDFKomersil(transaction, det
     currentY += 7;
 
     const colGap = 4;
-    const colWidth = (contentWidth - (colGap * 2)) / 3; // ~58mm per column box
+    const colWidth = (contentWidth - (colGap * (labels.length - 1))) / labels.length; // 3 kolom (~58mm), atau 2 kolom bila tanpa Perawat RS
     const boxHeight = 26; // Height for signature drawing area
 
     labels.forEach((label, idx) => {
@@ -379,13 +386,12 @@ export default async function exportSerahTerimaLinenPDFKomersil(transaction, det
   // 1. Session 1: Proses Pickup Linen Kotor
   drawSignatureBlockPDF(
     'Pengambilan Linen Kotor',
-    ['Valet IKM', 'Petugas RS', 'Perawat RS'],
-    [valetPickupSig, hospPickupSig, asstPickupSig],
-    [
-      transaction.user_pickup_name,
-      transaction.hospital_staff_pickup,
-      transaction.hospital_assistant_pickup
-    ],
+    ...sigColumns(
+      transaction.hospital_assistant_pickup || asstPickupSig,
+      ['Valet IKM', 'Petugas RS', 'Perawat RS'],
+      [valetPickupSig, hospPickupSig, asstPickupSig],
+      [transaction.user_pickup_name, transaction.hospital_staff_pickup, transaction.hospital_assistant_pickup]
+    ),
     false
   );
 
@@ -393,13 +399,12 @@ export default async function exportSerahTerimaLinenPDFKomersil(transaction, det
   const isDeliveryPending = transaction.status !== 'SELESAI';
   drawSignatureBlockPDF(
     'Pengiriman Linen Bersih',
-    ['Valet IKM', 'Petugas RS', 'Perawat RS'],
-    [valetDeliverySig, hospDeliverySig, asstDeliverySig],
-    [
-      transaction.user_delivery_name,
-      transaction.hospital_staff_delivery,
-      transaction.hospital_assistant_delivery
-    ],
+    ...sigColumns(
+      transaction.hospital_assistant_delivery || asstDeliverySig,
+      ['Valet IKM', 'Petugas RS', 'Perawat RS'],
+      [valetDeliverySig, hospDeliverySig, asstDeliverySig],
+      [transaction.user_delivery_name, transaction.hospital_staff_delivery, transaction.hospital_assistant_delivery]
+    ),
     isDeliveryPending
   );
 

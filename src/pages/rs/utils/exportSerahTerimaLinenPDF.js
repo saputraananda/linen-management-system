@@ -66,68 +66,57 @@ export default async function exportSerahTerimaLinenPDF(transaction, details) {
     return '<span style="font-size: 8px; color: #94a3b8; font-style: italic;">(Belum Tanda Tangan)</span>';
   };
 
+  // Satu blok tahap (Pickup / Delivery); Perawat RS hanya ditampilkan jika ada nama atau TTD-nya
+  const renderStageHtml = ({ title, bg, color, valetSig, hospSig, asstSig, valetName, hospName, asstName, pendingMsg, last }) => {
+    const hasAsst = !!(asstName || asstSig);
+    const colW = hasAsst ? '33.3%' : '50%';
+    const labelCell = (text, border) =>
+      `<td style="width: ${colW}; ${border ? 'border-right: 1.5px solid #0f172a; ' : ''}padding: 4px; background: #f8fafc; font-size: 8px; text-transform: uppercase; border-bottom: 1.5px solid #0f172a;">${text}</td>`;
+    const sigCell = (sig, border) =>
+      `<td style="${border ? 'border-right: 1.5px solid #0f172a; ' : ''}height: 55px; vertical-align: middle;">${renderSigImg(sig, pendingMsg)}</td>`;
+    const nameCell = (name, border) =>
+      `<td style="${border ? 'border-right: 1.5px solid #0f172a; ' : ''}padding: 4px; border-top: 1.5px solid #0f172a; font-size: 8px; text-transform: uppercase;">(${toTitleCase(name || '—')})</td>`;
+    return `
+      <div style="border: 1.5px solid #0f172a; border-radius: 8px; overflow: hidden;${last ? '' : ' margin-bottom: 15px;'}">
+        <div style="background: ${bg}; padding: 4px 10px; font-weight: 800; border-bottom: 1.5px solid #0f172a; color: ${color}; text-transform: uppercase; letter-spacing: 0.05em; font-size: 9px;">
+          ${title}
+        </div>
+        <table style="width: 100%; border-collapse: collapse; text-align: center; font-weight: 700;">
+          <tr>
+            ${labelCell('Valet IKM', true)}
+            ${labelCell('Petugas RS', hasAsst)}
+            ${hasAsst ? labelCell('Perawat RS', false) : ''}
+          </tr>
+          <tr>
+            ${sigCell(valetSig, true)}
+            ${sigCell(hospSig, hasAsst)}
+            ${hasAsst ? sigCell(asstSig, false) : ''}
+          </tr>
+          <tr>
+            ${nameCell(valetName, true)}
+            ${nameCell(hospName, hasAsst)}
+            ${hasAsst ? nameCell(asstName, false) : ''}
+          </tr>
+        </table>
+      </div>`;
+  };
+
+  const deliveryPendingMsg = transaction.status !== 'SELESAI' ? 'Belum Ada Pengiriman' : '';
   const signaturesBlockHtml = `
     <!-- SIGNATURES BLOCK -->
     <div style="margin-top: 24px; font-size: 10px; color: #0f172a;">
-      <!-- Row 1: Pengambilan Linen Kotor -->
-      <div style="border: 1.5px solid #0f172a; border-radius: 8px; overflow: hidden; margin-bottom: 15px;">
-        <div style="background: #e2efd8; padding: 4px 10px; font-weight: 800; border-bottom: 1.5px solid #0f172a; color: #1e4620; text-transform: uppercase; letter-spacing: 0.05em; font-size: 9px;">
-          Tahap 1: Pengambilan Linen Kotor (Pickup)
-        </div>
-        <table style="width: 100%; border-collapse: collapse; text-align: center; font-weight: 700;">
-          <tr>
-            <td style="width: 33.3%; border-right: 1.5px solid #0f172a; padding: 4px; background: #f8fafc; font-size: 8px; text-transform: uppercase; border-bottom: 1.5px solid #0f172a;">Valet IKM</td>
-            <td style="width: 33.3%; border-right: 1.5px solid #0f172a; padding: 4px; background: #f8fafc; font-size: 8px; text-transform: uppercase; border-bottom: 1.5px solid #0f172a;">Petugas RS</td>
-            <td style="width: 33.3%; padding: 4px; background: #f8fafc; font-size: 8px; text-transform: uppercase; border-bottom: 1.5px solid #0f172a;">Perawat RS</td>
-          </tr>
-          <tr>
-            <td style="border-right: 1.5px solid #0f172a; height: 55px; vertical-align: middle;">
-              ${renderSigImg(transaction.signature_valet_pickup)}
-            </td>
-            <td style="border-right: 1.5px solid #0f172a; height: 55px; vertical-align: middle;">
-              ${renderSigImg(transaction.signature_hospital_pickup)}
-            </td>
-            <td style="height: 55px; vertical-align: middle;">
-              ${renderSigImg(transaction.signature_assistant_pickup)}
-            </td>
-          </tr>
-          <tr>
-            <td style="border-right: 1.5px solid #0f172a; padding: 4px; border-top: 1.5px solid #0f172a; font-size: 8px; text-transform: uppercase;">(${toTitleCase(transaction.user_pickup_name || '—')})</td>
-            <td style="border-right: 1.5px solid #0f172a; padding: 4px; border-top: 1.5px solid #0f172a; font-size: 8px; text-transform: uppercase;">(${toTitleCase(transaction.hospital_staff_pickup || '—')})</td>
-            <td style="padding: 4px; border-top: 1.5px solid #0f172a; font-size: 8px; text-transform: uppercase;">(${toTitleCase(transaction.hospital_assistant_pickup || '—')})</td>
-          </tr>
-        </table>
-      </div>
-
-      <!-- Row 2: Pengiriman Linen Bersih -->
-      <div style="border: 1.5px solid #0f172a; border-radius: 8px; overflow: hidden;">
-        <div style="background: #d9e1f2; padding: 4px 10px; font-weight: 800; border-bottom: 1.5px solid #0f172a; color: #1e2a4a; text-transform: uppercase; letter-spacing: 0.05em; font-size: 9px;">
-          Tahap 2: Pengiriman Linen Bersih (Delivery)
-        </div>
-        <table style="width: 100%; border-collapse: collapse; text-align: center; font-weight: 700;">
-          <tr>
-            <td style="width: 33.3%; border-right: 1.5px solid #0f172a; padding: 4px; background: #f8fafc; font-size: 8px; text-transform: uppercase; border-bottom: 1.5px solid #0f172a;">Valet IKM</td>
-            <td style="width: 33.3%; border-right: 1.5px solid #0f172a; padding: 4px; background: #f8fafc; font-size: 8px; text-transform: uppercase; border-bottom: 1.5px solid #0f172a;">Petugas RS</td>
-            <td style="width: 33.3%; padding: 4px; background: #f8fafc; font-size: 8px; text-transform: uppercase; border-bottom: 1.5px solid #0f172a;">Perawat RS</td>
-          </tr>
-          <tr>
-            <td style="border-right: 1.5px solid #0f172a; height: 55px; vertical-align: middle;">
-              ${renderSigImg(transaction.signature_valet_delivery, transaction.status !== 'SELESAI' ? 'Belum Ada Pengiriman' : '')}
-            </td>
-            <td style="border-right: 1.5px solid #0f172a; height: 55px; vertical-align: middle;">
-              ${renderSigImg(transaction.signature_hospital_delivery, transaction.status !== 'SELESAI' ? 'Belum Ada Pengiriman' : '')}
-            </td>
-            <td style="height: 55px; vertical-align: middle;">
-              ${renderSigImg(transaction.signature_assistant_delivery, transaction.status !== 'SELESAI' ? 'Belum Ada Pengiriman' : '')}
-            </td>
-          </tr>
-          <tr>
-            <td style="border-right: 1.5px solid #0f172a; padding: 4px; border-top: 1.5px solid #0f172a; font-size: 8px; text-transform: uppercase;">(${toTitleCase(transaction.user_delivery_name || '—')})</td>
-            <td style="border-right: 1.5px solid #0f172a; padding: 4px; border-top: 1.5px solid #0f172a; font-size: 8px; text-transform: uppercase;">(${toTitleCase(transaction.hospital_staff_delivery || '—')})</td>
-            <td style="padding: 4px; border-top: 1.5px solid #0f172a; font-size: 8px; text-transform: uppercase;">(${toTitleCase(transaction.hospital_assistant_delivery || '—')})</td>
-          </tr>
-        </table>
-      </div>
+      ${renderStageHtml({
+        title: 'Tahap 1: Pengambilan Linen Kotor (Pickup)', bg: '#e2efd8', color: '#1e4620',
+        valetSig: transaction.signature_valet_pickup, hospSig: transaction.signature_hospital_pickup, asstSig: transaction.signature_assistant_pickup,
+        valetName: transaction.user_pickup_name, hospName: transaction.hospital_staff_pickup, asstName: transaction.hospital_assistant_pickup,
+        pendingMsg: '', last: false
+      })}
+      ${renderStageHtml({
+        title: 'Tahap 2: Pengiriman Linen Bersih (Delivery)', bg: '#d9e1f2', color: '#1e2a4a',
+        valetSig: transaction.signature_valet_delivery, hospSig: transaction.signature_hospital_delivery, asstSig: transaction.signature_assistant_delivery,
+        valetName: transaction.user_delivery_name, hospName: transaction.hospital_staff_delivery, asstName: transaction.hospital_assistant_delivery,
+        pendingMsg: deliveryPendingMsg, last: true
+      })}
     </div>
   `;
 

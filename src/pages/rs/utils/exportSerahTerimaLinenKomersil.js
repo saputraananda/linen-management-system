@@ -1,5 +1,12 @@
 import ExcelJS from 'exceljs';
 
+// Perawat RS bersifat opsional: kalau tidak ada nama maupun TTD, kolomnya dibuang (jadi 2 kolom)
+const sigColumns = (hasAssistant, labels, signatures, names) =>
+  hasAssistant
+    ? [labels, signatures, names]
+    : [labels.slice(0, 2), signatures.slice(0, 2), names.slice(0, 2)];
+
+
 // Helper to convert string to Title Case
 const toTitleCase = (str) => {
   if (!str) return '';
@@ -260,6 +267,9 @@ export default async function exportSerahTerimaLinenKomersil(transaction, detail
 
   // Helper to draw signature block
   const drawSignatureBlock = (sectionTitle, labels, signatures, names, isDeliveryPending = false) => {
+    // Tanpa Perawat RS: hanya 2 kolom, kolom Petugas RS melebar sampai kolom H
+    const twoCols = labels.length === 2;
+    const midEnd = twoCols ? 'H' : 'F';
     // Section Header Row
     worksheet.mergeCells(`A${currentRow}:H${currentRow}`);
     const secCell = worksheet.getCell(`A${currentRow}`);
@@ -277,14 +287,16 @@ export default async function exportSerahTerimaLinenKomersil(transaction, detail
     worksheet.mergeCells(`A${currentRow}:C${currentRow}`);
     worksheet.getCell(`A${currentRow}`).value = labels[0];
     
-    worksheet.mergeCells(`D${currentRow}:F${currentRow}`);
+    worksheet.mergeCells(`D${currentRow}:${midEnd}${currentRow}`);
     worksheet.getCell(`D${currentRow}`).value = labels[1];
     
-    worksheet.mergeCells(`G${currentRow}:H${currentRow}`);
-    worksheet.getCell(`G${currentRow}`).value = labels[2];
+    if (!twoCols) {
+      worksheet.mergeCells(`G${currentRow}:H${currentRow}`);
+      worksheet.getCell(`G${currentRow}`).value = labels[2];
+    }
 
     worksheet.getRow(currentRow).height = 26;
-    [1, 4, 7].forEach((colIdx) => {
+    (twoCols ? [1, 4] : [1, 4, 7]).forEach((colIdx) => {
       const cell = worksheet.getCell(currentRow, colIdx);
       cell.font = { name: 'Plus Jakarta Sans', size: 9, bold: true };
       cell.alignment = { horizontal: 'center', vertical: 'middle' };
@@ -300,8 +312,8 @@ export default async function exportSerahTerimaLinenKomersil(transaction, detail
     const imgEndRow = currentRow + 4;
     
     worksheet.mergeCells(`A${imgStartRow}:C${imgEndRow}`);
-    worksheet.mergeCells(`D${imgStartRow}:F${imgEndRow}`);
-    worksheet.mergeCells(`G${imgStartRow}:H${imgEndRow}`);
+    worksheet.mergeCells(`D${imgStartRow}:${midEnd}${imgEndRow}`);
+    if (!twoCols) worksheet.mergeCells(`G${imgStartRow}:H${imgEndRow}`);
 
     for (let r = imgStartRow; r <= imgEndRow; r++) {
       worksheet.getRow(r).height = 26;
@@ -320,9 +332,11 @@ export default async function exportSerahTerimaLinenKomersil(transaction, detail
       worksheet.getCell(`D${midR}`).font = { name: 'Plus Jakarta Sans', size: 8, italic: true, color: { argb: 'FF999999' } };
       worksheet.getCell(`D${midR}`).alignment = { horizontal: 'center', vertical: 'middle' };
 
-      worksheet.getCell(`G${midR}`).value = '(Belum Ada Pengiriman)';
-      worksheet.getCell(`G${midR}`).font = { name: 'Plus Jakarta Sans', size: 8, italic: true, color: { argb: 'FF999999' } };
-      worksheet.getCell(`G${midR}`).alignment = { horizontal: 'center', vertical: 'middle' };
+      if (!twoCols) {
+        worksheet.getCell(`G${midR}`).value = '(Belum Ada Pengiriman)';
+        worksheet.getCell(`G${midR}`).font = { name: 'Plus Jakarta Sans', size: 8, italic: true, color: { argb: 'FF999999' } };
+        worksheet.getCell(`G${midR}`).alignment = { horizontal: 'center', vertical: 'middle' };
+      }
     } else {
       // Embed signatures
       const hasSig1 = embedSignature(workbook, worksheet, signatures[0], 0, imgStartRow - 1, 2, imgEndRow - 1);
@@ -333,7 +347,7 @@ export default async function exportSerahTerimaLinenKomersil(transaction, detail
         worksheet.getCell(`A${midR}`).alignment = { horizontal: 'center', vertical: 'middle' };
       }
 
-      const hasSig2 = embedSignature(workbook, worksheet, signatures[1], 3, imgStartRow - 1, 5, imgEndRow - 1);
+      const hasSig2 = embedSignature(workbook, worksheet, signatures[1], 3, imgStartRow - 1, twoCols ? 7 : 5, imgEndRow - 1);
       if (!hasSig2) {
         const midR = imgStartRow + 2;
         worksheet.getCell(`D${midR}`).value = '(Belum Tanda Tangan)';
@@ -341,7 +355,7 @@ export default async function exportSerahTerimaLinenKomersil(transaction, detail
         worksheet.getCell(`D${midR}`).alignment = { horizontal: 'center', vertical: 'middle' };
       }
 
-      const hasSig3 = embedSignature(workbook, worksheet, signatures[2], 6, imgStartRow - 1, 7, imgEndRow - 1);
+      const hasSig3 = twoCols || embedSignature(workbook, worksheet, signatures[2], 6, imgStartRow - 1, 7, imgEndRow - 1);
       if (!hasSig3) {
         const midR = imgStartRow + 2;
         worksheet.getCell(`G${midR}`).value = '(Belum Tanda Tangan)';
@@ -356,14 +370,16 @@ export default async function exportSerahTerimaLinenKomersil(transaction, detail
     worksheet.mergeCells(`A${currentRow}:C${currentRow}`);
     worksheet.getCell(`A${currentRow}`).value = `(${toTitleCase(names[0] || '—')})`;
 
-    worksheet.mergeCells(`D${currentRow}:F${currentRow}`);
+    worksheet.mergeCells(`D${currentRow}:${midEnd}${currentRow}`);
     worksheet.getCell(`D${currentRow}`).value = `(${toTitleCase(names[1] || '—')})`;
 
-    worksheet.mergeCells(`G${currentRow}:H${currentRow}`);
-    worksheet.getCell(`G${currentRow}`).value = `(${toTitleCase(names[2] || '—')})`;
+    if (!twoCols) {
+      worksheet.mergeCells(`G${currentRow}:H${currentRow}`);
+      worksheet.getCell(`G${currentRow}`).value = `(${toTitleCase(names[2] || '—')})`;
+    }
 
     worksheet.getRow(currentRow).height = 26;
-    [1, 4, 7].forEach((colIdx) => {
+    (twoCols ? [1, 4] : [1, 4, 7]).forEach((colIdx) => {
       const cell = worksheet.getCell(currentRow, colIdx);
       cell.font = { name: 'Plus Jakarta Sans', size: 9, bold: true };
       cell.alignment = { horizontal: 'center', vertical: 'middle' };
@@ -377,13 +393,12 @@ export default async function exportSerahTerimaLinenKomersil(transaction, detail
   // 1. Session 1: Proses Pickup Linen Kotor
   drawSignatureBlock(
     'Pengambilan Linen Kotor',
-    ['Valet IKM', 'Petugas RS', 'Perawat RS'],
-    [valetPickupSig, hospPickupSig, asstPickupSig],
-    [
-      transaction.user_pickup_name,
-      transaction.hospital_staff_pickup,
-      transaction.hospital_assistant_pickup
-    ],
+    ...sigColumns(
+      transaction.hospital_assistant_pickup || asstPickupSig,
+      ['Valet IKM', 'Petugas RS', 'Perawat RS'],
+      [valetPickupSig, hospPickupSig, asstPickupSig],
+      [transaction.user_pickup_name, transaction.hospital_staff_pickup, transaction.hospital_assistant_pickup]
+    ),
     false
   );
 
@@ -395,13 +410,12 @@ export default async function exportSerahTerimaLinenKomersil(transaction, detail
   const isDeliveryPending = transaction.status !== 'SELESAI';
   drawSignatureBlock(
     'Pengiriman Linen Bersih',
-    ['Valet IKM', 'Petugas RS', 'Perawat RS'],
-    [valetDeliverySig, hospDeliverySig, asstDeliverySig],
-    [
-      transaction.user_delivery_name,
-      transaction.hospital_staff_delivery,
-      transaction.hospital_assistant_delivery
-    ],
+    ...sigColumns(
+      transaction.hospital_assistant_delivery || asstDeliverySig,
+      ['Valet IKM', 'Petugas RS', 'Perawat RS'],
+      [valetDeliverySig, hospDeliverySig, asstDeliverySig],
+      [transaction.user_delivery_name, transaction.hospital_staff_delivery, transaction.hospital_assistant_delivery]
+    ),
     isDeliveryPending
   );
 

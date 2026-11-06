@@ -1301,6 +1301,7 @@ export default function ValetDashboard() {
                         <tr className="bg-slate-50 text-slate-400 font-semibold uppercase tracking-wider text-[10px] border-b border-slate-150">
                           <th className="py-2.5 px-3 text-center">Tanggal</th>
                           <th className="py-2.5 px-3">No. Formulir</th>
+                          <th className="py-2.5 px-3">Ruangan</th>
                           <th className="py-2.5 px-3 text-center">Kotor</th>
                           <th className="py-2.5 px-3 text-center">Bersih</th>
                           <th className="py-2.5 px-3 text-center">Selisih</th>
@@ -1317,6 +1318,9 @@ export default function ValetDashboard() {
                               </td>
                               <td className="py-2.5 px-3 font-semibold text-slate-800">
                                 {h.form_number}
+                              </td>
+                              <td className="py-2.5 px-3 font-semibold text-teal-700 whitespace-nowrap">
+                                {h.room_name || '—'}
                               </td>
                               <td className="py-2.5 px-3 text-center font-medium text-slate-655">
                                 {formatNumber(h.qty_kotor)}

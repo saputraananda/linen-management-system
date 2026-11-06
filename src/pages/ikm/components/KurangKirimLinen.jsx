@@ -6,6 +6,7 @@ import {
   AlertTriangle, ArrowLeft, RefreshCw, ChevronDown, Save, User, Clock, AlertCircle,
   Truck, Printer, X, Plus, Info
 } from 'lucide-react';
+import RoomStatusSelect from './RoomStatusSelect';
 import exportSuratJalanKurangKirim from '../utils/exportSuratJalanKurangKirim';
 import ikmLogo from '../../../assets/images/ikm.png';
 import kopSuratIkm from '../../../assets/images/kop_surat_ikm.png';
@@ -738,6 +739,18 @@ export default function KurangKirimLinen() {
     return true;
   });
 
+  // Sisa kurang kirim per ruangan (hanya dari formulir yang sedang dibuka)
+  const kurangRoomStatus = {};
+  shortageDetails.forEach(item => {
+    if (!item.room_id) return;
+    const sisa = parseInt(item.remaining_shortage || 0);
+    if (sisa > 0) {
+      const cur = kurangRoomStatus[item.room_id] || { kotor: 0, cuci: 0, kurang: 0 };
+      cur.kurang += sisa;
+      kurangRoomStatus[item.room_id] = cur;
+    }
+  });
+
   const filteredShortageItems = (() => {
     if (selectedRoomId) {
       return shortageDetails.filter(item => item.room_id === parseInt(selectedRoomId));
@@ -1029,21 +1042,7 @@ export default function KurangKirimLinen() {
                       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
                         {/* Room Selector above the table */}
                         <div className="p-3 border-b border-slate-100 bg-slate-50/70 flex gap-3">
-                          <div className="relative min-w-[200px]">
-                            <select
-                              value={selectedRoomId}
-                              onChange={e => setSelectedRoomId(e.target.value)}
-                              className="w-full pl-3 pr-9 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] cursor-pointer appearance-none"
-                            >
-                              <option value="">Semua Ruangan</option>
-                              {uniqueRooms.map(room => (
-                                <option key={room.id} value={room.id}>{room.name}</option>
-                              ))}
-                            </select>
-                            <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-slate-400">
-                              <ChevronDown className="w-4 h-4" />
-                            </div>
-                          </div>
+                          <RoomStatusSelect value={selectedRoomId} onChange={setSelectedRoomId} rooms={uniqueRooms} roomStatus={kurangRoomStatus} />
                         </div>
 
                         <div className="overflow-x-auto">

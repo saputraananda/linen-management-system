@@ -223,11 +223,12 @@ export const getDashboardData = async (req, res) => {
 
     // 5. Fetch detailed history of kurang kirim for this hospital
     const historyQuery = `
-      SELECT td.hospital_linen_id, t.form_number, t.pickup_date, t.delivery_date, 
+      SELECT td.hospital_linen_id, td.room_id, r.room_name, t.form_number, t.pickup_date, t.delivery_date,
              td.qty_kotor, td.qty_bersih, (td.qty_kotor - td.qty_bersih) AS qty_kurang,
              td.notes, t.user_pickup, t.user_delivery
       FROM tr_linen_transaction_detail td
       INNER JOIN tr_linen_transaction t ON td.transaction_id = t.id
+      LEFT JOIN mst_rooms_rs r ON td.room_id = r.id
       WHERE t.hospital_id = ? 
         AND t.status = 'SELESAI' 
         AND td.qty_bersih < td.qty_kotor
