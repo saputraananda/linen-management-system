@@ -99,6 +99,12 @@ function SenderSelect({ value, onChange, employees }) {
   );
 }
 
+// BAST dianggap lengkap bila semua pihak yang tercantum sudah TTD. Selain itu masih "sementara" dan bebas diubah.
+function isBastFullySigned(row) {
+  if (!row) return false;
+  return Boolean(row.signature_sender && row.signature_receiver && (!row.ga_head_name || row.signature_ga));
+}
+
 function SignaturePad({ label, role, name, caption, value, onChange }) {
   const canvasRef = useRef(null);
   const drawing = useRef(false);
@@ -263,6 +269,8 @@ export default function BastLinenSewa() {
   const [endDate, setEndDate] = useState('');
   const [historyUnit, setHistoryUnit] = useState('');
   const [editingId, setEditingId] = useState(null);
+  // true hanya jika BAST yang diedit sudah lengkap TTD; BAST yang belum lengkap = simpan sementara, bebas diubah
+  const [editNeedsResign, setEditNeedsResign] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
@@ -435,6 +443,7 @@ export default function BastLinenSewa() {
       const row = data.data;
       if (String(row.hospital_id) !== String(hospitalId)) return showToast('BAST ini milik rumah sakit lain', 'error');
       setEditingId(row.id);
+      setEditNeedsResign(isBastFullySigned(row));
       setEntries(entriesFromDetails(row));
       setRoomId(row.room_id ? String(row.room_id) : '');
       setBastDate(toInputDateTime(row.bast_date));
@@ -457,15 +466,12 @@ export default function BastLinenSewa() {
     if (!hospitalId) return showToast('Pilih rumah sakit di dashboard valet terlebih dahulu', 'error');
     if (!senderName.trim()) return showToast('Nama pengirim wajib diisi', 'error');
     if (!isTitleCase(senderName)) return showToast('Nama pengirim harus Capital Each Word', 'error');
-    if (!senderPosition.trim()) return showToast('Jabatan pengirim wajib diisi', 'error');
     if (!receiverName.trim()) return showToast('Nama penerima wajib diisi', 'error');
     if (!isTitleCase(receiverName)) return showToast('Nama penerima harus Capital Each Word', 'error');
-    if (!receiverPosition.trim()) return showToast('Jabatan penerima wajib diisi', 'error');
     const hasGa = Boolean(gaHeadName.trim() || gaHeadPosition.trim());
     if (hasGa && !gaHeadName.trim()) return showToast('Nama yang mengetahui wajib diisi jika jabatan diisi', 'error');
     if (hasGa && !isTitleCase(gaHeadName)) return showToast('Nama yang mengetahui harus Capital Each Word', 'error');
-    if (hasGa && !gaHeadPosition.trim()) return showToast('Jabatan yang mengetahui wajib diisi jika nama diisi', 'error');
-    if (editingId && (!sigSender || !sigReceiver || (hasGa && !sigGa))) return showToast(hasGa ? 'Perubahan BAST wajib ditandatangani ulang oleh ketiga pihak' : 'Perubahan BAST wajib ditandatangani ulang oleh kedua pihak', 'error');
+    if (editingId && editNeedsResign && (!sigSender || !sigReceiver || (hasGa && !sigGa))) return showToast(hasGa ? 'Perubahan BAST wajib ditandatangani ulang oleh ketiga pihak' : 'Perubahan BAST wajib ditandatangani ulang oleh kedua pihak', 'error');
     const details = detailsFromEntries(entries);
     if (!details.length) return showToast('Isi minimal satu pengiriman atau penarikan', 'error');
     setSaving(true);
@@ -668,12 +674,12 @@ export default function BastLinenSewa() {
           </table>
           </div>
         </div>
-        <div className={`grid grid-cols-1 gap-4 ${gaHeadName.trim() && gaHeadPosition.trim() ? 'lg:grid-cols-3' : 'lg:grid-cols-2'}`}>
+        <div className={`grid grid-cols-1 gap-4 ${gaHeadName.trim() ? 'lg:grid-cols-3' : 'lg:grid-cols-2'}`}>
           <SignaturePad label="Yang menyerahkan," role="Pihak Kedua" name={senderName} caption={senderPosition} value={sigSender} onChange={setSigSender} />
           <SignaturePad label="Yang menerima," role="Pihak Pertama" name={receiverName} caption={receiverPosition} value={sigReceiver} onChange={setSigReceiver} />
-          {gaHeadName.trim() && gaHeadPosition.trim() && <SignaturePad label="Mengetahui," name={gaHeadName} caption={gaHeadPosition} value={sigGa} onChange={setSigGa} />}
+          {gaHeadName.trim() && <SignaturePad label="Mengetahui," name={gaHeadName} caption={gaHeadPosition} value={sigGa} onChange={setSigGa} />}
         </div>
-        <p className="text-xs text-slate-400">{editingId ? (gaHeadName.trim() && gaHeadPosition.trim() ? 'Perubahan BAST wajib ditandatangani ulang oleh ketiga pihak.' : 'Perubahan BAST wajib ditandatangani ulang oleh kedua pihak.') : 'Tanda tangan boleh dikosongkan dan dilengkapi nanti.'}</p>
+        <p className="text-xs text-slate-400">{editingId && editNeedsResign ? (gaHeadName.trim() ?'Perubahan BAST wajib ditandatangani ulang oleh ketiga pihak.' : 'Perubahan BAST wajib ditandatangani ulang oleh kedua pihak.') : 'Tanda tangan boleh dikosongkan dan dilengkapi nanti.'}</p>
         <div className="flex gap-2">
           <button type="button" disabled={saving || !hospitalId} onClick={save} className="rounded-xl bg-gradient-to-r from-[#126776] to-[#1ea59e] px-6 py-2.5 text-sm font-semibold text-white shadow-sm disabled:opacity-60">{saving ? 'Menyimpan...' : editingId ? 'Simpan Perubahan' : 'Simpan BAST'}</button>
           {editingId && <button type="button" onClick={closeForm} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700">Batal</button>}
@@ -690,7 +696,7 @@ export default function BastLinenSewa() {
           </div>
           <div className="flex gap-2">
             <button type="button" onClick={() => downloadBast(viewRow.id)} className="rounded-xl bg-white/15 px-4 py-2 text-xs font-semibold text-white hover:bg-white/25">Unduh</button>
-            <button type="button" onClick={() => startEdit(viewRow.id)} className="rounded-xl bg-white px-4 py-2 text-xs font-semibold text-[#126776] hover:bg-slate-50">Ubah (TTD ulang)</button>
+            <button type="button" onClick={() => startEdit(viewRow.id)} className="rounded-xl bg-white px-4 py-2 text-xs font-semibold text-[#126776] hover:bg-slate-50">{isBastFullySigned(viewRow) ? 'Ubah (TTD ulang)' : 'Ubah'}</button>
           </div>
         </div>
         <div className="overflow-auto rounded-b-3xl bg-slate-200/70 p-4 sm:p-8">
