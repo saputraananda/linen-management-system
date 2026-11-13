@@ -766,6 +766,10 @@ export default function BastLinenSewa() {
                   <p className="mt-0.5 truncate text-[11px] font-medium text-slate-500">{row.sender_name} · {row.receiver_name}</p>
                 </div>
                 <div className="hidden shrink-0 items-center gap-1.5 sm:flex">
+                  <div className="flex min-w-[96px] max-w-[180px] flex-col items-center rounded-xl border border-slate-100 bg-slate-50 px-3 py-1.5">
+                    <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Ruangan</span>
+                    <span className="max-w-full truncate text-sm font-bold leading-tight text-slate-700" title={row.room_name || 'Seluruh Unit'}>{row.room_name || 'Seluruh Unit'}</span>
+                  </div>
                   <div className="flex min-w-[64px] flex-col items-center rounded-xl border border-slate-100 bg-slate-50 px-3 py-1.5">
                     <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Kirim</span>
                     <span className="text-sm font-bold leading-tight text-slate-700">{row.total_pengiriman}</span>

@@ -119,7 +119,7 @@ const ITEMS_HEAD = `<thead>
 export function renderBastHtml(bast, kopUrl) {
   const hospital = String(bast.hospital_name || '').trim();
   const room = String(bast.room_name || '').trim();
-  const place = !room || /seluruh|beberapa/i.test(room) ? hospital : `${hospital} ${room}`;
+  const headerUnit = room && !/seluruh|beberapa|multi/i.test(room) ? room : '';
   const hasGa = Boolean(String(bast.ga_head_name || '').trim());
   const pertama = [];
   if (bast.ga_head_name) pertama.push({ nama: bast.ga_head_name, jabatan: bast.ga_head_position });
@@ -172,9 +172,11 @@ export function renderBastHtml(bast, kopUrl) {
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(d);
   }
-  const generalSubtitle = `SERAH TERIMA LINEN SEWA ${place}`.replace(/\s+/g, ' ').trim();
+  // Judul selalu hanya nama rumah sakit. Kalau BAST hanya untuk satu unit, nama unit ditulis di bawah judul ("UNIT ...").
   const unitSubtitle = `SERAH TERIMA LINEN SEWA ${hospital}`.replace(/\s+/g, ' ').trim();
-  const pages = [page(generalSubtitle, '', linenRows(bast.details))];
+  const onlyGroup = groups.size === 1 ? [...groups.keys()][0] : '';
+  const singleUnit = headerUnit || (onlyGroup && onlyGroup !== 'Tanpa Unit' ? onlyGroup : '');
+  const pages = [page(unitSubtitle, singleUnit ? `UNIT ${singleUnit}` : '', linenRows(bast.details))];
   if (groups.size > 1) {
     [...groups.entries()]
       .sort((a, b) => a[0].localeCompare(b[0], 'id'))
