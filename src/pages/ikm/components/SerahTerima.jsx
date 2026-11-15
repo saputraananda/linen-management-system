@@ -1799,7 +1799,7 @@ export default function SerahTerima() {
                     {/* Petugas RS Pemeriksa (Pickup) */}
                     <div className="space-y-1.5">
                       <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest">
-                        Petugas RS Pemeriksa (Pickup) <span className="text-rose-500 font-bold">*</span>
+                        Petugas RS <span className="text-rose-500 font-bold">*</span>
                       </label>
                       <div className="relative">
                         <User className="absolute inset-y-0 left-3.5 my-auto h-4 w-4 text-slate-400" />
@@ -1817,7 +1817,7 @@ export default function SerahTerima() {
                     {/* Perawat RS (Pickup) */}
                     <div className="space-y-1.5">
                       <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest">
-                        Perawat RS (Pickup) <span className="text-slate-400 font-normal">(Opsional)</span>
+                        Perawat RS
                       </label>
                       <div className="relative">
                         <User className="absolute inset-y-0 left-3.5 my-auto h-4 w-4 text-slate-400" />
@@ -2142,40 +2142,31 @@ export default function SerahTerima() {
                 <div className="bg-[#678083] text-white flex items-center justify-center px-4 font-bold text-[10px] uppercase select-none tracking-widest shrink-0 [writing-mode:vertical-lr] rotate-180 rounded-r-2xl">
                   Pengambilan
                 </div>
-                <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 p-5 text-xs items-center">
+                <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 p-5 text-xs items-center">
                   <div className="space-y-1">
-                    <span className="text-slate-400 font-semibold uppercase text-xs tracking-wider block">Status Transaksi</span>
-                    <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-extrabold uppercase border ${editingTransaction.transaction.status === 'SELESAI'
-                      ? 'bg-teal-50 text-teal-700 border-teal-200'
-                      : 'bg-[#1ea59e]/10 text-[#126776] border border-[#1ea59e]/30'
-                      }`}>
-                      {editingTransaction.transaction.status === 'SELESAI' ? 'Selesai' : 'Pengambilan Kotor'}
-                    </span>
-                  </div>
-                  <div className="space-y-1">
-                    <span className="text-slate-400 font-semibold uppercase text-xs tracking-wider block">Petugas Pengambil</span>
+                    <span className="text-slate-400 font-semibold uppercase text-xs tracking-wider block">Petugas</span>
                     <span className="font-semibold text-slate-700 block text-sm">
                       {toTitleCase(editingTransaction.transaction.user_pickup_name)}
                     </span>
                   </div>
                   <div className="space-y-1">
-                    <span className="text-slate-400 font-semibold uppercase text-xs tracking-wider block">Petugas RS (Pickup)</span>
+                    <span className="text-slate-400 font-semibold uppercase text-xs tracking-wider block">Petugas RS</span>
                     <span className="font-semibold text-slate-700 block text-sm">
                       {editingTransaction.transaction.hospital_staff_pickup || '—'}
                     </span>
                   </div>
                   <div className="space-y-1">
-                    <span className="text-slate-400 font-semibold uppercase text-xs tracking-wider block">Perawat RS (Pickup)</span>
+                    <span className="text-slate-400 font-semibold uppercase text-xs tracking-wider block">Perawat RS</span>
                     <span className="font-semibold text-slate-700 block text-sm">
                       {editingTransaction.transaction.hospital_assistant_pickup || '—'}
                     </span>
                   </div>
                   <div className="space-y-1">
-                    <span className="text-slate-400 font-semibold uppercase text-xs tracking-wider block">Tanggal Pengambilan</span>
+                    <span className="text-slate-400 font-semibold uppercase text-xs tracking-wider block">Tanggal</span>
                     <span className="font-semibold text-slate-700 block text-xs">{formatDate(editingTransaction.transaction.pickup_date)}</span>
                   </div>
                   <div className="space-y-1">
-                    <span className="text-slate-400 font-semibold uppercase text-xs tracking-wider block">Catatan Pengambilan</span>
+                    <span className="text-slate-400 font-semibold uppercase text-xs tracking-wider block">Catatan</span>
                     <span className="font-medium text-slate-500 block italic text-xs truncate" title={editingTransaction.transaction.notes_pickup || ''}>
                       {editingTransaction.transaction.notes_pickup || '—'}
                     </span>
@@ -2193,7 +2184,7 @@ export default function SerahTerima() {
                   {/* Delivery Complete Recorder */}
                   <div className="space-y-1.5" ref={editEmployeeSelectRef}>
                     <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest">
-                      Petugas Pengirim
+                      Petugas
                     </label>
                     <div className="relative">
                       {!isEditable ? (
@@ -2290,7 +2281,7 @@ export default function SerahTerima() {
                   <div className="space-y-1.5">
                     <div className="flex justify-between items-center h-4">
                       <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest">
-                        Petugas RS (Delivery)
+                        Petugas RS
                       </label>
                       {isEditable && (
                         <button
@@ -2320,7 +2311,7 @@ export default function SerahTerima() {
                   <div className="space-y-1.5">
                     <div className="flex justify-between items-center h-4">
                       <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest">
-                        Perawat RS (Delivery) <span className="text-slate-400 font-normal">(Opsional)</span>
+                        Perawat RS
                       </label>
                       {isEditable && (
                         <button
