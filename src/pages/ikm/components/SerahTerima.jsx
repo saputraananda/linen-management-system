@@ -213,8 +213,21 @@ export default function SerahTerima() {
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
   const [alertConfig, setAlertConfig] = useState({ show: false, title: 'Peringatan', message: '' });
   const showAlert = (message, title = 'Peringatan') => setAlertConfig({ show: true, title, message });
+  // Modal konfirmasi (pengganti window.confirm), gaya sama dengan modal peringatan
+  const [confirmConfig, setConfirmConfig] = useState({ show: false, title: '', message: '', confirmLabel: 'Ya', onConfirm: null });
+  const closeConfirm = () => setConfirmConfig(c => ({ ...c, show: false, onConfirm: null }));
   const [savedRooms, setSavedRooms] = useState([]);
   const [temporaryTxId, setTemporaryTxId] = useState(null);
+
+  // TTD Serah Terima per Unit (ruangan): Valet + Perawat Unit per ruangan, sebelum TTD akhir Tim Linen RS
+  const [requireUnitSignature, setRequireUnitSignature] = useState(0);
+  const [pickupRoomSign, setPickupRoomSign] = useState(null); // status TTD unit formulir pickup yang sedang diisi
+  const [roomNurses, setRoomNurses] = useState({}); // { roomId: [nama perawat] } dari mst_users_rs
+  const [unitNurseName, setUnitNurseName] = useState('');
+  const [unitSigNurse, setUnitSigNurse] = useState('');
+  const [unitSigValet, setUnitSigValet] = useState('');
+  const [unitSigKey, setUnitSigKey] = useState(0); // remount kanvas TTD saat ganti ruangan
+  const [signingRoom, setSigningRoom] = useState(false);
 
   // Keep hospitalId and hospitalName in sync with sessionStorage in case of client-side navigation transitions
   const currentSessionHospitalId = sessionStorage.getItem('valet_hospital_id') || '';
@@ -483,6 +496,7 @@ export default function SerahTerima() {
   };
 
   const handleKotorQtyChange = (linenId, value) => {
+    if (pickupRoomLocked) return;
     setKotorQuantities(prev => {
       const linenQtys = prev[linenId] || {};
       const activeRoom = selectedRoomId || 'all';
@@ -537,6 +551,7 @@ export default function SerahTerima() {
   };
 
   const handleNoteValChange = (id, value) => {
+    if (pickupRoomLocked) return;
     setItemNotes(prev => {
       const notesObj = prev[id] || {};
       if (typeof notesObj === 'string') {
@@ -588,6 +603,7 @@ export default function SerahTerima() {
       fetchHospitalInfo();
       fetchHistory();
       fetchHospitalLinens();
+      fetchRoomNurses();
     }
   }, [hospitalId]);
 
@@ -638,9 +654,38 @@ export default function SerahTerima() {
         setBillingByKg(Number(data.data.hospital?.billing_by_kg) || 0);
         setAllowExpress(Number(data.data.hospital?.allow_express) || 0);
         setKgAgreement(data.data.hospital?.kg_agreement ?? null);
+        setRequireUnitSignature(Number(data.data.hospital?.require_unit_signature) || 0);
       }
     } catch (err) {
       console.error('Error fetching hospital info:', err);
+    }
+  };
+
+  // Nama perawat unit per ruangan (diisi otomatis, tetap bisa diedit)
+  const fetchRoomNurses = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const { data } = await axios.get(`/api/ikm/room-nurses?hospitalId=${hospitalId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (data?.success) setRoomNurses(data.data || {});
+    } catch (err) {
+      console.error('Error fetching room nurses:', err);
+    }
+  };
+
+  // Ambil ulang status TTD unit dari server (server bisa mereset TTD ruangan yang isinya berubah)
+  const refreshRoomSign = async (txId, stage) => {
+    try {
+      const token = localStorage.getItem('token');
+      const { data } = await axios.get(`/api/ikm/transactions/${txId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!data?.success) return;
+      if (stage === 'pickup') setPickupRoomSign(data.data.roomSign || null);
+      else setEditingTransaction(prev => (prev ? { ...prev, roomSign: data.data.roomSign } : prev));
+    } catch (err) {
+      console.error('Error refreshing room signatures:', err);
     }
   };
 
@@ -706,16 +751,23 @@ export default function SerahTerima() {
   };
 
   // Submit Day 1 Kotor form
-  const handleCreatePickup = async (e = null) => {
-    if (e) e.preventDefault();
+  // roomOnly: simpan isian ruangan saja (selalu sementara, TTD akhir tidak dikirim). Mengembalikan id transaksi.
+  const handleCreatePickup = async (e = null, { roomOnly = false } = {}) => {
+    if (e?.preventDefault) e.preventDefault();
     setErrorMsg('');
 
-    const isTemp = !signatureValetPickup || !signatureHospitalPickup;
+    const isTemp = roomOnly || !signatureValetPickup || !signatureHospitalPickup;
     if (!isTemp) {
       if (!hospitalStaffPickup.trim()) {
         setErrorMsg('Nama petugas RS pemeriksa (Pickup) wajib diisi.');
         showAlert('Nama petugas RS pemeriksa (Pickup) wajib diisi.');
-        return;
+        return null;
+      }
+      if (pendingPickupRooms.length) {
+        const msg = `Masih ada unit yang belum TTD pengambilan: ${pendingPickupRooms.map(r => r.name).join(', ')}.`;
+        setErrorMsg(msg);
+        showAlert(msg, 'TTD Unit Belum Lengkap');
+        return null;
       }
     }
 
@@ -754,7 +806,7 @@ export default function SerahTerima() {
     if (activeDetails.length === 0) {
       setErrorMsg('Harap isi jumlah "Kotor" minimal untuk 1 jenis linen.');
       showAlert('Harap isi jumlah "Kotor" minimal untuk 1 jenis linen.');
-      return;
+      return null;
     }
 
     setSubmittingNew(true);
@@ -769,9 +821,9 @@ export default function SerahTerima() {
         hospitalAssistantPickup,
         notes,
         details: activeDetails,
-        signatureValetPickup,
-        signatureHospitalPickup,
-        signatureAssistantPickup,
+        signatureValetPickup: roomOnly ? null : signatureValetPickup,
+        signatureHospitalPickup: roomOnly ? null : signatureHospitalPickup,
+        signatureAssistantPickup: roomOnly ? null : signatureAssistantPickup,
         totalKgValet: totalKgValet === '' ? null : Number(totalKgValet),
         isExpress: isExpress ? 1 : 0
       }, {
@@ -782,10 +834,13 @@ export default function SerahTerima() {
         setSavedRooms([]);
         if (data.isTemporary) {
           setTemporaryTxId(data.data.transactionId);
-          showToast("Berhasil Tersimpan Sementara");
+          if (!roomOnly) showToast("Berhasil Tersimpan Sementara");
           fetchHistory();
+          await refreshRoomSign(data.data.transactionId, 'pickup');
+          return data.data.transactionId;
         } else {
           setTemporaryTxId(null);
+          setPickupRoomSign(null);
           setUserPickup(localStorage.getItem('employeeId') || '');
           setUserPickupName(localStorage.getItem('fullName') || localStorage.getItem('username') || '');
           setNotes('');
@@ -809,10 +864,15 @@ export default function SerahTerima() {
           showToast("Transaksi serah terima linen (Kotor) berhasil dicatat");
           fetchHistory();
           setActiveTab('history');
+          return data.data.transactionId;
         }
       }
+      return null;
     } catch (err) {
-      setErrorMsg(err.response?.data?.message || 'Gagal menyimpan transaksi.');
+      const msg = err.response?.data?.message || 'Gagal menyimpan transaksi.';
+      setErrorMsg(msg);
+      if (roomOnly) showAlert(msg);
+      return null;
     } finally {
       setSubmittingNew(false);
     }
@@ -834,6 +894,7 @@ export default function SerahTerima() {
 
         if (!hasPickupSignatures) {
           setTemporaryTxId(fullTx.transaction.id);
+          setPickupRoomSign(fullTx.roomSign || null);
           setHospitalStaffPickup(fullTx.transaction.hospital_staff_pickup || '');
           setHospitalAssistantPickup(fullTx.transaction.hospital_assistant_pickup || '');
           setNotes(fullTx.transaction.notes_pickup || '');
@@ -891,8 +952,11 @@ export default function SerahTerima() {
         } else {
           // Normal Day 2 update bersih view
           setEditingTransaction(fullTx);
-          setUserDelivery(fullTx.transaction.user_delivery || '');
-          setUserDeliveryName(fullTx.transaction.user_delivery_name || '');
+          // Petugas pengirim default = valet yang sedang login (tetap bisa diganti)
+          setUserDelivery(fullTx.transaction.user_delivery || localStorage.getItem('employeeId') || '');
+          setUserDeliveryName(fullTx.transaction.user_delivery
+            ? (fullTx.transaction.user_delivery_name || '')
+            : (localStorage.getItem('fullName') || localStorage.getItem('username') || ''));
           setEditNotes(fullTx.transaction.notes_delivery || '');
           setHospitalStaffPickup(fullTx.transaction.hospital_staff_pickup || '');
           setHospitalStaffDelivery(fullTx.transaction.hospital_staff_delivery || '');
@@ -945,16 +1009,23 @@ export default function SerahTerima() {
   };
 
   // Submit Day 2 Bersih completion
-  const handleCompleteDelivery = async (e = null) => {
-    if (e) e.preventDefault();
+  // roomOnly: simpan isian ruangan saja (selalu sementara, TTD akhir pengiriman tidak dikirim). Mengembalikan true bila tersimpan.
+  const handleCompleteDelivery = async (e = null, { roomOnly = false } = {}) => {
+    if (e?.preventDefault) e.preventDefault();
     setErrorMsg('');
 
-    const isTemp = !signatureValetDelivery || !signatureHospitalDelivery;
+    const isTemp = roomOnly || !signatureValetDelivery || !signatureHospitalDelivery;
     if (!isTemp) {
       if (!hospitalStaffDelivery.trim()) {
         setErrorMsg('Nama petugas RS pemeriksa (Delivery) wajib diisi.');
         showAlert('Nama petugas RS pemeriksa (Delivery) wajib diisi.');
-        return;
+        return false;
+      }
+      if (editingTransaction?.transaction?.status === 'PROSES' && pendingDeliveryRooms.length) {
+        const msg = `Masih ada unit yang belum TTD pengiriman bersih: ${pendingDeliveryRooms.map(r => r.room_name).join(', ')}.`;
+        setErrorMsg(msg);
+        showAlert(msg, 'TTD Unit Belum Lengkap');
+        return false;
       }
     }
 
@@ -967,7 +1038,7 @@ export default function SerahTerima() {
       if (Number.isNaN(kgNum) || kgNum < 0) {
         setErrorMsg('Total Kg wajib diisi saat pengiriman bersih.');
         showAlert('Total Kg wajib diisi saat pengiriman bersih.');
-        return;
+        return false;
       }
     }
 
@@ -1002,9 +1073,9 @@ export default function SerahTerima() {
         signatureValetPickup,
         signatureHospitalPickup,
         signatureAssistantPickup,
-        signatureValetDelivery,
-        signatureHospitalDelivery,
-        signatureAssistantDelivery,
+        signatureValetDelivery: roomOnly ? null : signatureValetDelivery,
+        signatureHospitalDelivery: roomOnly ? null : signatureHospitalDelivery,
+        signatureAssistantDelivery: roomOnly ? null : signatureAssistantDelivery,
         totalKgValet: totalKgValet === '' ? null : Number(totalKgValet),
         isExpress: isExpress ? 1 : 0
       }, {
@@ -1020,8 +1091,11 @@ export default function SerahTerima() {
           if (detailData?.success) {
             const fullTx = detailData.data;
             setEditingTransaction(fullTx);
-            setUserDelivery(fullTx.transaction.user_delivery || '');
-            setUserDeliveryName(fullTx.transaction.user_delivery_name || '');
+            // Petugas pengirim default = valet yang sedang login (tetap bisa diganti)
+          setUserDelivery(fullTx.transaction.user_delivery || localStorage.getItem('employeeId') || '');
+            setUserDeliveryName(fullTx.transaction.user_delivery
+            ? (fullTx.transaction.user_delivery_name || '')
+            : (localStorage.getItem('fullName') || localStorage.getItem('username') || ''));
             setEditNotes(fullTx.transaction.notes_delivery || '');
             setHospitalStaffPickup(fullTx.transaction.hospital_staff_pickup || '');
             setHospitalStaffDelivery(fullTx.transaction.hospital_staff_delivery || '');
@@ -1058,18 +1132,65 @@ export default function SerahTerima() {
             setEditItemNotes(initialItemNotes);
             setSavedRooms(Array.from(initiallySavedRooms));
           }
-          showToast("Berhasil Tersimpan Sementara");
+          if (!roomOnly) showToast("Berhasil Tersimpan Sementara");
           fetchHistory();
         } else {
           setEditingTransaction(null);
           setErrorMsg('');
           fetchHistory();
         }
+        return true;
       }
+      return false;
     } catch (err) {
-      setErrorMsg(err.response?.data?.message || 'Gagal menyelesaikan pengiriman.');
+      const msg = err.response?.data?.message || 'Gagal menyelesaikan pengiriman.';
+      setErrorMsg(msg);
+      if (roomOnly) showAlert(msg);
+      return false;
     } finally {
       setSubmittingEdit(false);
+    }
+  };
+
+  // Simpan isian ruangan yang sedang dipilih, lalu (bila diisi) simpan TTD Valet + Perawat Unit ruangan itu
+  const handleSaveAndSignRoom = async () => {
+    const stage = editingTransaction ? 'delivery' : 'pickup';
+    const wantsSign = !!(unitSigNurse || unitSigValet);
+    if (wantsSign && (!unitNurseName.trim() || !unitSigNurse || !unitSigValet)) {
+      showAlert('Lengkapi nama perawat unit, TTD perawat unit, dan TTD valet untuk ruangan ini.', 'TTD Unit Belum Lengkap');
+      return;
+    }
+    setSigningRoom(true);
+    try {
+      let txId = null;
+      if (stage === 'pickup') {
+        txId = await handleCreatePickup(null, { roomOnly: true });
+      } else if (await handleCompleteDelivery(null, { roomOnly: true })) {
+        txId = editingTransaction.transaction.id;
+      }
+      if (!txId) return;
+      if (!wantsSign) {
+        showToast('Ruangan tersimpan. TTD unit belum diisi.');
+        return;
+      }
+      const token = localStorage.getItem('token');
+      const { data } = await axios.put(`/api/ikm/transactions/${txId}/rooms/${selectedRoomId}/sign`, {
+        stage,
+        nurseName: unitNurseName,
+        signatureNurse: unitSigNurse,
+        signatureValet: unitSigValet
+      }, { headers: { Authorization: `Bearer ${token}` } });
+      if (data?.success) {
+        showToast(data.message || 'TTD unit tersimpan');
+        await refreshRoomSign(txId, stage);
+        setUnitSigNurse('');
+        setUnitSigValet('');
+        setUnitSigKey(k => k + 1);
+      }
+    } catch (err) {
+      showAlert(err.response?.data?.message || 'Gagal menyimpan TTD unit.');
+    } finally {
+      setSigningRoom(false);
     }
   };
 
@@ -1351,6 +1472,50 @@ export default function SerahTerima() {
     }
   });
 
+  // ── TTD per unit ──
+  const gudangRoomIds = new Set(roomLinensList.filter(rl => Number(rl.is_gudang_linen) === 1).map(rl => String(rl.room_id)));
+  const roomSignOf = (state, roomId) => state?.rooms?.find(r => String(r.room_id) === String(roomId));
+  // Formulir baru mengikuti saklar RS; formulir yang sudah tersimpan mengikuti penanda di transaksinya
+  const pickupUnitSignMode = pickupRoomSign
+    ? !!pickupRoomSign.required
+    : Number(requireUnitSignature) === 1 && uniqueRooms.some(r => !gudangRoomIds.has(String(r.id)));
+  const deliveryUnitSignMode = !!editingTransaction?.roomSign?.required;
+  // Ruangan yang menurunkan kotor menurut isian form saat ini
+  const pickupKotorRoomIds = new Set();
+  Object.values(kotorQuantities).forEach(q => {
+    if (q && typeof q === 'object') {
+      Object.entries(q).forEach(([rid, v]) => { if (rid !== 'all' && parseInt(v) > 0) pickupKotorRoomIds.add(String(rid)); });
+    }
+  });
+  const pendingPickupRooms = pickupUnitSignMode
+    ? uniqueRooms.filter(r => pickupKotorRoomIds.has(String(r.id)) && !gudangRoomIds.has(String(r.id))
+        && !roomSignOf(pickupRoomSign, r.id)?.pickup?.complete)
+    : [];
+  const pendingDeliveryRooms = deliveryUnitSignMode
+    ? editingTransaction.roomSign.rooms.filter(r => r.required && !r.delivery?.complete)
+    : [];
+  const selectedRoomNeedsSign = !!selectedRoomId && !gudangRoomIds.has(String(selectedRoomId));
+  // Ruangan yang sudah TTD Valet + Perawat Unit terkunci; dibuka lewat tombol Edit (TTD dihapus, wajib TTD ulang)
+  const pickupRoomLocked = pickupUnitSignMode && selectedRoomNeedsSign
+    && !!roomSignOf(pickupRoomSign, selectedRoomId)?.pickup?.complete;
+  const isDeliveryRoomLocked = (roomId) => deliveryUnitSignMode && editingTransaction?.transaction?.status === 'PROSES'
+    && !!roomSignOf(editingTransaction.roomSign, roomId)?.delivery?.complete;
+  const deliveryRoomLocked = selectedRoomNeedsSign && isDeliveryRoomLocked(selectedRoomId);
+
+  // Ganti ruangan: kosongkan kanvas TTD unit dan isi nama perawat (TTD sebelumnya atau akun perawat ruangan itu)
+  useEffect(() => {
+    if (!selectedRoomId) return;
+    const stage = editingTransaction ? 'delivery' : 'pickup';
+    const state = editingTransaction ? editingTransaction.roomSign : pickupRoomSign;
+    const prevName = roomSignOf(state, selectedRoomId)?.[stage]?.nurse_name
+      || (stage === 'delivery' ? roomSignOf(state, selectedRoomId)?.pickup?.nurse_name : null);
+    setUnitNurseName(prevName || roomNurses[String(selectedRoomId)]?.[0] || '');
+    setUnitSigNurse('');
+    setUnitSigValet('');
+    setUnitSigKey(k => k + 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedRoomId, editingTransaction?.transaction?.id, roomNurses]);
+
   // Form Pengambilan: ruangan yang punya linen kotor belum diambil (terpakai + dirty utility)
   const pickupRoomStatus = {};
   roomLinensList.forEach(rl => {
@@ -1358,6 +1523,14 @@ export default function SerahTerima() {
     cur.kotor += (parseInt(rl.qty_dirty) || 0) + (parseInt(rl.qty_terpakai) || 0);
     pickupRoomStatus[rl.room_id] = cur;
   });
+  if (pickupUnitSignMode) {
+    uniqueRooms.forEach(r => {
+      if (!pickupKotorRoomIds.has(String(r.id)) || gudangRoomIds.has(String(r.id))) return;
+      const cur = pickupRoomStatus[r.id] || { kotor: 0, cuci: 0 };
+      cur.ttd = roomSignOf(pickupRoomSign, r.id)?.pickup?.complete ? 'done' : 'pending';
+      pickupRoomStatus[r.id] = cur;
+    });
+  }
 
   // Form Pengiriman: hanya ruangan di transaksi yang sedang dibuka, sebesar total linen kotornya.
   // Badge tetap tampil walau sudah dikirim bersih / transaksi SELESAI.
@@ -1372,7 +1545,197 @@ export default function SerahTerima() {
         deliveryRoomStatus[d.room_id] = cur;
       }
     });
+    if (deliveryUnitSignMode) {
+      editingTransaction.roomSign.rooms.forEach(r => {
+        if (!r.required) return;
+        const cur = deliveryRoomStatus[r.room_id] || { kotor: 0, cuci: 0 };
+        cur.ttd = r.delivery?.complete ? 'done' : 'pending';
+        deliveryRoomStatus[r.room_id] = cur;
+      });
+    }
   }
+
+  // Ringkasan TTD unit per ruangan (dipakai di tampilan "Semua Ruangan")
+  const renderUnitSignSummary = (state, stage, pendingNames) => {
+    const rooms = (state?.rooms || []).filter(r => r.required);
+    const localPending = pendingNames.filter(n => !rooms.some(r => r.room_name === n));
+    if (!rooms.length && !localPending.length) return null;
+    return (
+      <div className={`p-4 rounded-2xl border space-y-3 ${pendingNames.length ? 'bg-amber-50/60 border-amber-200' : 'bg-emerald-50/60 border-emerald-200'}`}>
+        <div className="flex items-start gap-2">
+          {pendingNames.length
+            ? <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+            : <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />}
+          <p className={`text-xs font-semibold ${pendingNames.length ? 'text-amber-800' : 'text-emerald-800'}`}>
+            {pendingNames.length
+              ? `${pendingNames.length} unit belum TTD ${stage === 'pickup' ? 'pengambilan' : 'pengiriman'}: ${pendingNames.join(', ')}. Pilih ruangannya di atas untuk TTD. TTD Tim Linen RS baru bisa disimpan setelah semua unit TTD.`
+              : `Semua unit sudah TTD ${stage === 'pickup' ? 'pengambilan' : 'pengiriman'}. Lanjutkan TTD Tim Linen RS dan Valet di bawah.`}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {rooms.map(r => {
+            const s = r[stage];
+            return (
+              <span key={r.room_id} title={s?.complete ? `TTD: ${s.nurse_name}` : 'Belum TTD'}
+                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${s?.complete
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                  : 'bg-rose-50 text-rose-700 border-rose-200'}`}>
+                {s?.complete ? '✓' : '•'} {r.room_name}{s?.complete && s.nurse_name ? ` · ${s.nurse_name}` : ''}
+              </span>
+            );
+          })}
+          {localPending.map(n => (
+            <span key={n} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border bg-rose-50 text-rose-700 border-rose-200">
+              • {n} (belum disimpan)
+            </span>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  // Panel TTD Valet + Perawat Unit untuk ruangan yang sedang dipilih
+  const renderUnitSignPanel = (stage) => {
+    const state = stage === 'pickup' ? pickupRoomSign : editingTransaction?.roomSign;
+    const roomName = uniqueRooms.find(r => String(r.id) === String(selectedRoomId))?.name || '';
+    const existing = roomSignOf(state, selectedRoomId)?.[stage];
+    const nurses = roomNurses[String(selectedRoomId)] || [];
+    const valetName = stage === 'pickup' ? userPickupName : userDeliveryName;
+    const fmtTime = (v) => (v ? new Date(v).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
+    return (
+      <div className="bg-slate-50 p-5 rounded-2xl border border-slate-150 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <div className="p-1 bg-[#126776]/5 text-[#126776] rounded-md">
+              <FileText className="h-4 w-4" />
+            </div>
+            <label className="block text-xs font-semibold text-[#126776] uppercase tracking-widest">
+              TTD Serah Terima Unit {stage === 'pickup' ? '(Pickup Kotor)' : '(Delivery Bersih)'} — {roomName}
+            </label>
+          </div>
+          {existing?.complete ? (
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <CheckCircle2 className="h-3.5 w-3.5" /> Sudah TTD
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+              Belum TTD
+            </span>
+          )}
+        </div>
+
+        {existing?.complete && (
+          <div className="grid grid-cols-2 gap-3">
+            {[['Valet', existing.signature_valet, null], ['Perawat Unit', existing.signature_nurse, existing.nurse_name]].map(([label, src, nm]) => (
+              <div key={label} className="flex flex-col items-center p-3 bg-white border border-slate-200 rounded-xl">
+                <span className="text-[10px] font-bold text-slate-400 uppercase mb-1">{label}</span>
+                {src ? <img src={src} alt={label} className="max-h-[60px] object-contain" /> : <span className="text-xs text-slate-400">—</span>}
+                {nm && <span className="text-[11px] font-bold text-[#126776] mt-1">({toTitleCase(nm)})</span>}
+              </div>
+            ))}
+            <div className="col-span-2 flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl bg-slate-100/70 border border-slate-200">
+              <p className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600">
+                <Lock className="h-3.5 w-3.5 text-slate-500" />
+                Ruangan terkunci — ditandatangani {fmtTime(existing.signed_at)}.
+              </p>
+              <button
+                type="button"
+                onClick={() => handleUnlockRoom(stage)}
+                disabled={signingRoom}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 text-xs font-semibold transition cursor-pointer disabled:opacity-60"
+              >
+                <Unlock className="h-3.5 w-3.5" /> Edit Ruangan Ini
+              </button>
+            </div>
+          </div>
+        )}
+
+        {!existing?.complete && (<>
+        <div className="space-y-1.5">
+          <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest">
+            Nama Perawat Unit <span className="text-rose-500 font-bold">*</span>
+          </label>
+          <div className="relative">
+            <User className="absolute inset-y-0 left-3.5 my-auto h-4 w-4 text-slate-400" />
+            <input
+              type="text"
+              list={`unit-nurses-${selectedRoomId}`}
+              placeholder="Nama perawat penanggung jawab unit..."
+              value={unitNurseName}
+              onChange={e => setUnitNurseName(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] transition"
+            />
+            <datalist id={`unit-nurses-${selectedRoomId}`}>
+              {nurses.map(n => <option key={n} value={n} />)}
+            </datalist>
+          </div>
+          {nurses.length > 0 && (
+            <p className="text-[10px] text-slate-400">Terisi otomatis dari akun perawat unit ini; boleh diubah.</p>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <SignatureInput
+            key={`unit-valet-${unitSigKey}`}
+            title="Tanda Tangan Petugas IKM (Valet)"
+            value={unitSigValet}
+            onChange={setUnitSigValet}
+            isEditable={true}
+            name={valetName}
+          />
+          <SignatureInput
+            key={`unit-nurse-${unitSigKey}`}
+            title="Tanda Tangan Perawat Unit"
+            value={unitSigNurse}
+            onChange={setUnitSigNurse}
+            isEditable={true}
+            name={unitNurseName}
+          />
+        </div>
+        <p className="text-[11px] text-slate-500">
+          Jumlah {stage === 'pickup' ? 'kotor' : 'bersih'} ruangan ini ikut tersimpan saat menekan <b>Simpan &amp; TTD Ruangan Ini</b>.
+          Setelah TTD, ruangan ini terkunci; perubahan harus lewat tombol Edit dan wajib TTD ulang.
+        </p>
+        </>)}
+      </div>
+    );
+  };
+
+  // Edit ruangan yang sudah TTD: hapus TTD unit di server (termasuk file), ruangan terbuka dan wajib TTD ulang
+  const handleUnlockRoom = (stage) => {
+    const roomName = uniqueRooms.find(r => String(r.id) === String(selectedRoomId))?.name || 'ini';
+    setConfirmConfig({
+      show: true,
+      title: `Edit Ruangan ${roomName}?`,
+      message: 'TTD Valet dan Perawat Unit yang sudah ada akan dihapus, dan ruangan ini wajib TTD ulang setelah diubah.',
+      confirmLabel: 'Ya, Edit Ruangan',
+      onConfirm: () => unlockRoom(stage)
+    });
+  };
+
+  const unlockRoom = async (stage) => {
+    const txId = stage === 'pickup' ? temporaryTxId : editingTransaction?.transaction?.id;
+    if (!txId) return;
+    setSigningRoom(true);
+    try {
+      const token = localStorage.getItem('token');
+      const { data } = await axios.delete(`/api/ikm/transactions/${txId}/rooms/${selectedRoomId}/sign?stage=${stage}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (data?.success) {
+        if (stage === 'pickup') setPickupRoomSign(data.data);
+        else setEditingTransaction(prev => (prev ? { ...prev, roomSign: data.data } : prev));
+        setUnitSigNurse('');
+        setUnitSigValet('');
+        setUnitSigKey(k => k + 1);
+        showToast(data.message || 'Ruangan dibuka untuk diedit');
+      }
+    } catch (err) {
+      showAlert(err.response?.data?.message || 'Gagal membuka ruangan untuk diedit.');
+    } finally {
+      setSigningRoom(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 py-6 sm:py-10">
@@ -1406,6 +1769,7 @@ export default function SerahTerima() {
                 setActiveTab('form');
                 setEditingTransaction(null);
                 setTemporaryTxId(null);
+                setPickupRoomSign(null);
                 setSavedRooms([]);
                 setNotes('');
                 setHospitalStaffPickup('');
@@ -1814,7 +2178,18 @@ export default function SerahTerima() {
                       </div>
                     </div>
 
-                    {/* Perawat RS (Pickup) */}
+                    {/* Perawat RS (Pickup) — diganti TTD Perawat Unit per ruangan bila RS memakai TTD per unit */}
+                    {pickupUnitSignMode ? (
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest">
+                          Perawat RS
+                        </label>
+                        <div className="w-full flex items-center gap-2 px-3.5 py-2.5 bg-slate-100/70 border border-slate-200 rounded-xl text-xs font-semibold text-slate-500">
+                          <Info className="h-4 w-4 text-[#1ea59e] shrink-0" />
+                          <span className="truncate">TTD per unit / ruangan</span>
+                        </div>
+                      </div>
+                    ) : (
                     <div className="space-y-1.5">
                       <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest">
                         Perawat RS
@@ -1830,6 +2205,7 @@ export default function SerahTerima() {
                         />
                       </div>
                     </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1926,7 +2302,8 @@ export default function SerahTerima() {
                                     placeholder="0"
                                     value={getKotorQty(item.id)}
                                     onChange={e => handleKotorQtyChange(item.id, e.target.value)}
-                                    className="w-16 text-center py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] focus:bg-white transition text-slate-900 placeholder:text-slate-300 placeholder:font-medium"
+                                    disabled={pickupRoomLocked}
+                                    className="w-16 text-center py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] focus:bg-white transition text-slate-900 placeholder:text-slate-300 placeholder:font-medium disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
                                   />
                                 </div>
                               </td>
@@ -1936,7 +2313,8 @@ export default function SerahTerima() {
                                   placeholder="Catatan item..."
                                   value={getNoteVal(item.id)}
                                   onChange={e => handleNoteValChange(item.id, e.target.value)}
-                                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] focus:bg-white transition"
+                                  disabled={pickupRoomLocked}
+                                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] focus:bg-white transition disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
                                 />
                               </td>
                             </tr>
@@ -2031,14 +2409,19 @@ export default function SerahTerima() {
                 </div>
               )}
 
+              {/* TTD per unit: panel ruangan terpilih, atau ringkasan saat Semua Ruangan */}
+              {pickupUnitSignMode && selectedRoomNeedsSign && renderUnitSignPanel('pickup')}
+              {pickupUnitSignMode && !selectedRoomId && renderUnitSignSummary(pickupRoomSign, 'pickup', pendingPickupRooms.map(r => r.name))}
+
               {/* Tanda Tangan Section */}
-              <div className="bg-slate-50 p-5 rounded-2xl border border-slate-150 space-y-4">
+              {!(pickupUnitSignMode && selectedRoomId) && (
+              <div className={`bg-slate-50 p-5 rounded-2xl border border-slate-150 space-y-4 ${pickupUnitSignMode && pendingPickupRooms.length ? 'opacity-60' : ''}`}>
                 <div className="flex items-center gap-2">
                   <div className="p-1 bg-[#126776]/5 text-[#126776] rounded-md">
                     <FileText className="h-4 w-4" />
                   </div>
                   <label className="block text-xs font-semibold text-[#126776] uppercase tracking-widest">
-                    Dokumentasi Tanda Tangan Serah Terima (Pickup)
+                    {pickupUnitSignMode ? 'TTD Akhir Tim Linen RS & Valet (Pickup)' : 'Dokumentasi Tanda Tangan Serah Terima (Pickup)'}
                   </label>
                 </div>
                 <div className={`grid grid-cols-1 gap-5 ${hospitalAssistantPickup.trim() || signatureAssistantPickup ? 'lg:grid-cols-3' : 'lg:grid-cols-2'}`}>
@@ -2067,6 +2450,7 @@ export default function SerahTerima() {
                   )}
                 </div>
               </div>
+              )}
 
               {/* Form Buttons */}
               <div className="flex justify-end gap-3 pt-2">
@@ -2077,7 +2461,20 @@ export default function SerahTerima() {
                 >
                   Batal
                 </button>
-                {selectedRoomId ? (
+                {selectedRoomId && pickupUnitSignMode && selectedRoomNeedsSign ? (
+                  <button
+                    type="button"
+                    onClick={handleSaveAndSignRoom}
+                    disabled={signingRoom || submittingNew || pickupRoomLocked}
+                    className="px-6 py-2.5 bg-gradient-to-r from-[#126776] to-[#1ea59e] hover:from-[#0e5562] hover:to-[#188b85] text-white rounded-xl text-xs font-semibold shadow-md shadow-[#126776]/10 active:scale-95 transition cursor-pointer flex items-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed animate-[fadeIn_0.2s_ease-out]"
+                  >
+                    {pickupRoomLocked
+                      ? <><Lock className="h-4 w-4" /> Ruangan Terkunci</>
+                      : signingRoom
+                      ? <><RefreshCw className="h-4 w-4 animate-spin" /> Menyimpan...</>
+                      : <><Save className="h-4 w-4" /> Simpan &amp; TTD Ruangan Ini</>}
+                  </button>
+                ) : selectedRoomId ? (
                   <button
                     type="button"
                     onClick={async () => {
@@ -2179,16 +2576,16 @@ export default function SerahTerima() {
                 <div className="bg-[#126776] text-white flex items-center justify-center px-4 font-bold text-[10px] uppercase select-none tracking-widest shrink-0 [writing-mode:vertical-lr] rotate-180 rounded-r-2xl">
                   Pengiriman
                 </div>
-                <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 p-5 items-center">
+                <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 p-5 items-start">
 
                   {/* Delivery Complete Recorder */}
                   <div className="space-y-1.5" ref={editEmployeeSelectRef}>
-                    <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest">
+                    <label className="flex items-center h-4 text-xs font-semibold text-slate-400 uppercase tracking-widest">
                       Petugas
                     </label>
                     <div className="relative">
                       {!isEditable ? (
-                        <div className="w-full pl-10 pr-4 py-2.5 bg-slate-100 border border-slate-200 text-slate-400 rounded-xl text-xs font-semibold flex items-center gap-2 cursor-not-allowed">
+                        <div className="w-full h-10 pl-10 pr-4 bg-slate-100 border border-slate-200 text-slate-400 rounded-xl text-xs font-semibold flex items-center gap-2 cursor-not-allowed">
                           <User className="h-4 w-4 text-slate-400" />
                           <span>
                             {toTitleCase(userDeliveryName)}
@@ -2198,7 +2595,7 @@ export default function SerahTerima() {
                         <>
                           <div
                             onClick={() => setIsEditEmployeeDropdownOpen(!isEditEmployeeDropdownOpen)}
-                            className="w-full pl-10 pr-10 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 flex items-center justify-between cursor-pointer focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] select-none min-h-[38px] transition-all"
+                            className="w-full pl-10 pr-10 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 flex items-center justify-between cursor-pointer focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] select-none h-10 transition-all"
                           >
                             <div className="flex items-center gap-2">
                               <User className="absolute inset-y-0 left-3.5 my-auto h-4 w-4 text-slate-400" />
@@ -2261,8 +2658,8 @@ export default function SerahTerima() {
 
                   {/* Delivery Date */}
                   <div className="space-y-1.5">
-                    <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest">
-                      Tanggal Pengembalian Bersih
+                    <label className="flex items-center h-4 text-xs font-semibold text-slate-400 uppercase tracking-widest">
+                      Pengiriman Bersih
                     </label>
                     <div className="relative">
                       <Calendar className="absolute inset-y-0 left-3.5 my-auto h-4 w-4 text-slate-400" />
@@ -2272,7 +2669,7 @@ export default function SerahTerima() {
                         value={deliveryDate}
                         onChange={e => setDeliveryDate(e.target.value)}
                         disabled={!isEditable}
-                        className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] transition disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                        className="w-full h-10 pl-10 pr-4 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] transition disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                       />
                     </div>
                   </div>
@@ -2302,12 +2699,25 @@ export default function SerahTerima() {
                         placeholder="Nama petugas Rumah Sakit..."
                         value={hospitalStaffDelivery}
                         onChange={e => setHospitalStaffDelivery(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] transition disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                        className="w-full h-10 pl-10 pr-4 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] transition disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                       />
                     </div>
                   </div>
 
-                  {/* Perawat RS Pemeriksa (Delivery) */}
+                  {/* Perawat RS Pemeriksa (Delivery) — diganti TTD Perawat Unit per ruangan bila RS memakai TTD per unit */}
+                  {deliveryUnitSignMode ? (
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between items-center h-4">
+                        <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest">
+                          Perawat RS
+                        </label>
+                      </div>
+                      <div className="w-full h-10 flex items-center gap-2 px-3.5 bg-slate-100/70 border border-slate-200 rounded-xl text-xs font-semibold text-slate-500">
+                        <Info className="h-4 w-4 text-[#1ea59e] shrink-0" />
+                        <span className="truncate">TTD per unit / ruangan</span>
+                      </div>
+                    </div>
+                  ) : (
                   <div className="space-y-1.5">
                     <div className="flex justify-between items-center h-4">
                       <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest">
@@ -2331,10 +2741,11 @@ export default function SerahTerima() {
                         placeholder="Nama perawat Rumah Sakit (Opsional)..."
                         value={hospitalAssistantDelivery}
                         onChange={e => setHospitalAssistantDelivery(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] transition disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                        className="w-full h-10 pl-10 pr-4 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] transition disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                       />
                     </div>
                   </div>
+                  )}
 
                 </div>
               </div>
@@ -2403,8 +2814,11 @@ export default function SerahTerima() {
                           </td>
                         </tr>
                       ) : filteredEditDetails.map((item, index) => {
-                        const isRowEditable = isEditable && (!item.isGrouped || (item.originalItemIds.length === 1 && editingTransaction.details.find(d => d.id === item.originalItemIds[0])?.room_id === null));
                         const inputKey = item.isGrouped ? (item.originalItemIds?.[0] || item.id) : item.id;
+                        // Ruangan yang sudah TTD unit (delivery) terkunci sampai dibuka lewat Edit
+                        const rowRoomId = item.isGrouped ? editingTransaction.details.find(d => d.id === inputKey)?.room_id : item.room_id;
+                        const isRowEditable = isEditable && !isDeliveryRoomLocked(rowRoomId)
+                          && (!item.isGrouped || (item.originalItemIds.length === 1 && editingTransaction.details.find(d => d.id === item.originalItemIds[0])?.room_id === null));
                         const isRoomLocked = selectedRoomId && savedRooms.includes(selectedRoomId.toString());
 
                         let kotor = 0;
@@ -2786,14 +3200,19 @@ export default function SerahTerima() {
                 </div>
               )}
 
+              {/* TTD per unit (delivery): panel ruangan terpilih, atau ringkasan saat Semua Ruangan */}
+              {deliveryUnitSignMode && selectedRoomNeedsSign && editingTransaction.transaction.status === 'PROSES' && isEditable && renderUnitSignPanel('delivery')}
+              {deliveryUnitSignMode && !selectedRoomId && renderUnitSignSummary(editingTransaction.roomSign, 'delivery', pendingDeliveryRooms.map(r => r.room_name))}
+
               {/* Tanda Tangan Section */}
+              {!(deliveryUnitSignMode && selectedRoomNeedsSign && editingTransaction.transaction.status === 'PROSES' && isEditable) && (
               <div className="bg-slate-50 p-5 rounded-2xl border border-slate-150 space-y-4">
                 <div className="flex items-center gap-2">
                   <div className="p-1 bg-[#126776]/5 text-[#126776] rounded-md">
                     <FileText className="h-4 w-4" />
                   </div>
                   <label className="block text-xs font-semibold text-[#126776] uppercase tracking-widest">
-                    Dokumentasi Tanda Tangan Serah Terima
+                    {deliveryUnitSignMode ? 'TTD Akhir Tim Linen RS & Valet' : 'Dokumentasi Tanda Tangan Serah Terima'}
                   </label>
                 </div>
                 
@@ -2923,6 +3342,7 @@ export default function SerahTerima() {
                   </div>
                 </div>
               </div>
+              )}
 
               {/* Actions Button */}
               <div className="flex justify-end gap-3 pt-2">
@@ -2935,7 +3355,20 @@ export default function SerahTerima() {
                 </button>
 
                 {isEditable && (
-                  selectedRoomId ? (
+                  selectedRoomId && deliveryUnitSignMode && selectedRoomNeedsSign && editingTransaction.transaction.status === 'PROSES' ? (
+                    <button
+                      type="button"
+                      onClick={handleSaveAndSignRoom}
+                      disabled={signingRoom || submittingEdit || deliveryRoomLocked}
+                      className="px-6 py-2.5 bg-gradient-to-r from-[#126776] to-[#1ea59e] hover:from-[#0e5562] hover:to-[#188b85] text-white rounded-xl text-xs font-semibold shadow-md shadow-[#126776]/10 active:scale-95 transition cursor-pointer flex items-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed animate-[fadeIn_0.2s_ease-out]"
+                    >
+                      {deliveryRoomLocked
+                        ? <><Lock className="h-4 w-4" /> Ruangan Terkunci</>
+                        : signingRoom
+                        ? <><RefreshCw className="h-4 w-4 animate-spin" /> Menyimpan...</>
+                        : <><Save className="h-4 w-4" /> Simpan &amp; TTD Ruangan Ini</>}
+                    </button>
+                  ) : selectedRoomId ? (
                     <button
                       type="button"
                       onClick={async () => {
@@ -2990,6 +3423,44 @@ export default function SerahTerima() {
           >
             <X className="h-3.5 w-3.5" />
           </button>
+        </div>
+      )}
+
+      {/* Custom Confirm Modal */}
+      {confirmConfig.show && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-[fadeIn_0.2s_ease-out]">
+          <div className="bg-white rounded-3xl border border-slate-100 shadow-2xl max-w-md w-full p-6 space-y-6 transform animate-[scaleIn_0.2s_ease-out] relative">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-amber-50 text-amber-600 rounded-2xl border border-amber-100/50">
+                <Unlock className="h-6 w-6" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">{confirmConfig.title}</h3>
+                <p className="text-slate-500 text-xs font-semibold mt-1">Sistem Waschen Alora</p>
+              </div>
+            </div>
+
+            <p className="text-slate-600 text-sm font-semibold leading-relaxed">
+              {confirmConfig.message}
+            </p>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={closeConfirm}
+                className="px-6 py-2.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition active:scale-95 cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={() => { const fn = confirmConfig.onConfirm; closeConfirm(); if (fn) fn(); }}
+                className="px-6 py-2.5 bg-gradient-to-r from-[#126776] to-[#1ea59e] hover:from-[#0e5562] hover:to-[#188b85] text-white rounded-xl text-xs font-semibold shadow-md shadow-[#126776]/10 active:scale-95 transition cursor-pointer"
+              >
+                {confirmConfig.confirmLabel}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

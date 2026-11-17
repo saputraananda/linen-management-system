@@ -5,6 +5,7 @@ import { ChevronDown } from 'lucide-react';
 //  - kotor : linen kotor di ruangan yang belum diambil (terpakai + dirty utility)
 //  - cuci  : linen sudah diambil (transaksi PROSES) dan belum dikirim kembali bersih
 //  - kurang: sisa kurang kirim yang belum diselesaikan
+//  - ttd   : status TTD unit ('pending' = belum TTD, 'done' = sudah TTD) bila RS memakai TTD per unit
 // <select> bawaan browser tidak bisa menampilkan badge, jadi dibuat dropdown sendiri.
 const RoomStatusSelect = ({ value, onChange, rooms, roomStatus }) => {
   const [open, setOpen] = useState(false);
@@ -21,8 +22,8 @@ const RoomStatusSelect = ({ value, onChange, rooms, roomStatus }) => {
   const pending = rooms.filter(r => statusOf(r.id).kotor > 0 || statusOf(r.id).cuci > 0 || statusOf(r.id).kurang > 0).length;
 
   const Badges = ({ id }) => {
-    const { kotor, cuci, kurang } = statusOf(id);
-    if (kotor <= 0 && cuci <= 0 && kurang <= 0) return null;
+    const { kotor, cuci, kurang, ttd } = statusOf(id);
+    if (kotor <= 0 && cuci <= 0 && kurang <= 0 && !ttd) return null;
     return (
       <span className="flex items-center gap-1 shrink-0">
         {kotor > 0 && (
@@ -41,6 +42,16 @@ const RoomStatusSelect = ({ value, onChange, rooms, roomStatus }) => {
           <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-sky-100 text-sky-700 border border-sky-200 text-[10px] font-bold whitespace-nowrap">
             <span className="h-1.5 w-1.5 rounded-full bg-sky-500 animate-pulse" />
             {cuci} Pcs
+          </span>
+        )}
+        {ttd === 'pending' && (
+          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-bold whitespace-nowrap">
+            Belum TTD
+          </span>
+        )}
+        {ttd === 'done' && (
+          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold whitespace-nowrap">
+            ✓ TTD
           </span>
         )}
       </span>

@@ -114,7 +114,7 @@ const embedSignature = (workbook, worksheet, base64Data, colStartZero, rowStartZ
 /**
  * Exports Serah Terima Linen transaction details to Excel matching the exact reference layout
  */
-export default async function exportSerahTerimaLinen(transaction, details) {
+export default async function exportSerahTerimaLinen(transaction, details, roomSign = null) {
   // Fetch and resolve all 6 signature images to Base64 Data URLs concurrently
   const [
     valetPickupSig,
@@ -134,7 +134,8 @@ export default async function exportSerahTerimaLinen(transaction, details) {
 
   const workbook = new ExcelJS.Workbook();
 
-  const writeSheetData = (worksheet, sheetTitle, subtitle, itemsList) => {
+  // unitSigs (opsional): TTD Valet + Perawat Unit ruangan ini, menggantikan TTD Tim Linen RS di sheet ruangan
+  const writeSheetData = (worksheet, sheetTitle, subtitle, itemsList, unitSigs = null) => {
     // Set column widths
     worksheet.columns = [
       { key: 'no', width: 8 },
@@ -372,6 +373,19 @@ export default async function exportSerahTerimaLinen(transaction, details) {
       currentRow++;
     };
 
+    if (unitSigs) {
+      drawSignatureBlock('Tahap 1: Pengambilan Linen Kotor (Pickup) — TTD Unit',
+        ['Valet IKM', 'Perawat Unit'], [unitSigs.pickup.valet, unitSigs.pickup.nurse],
+        [transaction.user_pickup_name, unitSigs.pickup.name], false, 'FFE2EFDA', 'FF1E4620');
+      worksheet.getRow(currentRow).height = 14;
+      currentRow++;
+      drawSignatureBlock('Tahap 2: Pengiriman Linen Bersih (Delivery) — TTD Unit',
+        ['Valet IKM', 'Perawat Unit'], [unitSigs.delivery.valet, unitSigs.delivery.nurse],
+        [transaction.user_delivery_name, unitSigs.delivery.name],
+        !unitSigs.delivery.complete && transaction.status !== 'SELESAI', 'FFD9E1F2', 'FF1E2A4A');
+      return;
+    }
+
     // Draw Stage 1 (Pickup)
     drawSignatureBlock(
       'Tahap 1: Pengambilan Linen Kotor (Pickup)',
@@ -450,11 +464,26 @@ export default async function exportSerahTerimaLinen(transaction, details) {
     roomGroups[rName].push(item);
   });
 
+  // TTD unit per ruangan (gambar diambil dulu sebelum sheet ditulis)
+  const unitSigsByRoom = {};
+  if (roomSign?.required) {
+    for (const room of (roomSign.rooms || []).filter(r => r.required)) {
+      const [pv, pn, dv, dn] = await Promise.all([
+        fetchImageAsBase64(room.pickup?.signature_valet), fetchImageAsBase64(room.pickup?.signature_nurse),
+        fetchImageAsBase64(room.delivery?.signature_valet), fetchImageAsBase64(room.delivery?.signature_nurse)
+      ]);
+      unitSigsByRoom[room.room_name] = {
+        pickup: { valet: pv, nurse: pn, name: room.pickup?.nurse_name },
+        delivery: { valet: dv, nurse: dn, name: room.delivery?.nurse_name, complete: !!room.delivery?.complete }
+      };
+    }
+  }
+
   Object.entries(roomGroups).forEach(([rName, roomItems]) => {
     // Excel sheet name limit is 31 chars, strip characters like : \ / ? * [ ]
     const cleanSheetName = rName.replace(/[:\\/?*\[\]]/g, '').substring(0, 30);
     const roomSheet = workbook.addWorksheet(cleanSheetName || 'Tanpa Ruangan');
-    writeSheetData(roomSheet, rName, rName, roomItems);
+    writeSheetData(roomSheet, rName, rName, roomItems, unitSigsByRoom[rName] || null);
   });
 
   // Write file out

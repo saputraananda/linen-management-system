@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
+  ArrowUp,
   Menu,
   X,
   Shirt,
@@ -145,7 +146,17 @@ function ActiveMenuTitle({ menuItems }) {
 
 export default function PageLayout({ menuItems, moduleName = "Module", bgColor = "bg-slate-50", brandIcon, brandTitle, brandSub }) {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Area konten yang menggulir (bukan window). Setiap pindah halaman/formulir dikembalikan ke paling atas.
+  const contentRef = useRef(null);
+  const [showBackToTop, setShowBackToTop] = useState(false);
+  useEffect(() => {
+    contentRef.current?.scrollTo({ top: 0 });
+    setShowBackToTop(false);
+  }, [pathname]);
+  const scrollToTop = () => contentRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
   const [desktopCollapsed, setCollapsed] = useState(false);
   const drawerRef = useRef(null);
 
@@ -387,9 +398,27 @@ export default function PageLayout({ menuItems, moduleName = "Module", bgColor =
         </header>
 
         {/* Outlet: render child routes */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden">
+        <div
+          ref={contentRef}
+          onScroll={(e) => setShowBackToTop(e.currentTarget.scrollTop > 400)}
+          className="flex-1 overflow-y-auto overflow-x-hidden"
+        >
           <Outlet />
         </div>
+
+        {/* Tombol kembali ke atas, muncul setelah menggulir cukup jauh */}
+        <button
+          type="button"
+          onClick={scrollToTop}
+          aria-label="Kembali ke atas"
+          title="Kembali ke atas"
+          className={cn(
+            "fixed bottom-6 right-6 z-40 flex h-11 w-11 items-center justify-center rounded-full bg-[#126776] text-white shadow-lg shadow-teal-900/20 transition-all duration-300 hover:bg-[#1ea59e] active:scale-95 cursor-pointer",
+            showBackToTop ? "opacity-100 translate-y-0" : "pointer-events-none opacity-0 translate-y-3"
+          )}
+        >
+          <ArrowUp className="h-5 w-5" />
+        </button>
       </div>
     </div>
   );

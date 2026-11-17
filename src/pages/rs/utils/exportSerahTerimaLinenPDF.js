@@ -24,7 +24,7 @@ const getLinenDisplayName = (item) => {
 /**
  * Utility to print/export Serah Terima Linen Form to PDF / printer
  */
-export default async function exportSerahTerimaLinenPDF(transaction, details) {
+export default async function exportSerahTerimaLinenPDF(transaction, details, roomSign = null) {
   const printWindow = window.open('', '_blank', 'width=950,height=1200');
   if (!printWindow) {
     alert('Gagal mencetak. Pastikan pop-up blocker browser Anda dinonaktifkan.');
@@ -61,13 +61,14 @@ export default async function exportSerahTerimaLinenPDF(transaction, details) {
       return `<span style="font-size: 8px; color: #94a3b8; font-style: italic;">${pendingMsg}</span>`;
     }
     if (sigSrc && sigSrc.trim() !== '') {
-      return `<img src="${sigSrc}" style="max-height: 48px; max-width: 90%; object-fit: contain;" />`;
+      const absSrc = /^(data:|https?:)/i.test(sigSrc.trim()) ? sigSrc.trim() : new URL(sigSrc.trim(), window.location.origin).href;
+      return `<img src="${absSrc}" style="max-height: 48px; max-width: 90%; object-fit: contain;" />`;
     }
     return '<span style="font-size: 8px; color: #94a3b8; font-style: italic;">(Belum Tanda Tangan)</span>';
   };
 
   // Satu blok tahap (Pickup / Delivery); Perawat RS hanya ditampilkan jika ada nama atau TTD-nya
-  const renderStageHtml = ({ title, bg, color, valetSig, hospSig, asstSig, valetName, hospName, asstName, pendingMsg, last }) => {
+  const renderStageHtml = ({ title, bg, color, valetSig, hospSig, asstSig, valetName, hospName, asstName, pendingMsg, last, hospLabel = 'Petugas RS' }) => {
     const hasAsst = !!(asstName || asstSig);
     const colW = hasAsst ? '33.3%' : '50%';
     const labelCell = (text, border) =>
@@ -77,14 +78,14 @@ export default async function exportSerahTerimaLinenPDF(transaction, details) {
     const nameCell = (name, border) =>
       `<td style="${border ? 'border-right: 1.5px solid #0f172a; ' : ''}padding: 4px; border-top: 1.5px solid #0f172a; font-size: 8px; text-transform: uppercase;">(${toTitleCase(name || '—')})</td>`;
     return `
-      <div style="border: 1.5px solid #0f172a; border-radius: 8px; overflow: hidden;${last ? '' : ' margin-bottom: 15px;'}">
+      <div class="sig-stage" style="border: 1.5px solid #0f172a; border-radius: 8px; overflow: hidden;${last ? '' : ' margin-bottom: 15px;'}">
         <div style="background: ${bg}; padding: 4px 10px; font-weight: 800; border-bottom: 1.5px solid #0f172a; color: ${color}; text-transform: uppercase; letter-spacing: 0.05em; font-size: 9px;">
           ${title}
         </div>
         <table style="width: 100%; border-collapse: collapse; text-align: center; font-weight: 700;">
           <tr>
             ${labelCell('Valet IKM', true)}
-            ${labelCell('Petugas RS', hasAsst)}
+            ${labelCell(hospLabel, hasAsst)}
             ${hasAsst ? labelCell('Perawat RS', false) : ''}
           </tr>
           <tr>
@@ -102,6 +103,28 @@ export default async function exportSerahTerimaLinenPDF(transaction, details) {
   };
 
   const deliveryPendingMsg = transaction.status !== 'SELESAI' ? 'Belum Ada Pengiriman' : '';
+
+  // TTD per unit: halaman ruangan memakai TTD Valet + Perawat Unit ruangan itu
+  const unitSignaturesHtml = (room) => `
+    <div style="margin-top: 24px; font-size: 10px; color: #0f172a;">
+      ${renderStageHtml({
+        title: 'Tahap 1: Pengambilan Linen Kotor (Pickup) — TTD Unit', bg: '#e2efd8', color: '#1e4620',
+        valetSig: room.pickup?.signature_valet, hospSig: room.pickup?.signature_nurse, asstSig: null,
+        valetName: transaction.user_pickup_name, hospName: room.pickup?.nurse_name, asstName: null, hospLabel: 'Perawat Unit',
+        pendingMsg: '', last: false
+      })}
+      ${renderStageHtml({
+        title: 'Tahap 2: Pengiriman Linen Bersih (Delivery) — TTD Unit', bg: '#d9e1f2', color: '#1e2a4a',
+        valetSig: room.delivery?.signature_valet, hospSig: room.delivery?.signature_nurse, asstSig: null,
+        valetName: transaction.user_delivery_name, hospName: room.delivery?.nurse_name, asstName: null, hospLabel: 'Perawat Unit',
+        pendingMsg: !room.delivery?.complete && transaction.status !== 'SELESAI' ? 'Belum Ada Pengiriman' : '', last: true
+      })}
+    </div>
+  `;
+  const roomSignaturesHtml = (rName) => {
+    const room = roomSign?.required && (roomSign.rooms || []).find(r => r.required && r.room_name === rName);
+    return room ? unitSignaturesHtml(room) : signaturesBlockHtml;
+  };
   const signaturesBlockHtml = `
     <!-- SIGNATURES BLOCK -->
     <div style="margin-top: 24px; font-size: 10px; color: #0f172a;">
@@ -193,9 +216,10 @@ export default async function exportSerahTerimaLinenPDF(transaction, details) {
     }).join('');
 
     return `
-      <div class="paper-card room-page-break">
-        <img src="${kopSuratIkm}" style="width: 100%; display: block;" />
-
+      <table class="print-frame">
+        <thead><tr><td><img src="${kopSuratIkm}" class="kop" /></td></tr></thead>
+        <tfoot><tr><td><div class="page-bottom-space"></div></td></tr></tfoot>
+        <tbody><tr><td>
         <div class="paper-content">
           <!-- Document Title -->
           <div style="text-align: center; margin-top: -55px; margin-bottom: 15px;">
@@ -219,7 +243,7 @@ export default async function exportSerahTerimaLinenPDF(transaction, details) {
 
           <!-- Items Table -->
           <div style="padding: 12px 0;">
-            <table style="width: 100%; text-align: left; border-collapse: collapse; border: 1px solid #0f172a; font-size: 10.5px; font-weight: 600;">
+            <table class="items-table" style="width: 100%; text-align: left; border-collapse: collapse; border: 1px solid #0f172a; font-size: 10.5px; font-weight: 600;">
               <thead>
                 <tr style="background-color: #f1f5f9; color: #0f172a; text-transform: uppercase; font-weight: 900; border-bottom: 1px solid #0f172a; font-size: 8.5px; letter-spacing: 0.05em;">
                   <th style="padding: 8px 16px; border-right: 1px solid #0f172a; text-align: center; width: 44px;">NO</th>
@@ -237,9 +261,10 @@ export default async function exportSerahTerimaLinenPDF(transaction, details) {
           </div>
 
           <!-- Signatures block -->
-          ${signaturesBlockHtml}
+          ${roomSignaturesHtml(rName)}
         </div>
-      </div>
+        </td></tr></tbody>
+      </table>
     `;
   }).join('');
 
@@ -298,13 +323,25 @@ export default async function exportSerahTerimaLinenPDF(transaction, details) {
             page-break-before: always !important;
           }
         }
+        /* Satu formulir = satu tabel cetak: kop di thead diulang di setiap halaman */
+        .print-frame { width: 210mm; margin: 0 auto; border-collapse: collapse; }
+        .print-frame > thead > tr > td, .print-frame > tbody > tr > td, .print-frame > tfoot > tr > td { padding: 0; }
+        .print-frame > thead { display: table-header-group; }
+        .print-frame > tfoot { display: table-footer-group; }
+        .print-frame ~ .print-frame { break-before: page; page-break-before: always; }
+        .kop { width: 100%; display: block; }
+        .page-bottom-space { height: 14mm; }
+        .items-table thead { display: table-header-group; }
+        .items-table tr { break-inside: avoid; page-break-inside: avoid; }
+        .sig-stage { break-inside: avoid; page-break-inside: avoid; }
       </style>
     </head>
     <body onload="setTimeout(() => { window.print(); window.close(); }, 350);">
       <!-- PAGE 1: GLOBAL SUMMARY -->
-      <div class="paper-card">
-        <img src="${kopSuratIkm}" style="width: 100%; display: block;" />
-
+      <table class="print-frame">
+        <thead><tr><td><img src="${kopSuratIkm}" class="kop" /></td></tr></thead>
+        <tfoot><tr><td><div class="page-bottom-space"></div></td></tr></tfoot>
+        <tbody><tr><td>
         <div class="paper-content">
           <!-- Document Title -->
           <div style="text-align: center; margin-top: -55px; margin-bottom: 15px;">
@@ -328,7 +365,7 @@ export default async function exportSerahTerimaLinenPDF(transaction, details) {
 
           <!-- Items Table -->
           <div style="padding: 12px 0;">
-            <table style="width: 100%; text-align: left; border-collapse: collapse; border: 1px solid #0f172a; font-size: 10.5px; font-weight: 600;">
+            <table class="items-table" style="width: 100%; text-align: left; border-collapse: collapse; border: 1px solid #0f172a; font-size: 10.5px; font-weight: 600;">
               <thead>
                 <tr style="background-color: #f1f5f9; color: #0f172a; text-transform: uppercase; font-weight: 900; border-bottom: 1px solid #0f172a; font-size: 8.5px; letter-spacing: 0.05em;">
                   <th style="padding: 8px 16px; border-right: 1px solid #0f172a; text-align: center; width: 44px;">NO</th>
@@ -348,7 +385,8 @@ export default async function exportSerahTerimaLinenPDF(transaction, details) {
           <!-- Signatures block -->
           ${signaturesBlockHtml}
         </div>
-      </div>
+        </td></tr></tbody>
+      </table>
 
       <!-- PAGE 2+: ROOM DETAILS -->
       ${roomPagesHtml}

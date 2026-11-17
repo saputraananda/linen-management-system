@@ -24,6 +24,8 @@ import unitProfileRoutes from './api/routes/unit/unit-profile.routes.js';
 import ikmComplaintRoutes from './api/routes/ikm/complaintLinen.routes.js';
 import rsComplaintRoutes from './api/routes/rs/rs-complaintLinen.routes.js';
 import unitComplaintRoutes from './api/routes/unit/unit-complaint.routes.js';
+import unitSerahTerimaRoutes from './api/routes/unit/unit-serahTerima.routes.js';
+import unitSerahTerimaKomersilRoutes from './api/routes/unit/unit-serahTerimaKomersil.routes.js';
 import socketNotifyRoutes from './api/routes/internal/socketNotify.routes.js';
 
 // Resolve directory paths
@@ -115,6 +117,8 @@ app.use('/api/rs', rsComplaintRoutes);
 app.use('/api/unit', unitDashboardRoutes);
 app.use('/api/unit', unitProfileRoutes);
 app.use('/api/unit', unitComplaintRoutes);
+app.use('/api/unit', unitSerahTerimaRoutes);
+app.use('/api/unit', unitSerahTerimaKomersilRoutes);
 app.use('/api/internal', socketNotifyRoutes);
 
 // ==========================

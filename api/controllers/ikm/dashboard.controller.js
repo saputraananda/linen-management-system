@@ -1,4 +1,5 @@
 import { ikmPool, mainPool } from '../../db/pool.js';
+import { hideEmptyStock } from '../../utils/hideEmptyStock.js';
 
 /**
  * Get list of all active hospitals
@@ -99,7 +100,7 @@ export const getDashboardData = async (req, res) => {
 
     // 1. Fetch Hospital Info
     const [hospitals] = await ikmPool.query(
-      "SELECT id, hospital_name, hospital_id, company_name, address, billing_by_kg, allow_express, kg_agreement FROM mst_hospital WHERE id = ?",
+      "SELECT id, hospital_name, hospital_id, company_name, address, billing_by_kg, allow_express, kg_agreement, require_unit_signature FROM mst_hospital WHERE id = ?",
       [hospitalId]
     );
 
@@ -181,7 +182,7 @@ export const getDashboardData = async (req, res) => {
       WHERE hl.hospital_id = ? AND hl.is_active = 1
       ORDER BY l.linen_name ASC
     `;
-    const [linens] = await ikmPool.query(inventoryQuery, [hospitalId]);
+    const [allLinens] = await ikmPool.query(inventoryQuery, [hospitalId]);
 
     // 3. Fetch Rooms Inventory (from mst_hospital_linen_rooms join mst_rooms_rs and mst_linen)
     const roomsQuery = `
@@ -210,7 +211,9 @@ export const getDashboardData = async (req, res) => {
       WHERE hl.hospital_id = ?
       ORDER BY r.room_name ASC, l.linen_name ASC
     `;
-    const [roomLinens] = await ikmPool.query(roomsQuery, [hospitalId]);
+    const [allRoomLinens] = await ikmPool.query(roomsQuery, [hospitalId]);
+    // Linen dengan stok awal ruangan 0 (belum ada aktivitas) tidak ditampilkan
+    const { linens, roomLinens } = hideEmptyStock(allLinens, allRoomLinens);
 
     // 4. Fetch All Rooms (even those without registered linens)
     const allRoomsQuery = `
@@ -272,7 +275,8 @@ export const getDashboardData = async (req, res) => {
     let lowStockCount = 0;
     let totalKurangKirim = 0;
 
-    linens.forEach(hl => {
+    // Ringkasan tetap dihitung dari semua linen supaya peringatan stok minimum tidak hilang
+    allLinens.forEach(hl => {
       totalStockIkm += parseInt(hl.stock_in_ikm || 0);
       totalStockRs += parseInt(hl.stock_in_rs || 0);
       totalParStock += parseInt(hl.par_stock || 0);

@@ -1,4 +1,6 @@
 import { useEffect, useState, useRef, Fragment } from 'react';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import RoomStatusSelect from '../../ikm/components/RoomStatusSelect';
 import axios from 'axios';
 import {
     FileText, Search, Calendar, CheckCircle2,
@@ -26,6 +28,14 @@ const toTitleCase = (str) => {
 };
 
 export default function RSSerahTerima() {
+    // Detail transaksi tampil sebagai halaman: <daftar>/:txId
+    const { txId } = useParams();
+    const navigate = useNavigate();
+    const location = useLocation();
+    const basePath = location.pathname.replace(/\/\d+\/?$/, '');
+    const openDetailPage = (id) => navigate(`${basePath}/${id}`);
+    const closeDetailPage = () => navigate(basePath);
+
     const [transactions, setTransactions] = useState([]);
     const [loadingHistory, setLoadingHistory] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
@@ -378,7 +388,7 @@ export default function RSSerahTerima() {
                 headers: { Authorization: `Bearer ${token}` }
             });
             if (data?.success) {
-                await exportSerahTerimaLinen(data.data.transaction, data.data.details);
+                await exportSerahTerimaLinen(data.data.transaction, data.data.details, data.data.roomSign);
                 showToast('Berhasil mengunduh dokumen Excel', 'success');
             } else {
                 showToast('Gagal memuat rincian transaksi untuk Excel', 'error');
@@ -400,7 +410,7 @@ export default function RSSerahTerima() {
                 headers: { Authorization: `Bearer ${token}` }
             });
             if (data?.success) {
-                await exportSerahTerimaLinenPDF(data.data.transaction, data.data.details);
+                await exportSerahTerimaLinenPDF(data.data.transaction, data.data.details, data.data.roomSign);
                 showToast('Berhasil mengunduh dokumen PDF', 'success');
             } else {
                 showToast('Gagal memuat rincian transaksi untuk PDF', 'error');
@@ -486,8 +496,18 @@ export default function RSSerahTerima() {
         pg.resetPage();
     };
 
+    useEffect(() => {
+        if (txId) {
+            handleOpenDetail(txId);
+        } else {
+            setEditingTransaction(null);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [txId]);
+
     return (
         <main className="min-h-screen bg-slate-50 py-6 sm:py-10">
+            {!txId && (
             <div className="mx-auto max-w-screen-2xl px-4 sm:px-6 lg:px-8">
                 <div className="space-y-6">
 
@@ -612,124 +632,111 @@ export default function RSSerahTerima() {
                     ) : (
                         <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden transition-all duration-300 hover:shadow-md">
                             <div className="overflow-x-auto">
-                                <table className="w-full text-left text-xs sm:text-sm border-collapse text-slate-650">
+                                <table className="w-full text-sm border-collapse">
+                                    <colgroup>
+                                        <col className="w-14" />
+                                        <col />
+                                        <col />
+                                        <col />
+                                        <col className="w-24" />
+                                        <col className="w-24" />
+                                        <col className="w-36" />
+                                        <col className="w-48" />
+                                    </colgroup>
                                     <thead>
-                                        <tr className="bg-slate-50/80 text-slate-500 font-bold uppercase tracking-widest text-[9px] border-b border-slate-200">
-                                            <th className="py-4 px-4 text-center w-12">No</th>
-                                            <th className="py-4 px-4 text-left">No. Formulir</th>
-                                            <th className="py-4 px-4 text-left">Tanggal</th>
-                                            <th className="py-4 px-4 text-left">Valet IKM</th>
-                                            <th className="py-4 px-4 text-left">Petugas RS</th>
-                                            <th className="py-4 px-4 text-center bg-slate-50/40 w-24">Kotor</th>
-                                            <th className="py-4 px-4 text-center bg-teal-50/20 w-24">Bersih</th>
-                                            <th className="py-4 px-4 text-center w-28">Status</th>
-                                            <th className="py-4 px-4 text-center w-36">Selisih</th>
-                                            <th className="py-4 px-4 text-center w-40">Aksi</th>
+                                        <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                                            <th className="py-3.5 pl-6 pr-2 text-center">No</th>
+                                            <th className="py-3.5 px-4 text-left">No. Formulir</th>
+                                            <th className="py-3.5 px-4 text-left">Valet IKM</th>
+                                            <th className="py-3.5 px-4 text-left">Petugas RS</th>
+                                            <th className="py-3.5 px-4 text-center">Kotor</th>
+                                            <th className="py-3.5 px-4 text-center">Bersih</th>
+                                            <th className="py-3.5 px-4 text-center">Status</th>
+                                            <th className="py-3.5 pl-4 pr-6 text-center">Unduh</th>
                                         </tr>
                                     </thead>
-                                    <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
+                                    <tbody className="divide-y divide-slate-100 text-slate-700">
                                         {transactions.map((tx, index) => {
                                             const totalShortage = Math.max(0, parseInt(tx.total_qty_kotor || 0) - parseInt(tx.total_qty_bersih || 0));
-                                            const hasShortage = totalShortage > 0 && tx.status === 'SELESAI';
-
+                                            const isDone = tx.status === 'SELESAI';
+                                            const hasShortage = isDone && totalShortage > 0;
+                                            const pickupAt = tx.pickup_date ? new Date(tx.pickup_date) : null;
+                                            const pickupLabel = pickupAt
+                                                ? pickupAt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) + ' · ' +
+                                                  pickupAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace(':', '.')
+                                                : '—';
+                                            const status = !isDone
+                                                ? { label: 'Proses', dot: 'bg-amber-500', cls: 'bg-amber-50 text-amber-700 ring-amber-200' }
+                                                : hasShortage
+                                                    ? { label: `Kurang ${totalShortage}`, dot: 'bg-rose-500', cls: 'bg-rose-50 text-rose-700 ring-rose-200' }
+                                                    : { label: 'Selesai', dot: 'bg-emerald-500', cls: 'bg-emerald-50 text-emerald-700 ring-emerald-200' };
+                                            const initialsOf = (name) => (name ? name.split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() : '?');
+                                            const valetName = tx.user_pickup_name || '';
+                                            const staffName = tx.hospital_staff_pickup || '';
+                                
                                             return (
                                                 <tr
                                                     key={tx.id}
-                                                    onClick={() => handleOpenDetail(tx.id)}
-                                                    className="hover:bg-slate-50/40 transition-colors cursor-pointer group"
+                                                    onClick={() => openDetailPage(tx.id)}
+                                                    className="group hover:bg-teal-50/40 transition-colors cursor-pointer"
                                                 >
-                                                    <td className="py-4 px-4 text-center text-slate-400 font-medium">
+                                                    <td className="py-4 pl-6 pr-2 text-center text-slate-400 font-medium tabular-nums">
                                                         {(pg.pagination.page - 1) * pg.pagination.limit + index + 1}
                                                     </td>
-                                                    <td className="py-4 px-4 font-bold text-slate-900 group-hover:text-teal-700 transition-colors">
-                                                        {tx.form_number}
+                                                    <td className="py-4 px-4">
+                                                        <div className="font-bold text-slate-900 group-hover:text-teal-700 transition-colors">{tx.form_number}</div>
+                                                        <div className="mt-0.5 text-xs text-slate-400 whitespace-nowrap">{pickupLabel}</div>
                                                         {(tx.total_kg_valet != null || Number(tx.is_express) === 1) && (
-                                                            <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                                                                {tx.total_kg_valet != null && (
-                                                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-[10px] font-semibold text-slate-600">
-                                                                        {Number(tx.total_kg_valet).toLocaleString('id-ID', { maximumFractionDigits: 2 })} Kg
-                                                                    </span>
-                                                                )}
-                                                                {tx.kg_total != null && tx.kg_agreement != null && (
-                                                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-teal-50 border border-teal-200 text-[10px] font-semibold text-teal-700">
-                                                                        Ditagih {Number(tx.kg_total).toLocaleString('id-ID', { maximumFractionDigits: 2 })} Kg
-                                                                    </span>
-                                                                )}
-                                                                {Number(tx.is_express) === 1 && (
-                                                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold uppercase tracking-wider">
-                                                                        Express
-                                                                    </span>
-                                                                )}
+                                                            <div className="mt-1 text-xs font-medium text-slate-500">
+                                                                {[
+                                                                    tx.total_kg_valet != null && `${Number(tx.total_kg_valet).toLocaleString('id-ID', { maximumFractionDigits: 2 })} Kg`,
+                                                                    tx.kg_total != null && tx.kg_agreement != null && `Ditagih ${Number(tx.kg_total).toLocaleString('id-ID', { maximumFractionDigits: 2 })} Kg`,
+                                                                    Number(tx.is_express) === 1 && 'Express'
+                                                                ].filter(Boolean).join(' · ')}
                                                             </div>
                                                         )}
                                                     </td>
-                                                    <td className="py-4 px-4 text-left text-slate-500 font-medium whitespace-nowrap">
-                                                        {formatDate(tx.pickup_date)}
+                                                    <td className="py-4 px-4">
+                                                        <div className="flex items-center gap-3">
+                                                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-teal-100 text-[11px] font-bold text-teal-700">{initialsOf(valetName)}</span>
+                                                            <span className="font-semibold text-slate-800 truncate">{valetName || '—'}</span>
+                                                        </div>
                                                     </td>
-                                                    <td className="py-4 px-4 font-bold text-slate-750">
-                                                        {tx.user_pickup_name || '—'}
+                                                    <td className="py-4 px-4">
+                                                        <div className="flex items-center gap-3">
+                                                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sky-100 text-[11px] font-bold text-sky-700">{initialsOf(staffName)}</span>
+                                                            <span className="font-semibold text-slate-800 truncate">{staffName || '—'}</span>
+                                                        </div>
                                                     </td>
-                                                    <td className="py-4 px-4 font-bold text-slate-750">
-                                                        {tx.hospital_staff_pickup || '—'}
+                                                    <td className="py-4 px-4 text-center">
+                                                        <span className="text-base font-bold text-slate-900 tabular-nums">{tx.total_qty_kotor}</span>
                                                     </td>
-                                                    <td className="py-4 px-4 text-center bg-slate-50/10 text-slate-800 font-extrabold">
-                                                        {tx.total_qty_kotor} Pcs
-                                                    </td>
-                                                    <td className="py-4 px-4 text-center bg-teal-50/[0.05] text-teal-700 font-extrabold">
-                                                        {tx.status === 'SELESAI' ? `${tx.total_qty_bersih} Pcs` : '—'}
-                                                    </td>
-                                                    <td className="py-4 px-4 text-center whitespace-nowrap">
-                                                        {tx.status === 'SELESAI' ? (
-                                                            hasShortage ? (
-                                                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[9px] font-extrabold uppercase bg-rose-50 text-rose-700 border border-rose-150 shadow-sm">
-                                                                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
-                                                                    Kurang Kirim
-                                                                </span>
-                                                            ) : (
-                                                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[9px] font-extrabold uppercase bg-emerald-50 text-emerald-700 border border-emerald-150 shadow-sm">
-                                                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                                                                    Selesai
-                                                                </span>
-                                                            )
+                                                    <td className="py-4 px-4 text-center">
+                                                        {isDone ? (
+                                                            <span className={`text-base font-bold tabular-nums ${hasShortage ? 'text-rose-600' : 'text-teal-700'}`}>{tx.total_qty_bersih}</span>
                                                         ) : (
-                                                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[9px] font-extrabold uppercase bg-amber-50 text-amber-700 border border-amber-150 shadow-sm">
-                                                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                                                                Kotor
-                                                            </span>
+                                                            <span className="text-slate-300 font-bold">—</span>
                                                         )}
                                                     </td>
-                                                    <td className="py-4 px-4 text-center whitespace-nowrap">
-                                                        {tx.status === 'SELESAI' ? (
-                                                            hasShortage ? (
-                                                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-xl text-[11px] font-bold bg-rose-50 text-rose-650 border border-rose-150 shadow-sm">
-                                                                    Selisih {totalShortage} Pcs
-                                                                    <AlertTriangle className="h-3.5 w-3.5 text-rose-500" />
-                                                                </span>
-                                                            ) : (
-                                                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-xl text-[11px] font-bold bg-emerald-50 text-emerald-650 border border-emerald-150 shadow-sm">
-                                                                    Lengkap
-                                                                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-                                                                </span>
-                                                            )
-                                                        ) : (
-                                                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-xl text-[11px] font-bold bg-slate-50 text-slate-400 border border-slate-150 shadow-sm">
-                                                                Belum Selesai
-                                                            </span>
-                                                        )}
+                                                    <td className="py-4 px-4 text-center">
+                                                        <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ring-1 ring-inset whitespace-nowrap ${status.cls}`}>
+                                                            <span className={`h-1.5 w-1.5 rounded-full ${status.dot}`} />
+                                                            {status.label}
+                                                        </span>
                                                     </td>
-                                                    <td className="py-4 px-4 text-center" onClick={(e) => e.stopPropagation()}>
+                                                    <td className="py-4 pl-4 pr-6" onClick={(e) => e.stopPropagation()}>
                                                         <div className="flex items-center justify-center gap-2">
                                                             <button
                                                                 type="button"
                                                                 onClick={(e) => handleDownloadExcel(e, tx)}
                                                                 disabled={downloadingTxId === tx.id}
-                                                                className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl border border-teal-200 bg-white hover:bg-teal-50 text-teal-700 text-xs font-bold transition shadow-sm active:scale-95 cursor-pointer disabled:opacity-50 hover:shadow duration-200"
+                                                                className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 transition active:scale-95 cursor-pointer disabled:opacity-50"
                                                                 title="Unduh Excel"
                                                             >
                                                                 {downloadingTxId === tx.id ? (
                                                                     <RefreshCw className="h-3.5 w-3.5 animate-spin" />
                                                                 ) : (
-                                                                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                                                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
                                                                         <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                                                                     </svg>
                                                                 )}
@@ -739,7 +746,7 @@ export default function RSSerahTerima() {
                                                                 type="button"
                                                                 onClick={(e) => handleDownloadPdf(e, tx)}
                                                                 disabled={downloadingPdfTxId === tx.id}
-                                                                className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl border border-rose-200 bg-white hover:bg-rose-50 text-rose-700 text-xs font-bold transition shadow-sm active:scale-95 cursor-pointer disabled:opacity-50 hover:shadow duration-200"
+                                                                className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 transition active:scale-95 cursor-pointer disabled:opacity-50"
                                                                 title="Unduh PDF"
                                                             >
                                                                 {downloadingPdfTxId === tx.id ? (
@@ -765,47 +772,140 @@ export default function RSSerahTerima() {
 
                 </div>
             </div>
+            )}
 
-            {/* Details Overlay Modal */}
-            {editingTransaction && (() => {
+            {/* Halaman detail: memuat / tidak ditemukan */}
+            {txId && !editingTransaction && (
+                <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+                    <div className="py-24 text-center bg-white border border-slate-200 rounded-3xl shadow-sm space-y-3">
+                        {loadingDetails ? (
+                            <>
+                                <RefreshCw className="h-8 w-8 animate-spin mx-auto text-teal-500" />
+                                <p className="text-sm font-semibold text-slate-400">Memuat formulir...</p>
+                            </>
+                        ) : (
+                            <>
+                                <FileText className="h-10 w-10 text-slate-300 mx-auto" />
+                                <p className="text-sm font-bold text-slate-700">Transaksi tidak ditemukan</p>
+                                <button type="button" onClick={closeDetailPage} className="inline-flex items-center gap-2 text-sm font-semibold text-teal-700 hover:underline cursor-pointer">
+                                    <ArrowLeft className="h-4 w-4" /> Kembali ke Riwayat
+                                </button>
+                            </>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* Halaman Detail Formulir */}
+            {txId && editingTransaction && (() => {
                 const modalTotalKotor = (editingTransaction.details || []).reduce((sum, item) => sum + parseInt(item.qty_kotor || 0), 0);
                 const modalTotalBersih = (editingTransaction.details || []).reduce((sum, item) => sum + parseInt(item.qty_bersih || 0), 0);
                 const modalTotalShortage = Math.max(0, modalTotalKotor - modalTotalBersih);
                 const modalHasShortage = modalTotalShortage > 0 && editingTransaction.transaction.status === 'SELESAI';
+                // Badge dropdown ruangan: jumlah linen kotor per ruangan, dan sisa kurang kirim bila sudah selesai
+                const roomStatus = {};
+                (editingTransaction.details || []).forEach(d => {
+                    if (!d.room_id) return;
+                    const cur = roomStatus[d.room_id] || { kotor: 0, cuci: 0, kurang: 0 };
+                    const k = parseInt(d.qty_kotor || 0);
+                    cur.kotor += k;
+                    if (editingTransaction.transaction.status === 'SELESAI') cur.kurang += Math.max(0, k - parseInt(d.qty_bersih || 0));
+                    roomStatus[d.room_id] = cur;
+                });
+                // Badge TTD unit: belum lengkap bila pickup belum TTD, atau delivery belum TTD setelah pickup final
+                if (editingTransaction.roomSign?.required) {
+                    const pickupFinal = !!(editingTransaction.transaction.signature_valet_pickup && editingTransaction.transaction.signature_hospital_pickup);
+                    editingTransaction.roomSign.rooms.forEach(r => {
+                        if (!r.required) return;
+                        const cur = roomStatus[r.room_id] || { kotor: 0, cuci: 0, kurang: 0 };
+                        cur.ttd = r.pickup?.complete && (!pickupFinal || r.delivery?.complete) ? 'done' : 'pending';
+                        roomStatus[r.room_id] = cur;
+                    });
+                }
+                const roomOptions = [...roomsList];
+                (editingTransaction.details || []).forEach(d => {
+                    if (d.room_id && !roomOptions.some(r => r.id === d.room_id)) roomOptions.push({ id: d.room_id, name: d.room_name });
+                });
+                // Ruangan yang turun kotor ditaruh paling atas
+                roomOptions.sort((a, b) => ((roomStatus[b.id]?.kotor || 0) > 0) - ((roomStatus[a.id]?.kotor || 0) > 0));
+                const roomsWithKotor = roomOptions.filter(r => (roomStatus[r.id]?.kotor || 0) > 0).length;
 
                 return (
-                    <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                        <div className="bg-white rounded-3xl max-w-5xl w-full shadow-2xl overflow-hidden border border-slate-100 flex flex-col h-[90vh] max-h-[900px] animate-[fadeIn_0.2s_ease-out]">
+                    <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 space-y-4">
+                        {/* Toolbar halaman */}
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                            <button type="button" onClick={closeDetailPage} className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-white hover:text-teal-700 transition cursor-pointer">
+                                <ArrowLeft className="h-4 w-4" />
+                                Kembali ke Riwayat
+                            </button>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={(e) => handleDownloadExcel(e, editingTransaction.transaction)}
+                                    disabled={downloadingTxId === editingTransaction.transaction.id}
+                                    className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 transition active:scale-95 cursor-pointer disabled:opacity-50"
+                                >
+                                    {downloadingTxId === editingTransaction.transaction.id ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : (
+                                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                        </svg>
+                                    )}
+                                    Unduh Excel
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={(e) => handleDownloadPdf(e, editingTransaction.transaction)}
+                                    disabled={downloadingPdfTxId === editingTransaction.transaction.id}
+                                    className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100 transition active:scale-95 cursor-pointer disabled:opacity-50"
+                                >
+                                    {downloadingPdfTxId === editingTransaction.transaction.id ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
+                                    Cetak PDF
+                                </button>
+                            </div>
+                        </div>
+                        <div className="bg-white rounded-3xl w-full shadow-sm overflow-hidden border border-slate-200 flex flex-col animate-[fadeIn_0.2s_ease-out]">
 
-                            {/* Modal Header */}
-                            <div className="p-6 bg-gradient-to-r from-[#126776] to-[#1ea59e] text-white flex justify-between items-start relative shrink-0">
-                                <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-2xl -translate-y-6 translate-x-6 pointer-events-none" />
-                                <div className="space-y-1">
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-[10px] font-bold tracking-widest uppercase bg-white/15 px-3 py-1 rounded-full border border-white/10">
-                                            Form Transaksi #{editingTransaction.transaction.id}
-                                        </span>
-                                        <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase border ${editingTransaction.transaction.status === 'SELESAI'
-                                            ? modalHasShortage
-                                                ? 'bg-rose-500/25 text-rose-100 border-rose-400/40'
-                                                : 'bg-emerald-500/20 text-emerald-250 border-emerald-500/30'
-                                            : 'bg-amber-500/20 text-amber-250 border-amber-500/30'
-                                            }`}>
-                                            {editingTransaction.transaction.status === 'SELESAI'
-                                                ? modalHasShortage ? 'Kurang Kirim' : 'Selesai'
-                                                : 'Pengambilan Kotor'}
+                            {/* Kop Formulir */}
+                            <div className="px-6 sm:px-8 pt-7 pb-6 border-b border-slate-200 bg-gradient-to-b from-teal-50/70 to-white">
+                                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-5">
+                                    <div>
+                                        <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-teal-600">PT Intersolusi Karya Mandiri</p>
+                                        <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-slate-900">Form Serah Terima Linen</h1>
+                                        <p className="mt-1 text-sm font-medium text-slate-500">{editingTransaction.transaction.hospital_name || hospitalName}</p>
+                                    </div>
+                                    <div className="sm:text-right">
+                                        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">No. Formulir</p>
+                                        <p className="mt-0.5 text-lg font-bold text-slate-900">{editingTransaction.transaction.form_number}</p>
+                                        <span className={`mt-2 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ring-1 ring-inset ${editingTransaction.transaction.status !== 'SELESAI'
+                                            ? 'bg-amber-50 text-amber-700 ring-amber-200'
+                                            : modalHasShortage ? 'bg-rose-50 text-rose-700 ring-rose-200' : 'bg-emerald-50 text-emerald-700 ring-emerald-200'}`}>
+                                            <span className={`h-1.5 w-1.5 rounded-full ${editingTransaction.transaction.status !== 'SELESAI' ? 'bg-amber-500' : modalHasShortage ? 'bg-rose-500' : 'bg-emerald-500'}`} />
+                                            {editingTransaction.transaction.status !== 'SELESAI' ? 'Proses' : modalHasShortage ? 'Kurang Kirim' : 'Selesai'}
                                         </span>
                                     </div>
-                                    <h3 className="text-xl font-bold mt-2 tracking-tight">
-                                        No. Formulir: {editingTransaction.transaction.form_number}
-                                    </h3>
                                 </div>
-                                <button
-                                    onClick={() => setEditingTransaction(null)}
-                                    className="p-1 rounded-xl text-white/80 hover:text-white hover:bg-white/10 transition cursor-pointer"
-                                >
-                                    <X className="h-6 w-6" />
-                                </button>
+
+                                {/* Ringkasan */}
+                                <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3">
+                                    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                                        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Tanggal Pengambilan</p>
+                                        <p className="mt-1 text-sm font-bold text-slate-800">{formatDate(editingTransaction.transaction.pickup_date)}</p>
+                                    </div>
+                                    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                                        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Total Kotor</p>
+                                        <p className="mt-1 text-2xl font-extrabold text-slate-900 tabular-nums">{modalTotalKotor}</p>
+                                    </div>
+                                    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                                        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Total Bersih</p>
+                                        <p className="mt-1 text-2xl font-extrabold text-teal-700 tabular-nums">{editingTransaction.transaction.status === 'SELESAI' ? modalTotalBersih : '—'}</p>
+                                    </div>
+                                    <div className={`rounded-2xl border px-4 py-3 ${modalHasShortage ? 'border-rose-200 bg-rose-50' : 'border-slate-200 bg-white'}`}>
+                                        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Selisih</p>
+                                        <p className={`mt-1 text-2xl font-extrabold tabular-nums ${modalHasShortage ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                            {editingTransaction.transaction.status !== 'SELESAI' ? <span className="text-slate-300">—</span> : modalHasShortage ? modalTotalShortage : 'Lengkap'}
+                                        </p>
+                                    </div>
+                                </div>
                             </div>
 
                             {/* Modal Navigation Tabs */}
@@ -835,7 +935,7 @@ export default function RSSerahTerima() {
                             </div>
 
                             {/* Modal Body Container */}
-                            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                            <div className="p-6 sm:p-8 space-y-6">
 
                                 {/* ======================= TAB 1: DETAIL TRANSAKSI ======================= */}
                                 {detailTab === 'detail' && (
@@ -951,20 +1051,14 @@ export default function RSSerahTerima() {
 
                                         {/* Room Filter Dropdown */}
                                         <div className="flex items-center gap-2 mb-3">
-                                            <div className="relative min-w-[200px]">
-                                                <select
-                                                    value={selectedRoomId}
-                                                    onChange={e => setSelectedRoomId(e.target.value)}
-                                                    className="w-full pl-3 pr-9 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 outline-none focus:ring-4 focus:ring-[#1ea59e]/10 focus:border-[#1ea59e] cursor-pointer appearance-none shadow-sm"
-                                                >
-                                                    <option value="">Semua Ruangan</option>
-                                                    {roomsList.map(room => (
-                                                        <option key={room.id} value={room.id}>{room.name}</option>
-                                                    ))}
-                                                </select>
-                                                <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-slate-400">
-                                                    <ChevronRight className="w-4 h-4 rotate-90" />
-                                                </div>
+                                            <div className="flex flex-wrap items-center gap-3">
+                                                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Ruangan</span>
+                                                <RoomStatusSelect value={selectedRoomId} onChange={setSelectedRoomId} rooms={roomOptions} roomStatus={roomStatus} />
+                                                {roomsWithKotor > 0 && (
+                                                    <span className="text-xs text-slate-500">
+                                                        <span className="font-bold text-amber-700">{roomsWithKotor} ruangan</span> menurunkan linen kotor pada formulir ini
+                                                    </span>
+                                                )}
                                             </div>
                                         </div>
 
@@ -1259,6 +1353,58 @@ export default function RSSerahTerima() {
                                             </table>
                                         </div>
 
+                                        {/* TTD Serah Terima per Unit (ruangan) */}
+                                        {editingTransaction.roomSign?.required && (editingTransaction.roomSign.rooms || []).some(r => r.required) && (
+                                            <div className="space-y-3 pt-4 border-t border-slate-200">
+                                                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
+                                                    <Building className="h-4 w-4 text-slate-400" />
+                                                    TTD Serah Terima per Unit
+                                                </h4>
+                                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                                                    {editingTransaction.roomSign.rooms
+                                                        .filter(r => r.required && (!selectedRoomId || String(r.room_id) === String(selectedRoomId)))
+                                                        .map(r => (
+                                                            <div key={r.room_id} className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
+                                                                <div className="flex items-center justify-between gap-2">
+                                                                    <span className="text-sm font-bold text-slate-800">{r.room_name}</span>
+                                                                    <span className="text-[11px] font-semibold text-slate-400">Kotor {r.total_kotor}</span>
+                                                                </div>
+                                                                <div className="grid grid-cols-2 gap-3">
+                                                                    {[['pickup', 'Pickup (Kotor)'], ['delivery', 'Delivery (Bersih)']].map(([stage, label]) => {
+                                                                        const s = r[stage];
+                                                                        return (
+                                                                            <div key={stage} className={`rounded-xl border p-3 space-y-2 ${s?.complete ? 'border-emerald-200 bg-emerald-50/40' : 'border-slate-200 bg-slate-50'}`}>
+                                                                                <div className="flex items-center justify-between gap-1">
+                                                                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{label}</span>
+                                                                                    {s?.complete
+                                                                                        ? <span className="text-[10px] font-bold text-emerald-700">✓ TTD</span>
+                                                                                        : <span className="text-[10px] font-bold text-rose-600">Belum TTD</span>}
+                                                                                </div>
+                                                                                {s?.complete ? (
+                                                                                    <>
+                                                                                        <div className="grid grid-cols-2 gap-2">
+                                                                                            {[['Valet', s.signature_valet], ['Perawat', s.signature_nurse]].map(([who, src]) => (
+                                                                                                <div key={who} className="flex flex-col items-center rounded-lg border border-slate-200 bg-white p-1.5">
+                                                                                                    <span className="text-[9px] font-bold uppercase text-slate-400">{who}</span>
+                                                                                                    {src ? <img src={src} alt={who} className="h-10 object-contain" /> : <span className="text-[10px] text-slate-300">—</span>}
+                                                                                                </div>
+                                                                                            ))}
+                                                                                        </div>
+                                                                                        <p className="text-[11px] font-semibold text-slate-700 truncate" title={s.nurse_name}>{s.nurse_name}</p>
+                                                                                        {s.signed_at && <p className="text-[10px] text-slate-400">{new Date(s.signed_at).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</p>}
+                                                                                    </>
+                                                                                ) : (
+                                                                                    <p className="text-[11px] italic text-slate-400">Perawat unit belum menandatangani.</p>
+                                                                                )}
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                </div>
+                                            </div>
+                                        )}
                                         {/* Signatures block */}
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-slate-200">
 
@@ -1650,13 +1796,13 @@ export default function RSSerahTerima() {
                             </div>
 
                             {/* Modal Footer */}
-                            <div className="p-4 bg-slate-50 border-t border-slate-250 flex justify-end shrink-0">
+                            <div className="px-6 sm:px-8 py-4 bg-slate-50 border-t border-slate-200 flex justify-start">
                                 <button
                                     type="button"
-                                    onClick={() => setEditingTransaction(null)}
+                                    onClick={closeDetailPage}
                                     className="px-6 py-2.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-xl text-xs font-bold transition shadow-sm active:scale-95 cursor-pointer"
                                 >
-                                    Tutup
+                                    <ArrowLeft className="h-4 w-4 inline mr-1.5 -mt-0.5" />Kembali ke Riwayat
                                 </button>
                             </div>
 

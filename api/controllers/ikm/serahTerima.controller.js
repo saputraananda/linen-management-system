@@ -1,6 +1,9 @@
 import { ikmPool, mainPool } from '../../db/pool.js';
 import { getSignatureUrl, saveBase64Image, cleanupSignatures } from '../../middleware/upload.js';
 import { parsePaging, buildPagination, offsetOf } from '../../utils/paging.js';
+import {
+  hospitalRequiresUnitSign, getRoomSignState, roomFingerprints, findLockedChangedRooms
+} from '../../utils/roomSign.js';
 
 // Helper to format string to Capital Each Word (Title Case)
 const toTitleCase = (str) => {
@@ -37,6 +40,20 @@ const parseIsExpress = (val) => {
   if (val === true || val === 1 || val === '1') return 1;
   return 0;
 };
+
+/**
+ * Linen kotor yang diambil IKM keluar dari ruangan: kurangi Dirty Utility dulu,
+ * jika jumlah yang diambil lebih besar (Dirty Utility lupa dihitung) sisanya dikurangi dari Terpakai.
+ * Urutan SET penting: MySQL mengevaluasi dari kiri ke kanan, jadi Terpakai dihitung memakai qty_dirty lama.
+ */
+const takeKotorFromRoom = (connection, hospitalLinenId, roomId, qty) =>
+  connection.query(
+    `UPDATE mst_hospital_linen_rooms
+     SET qty_terpakai = GREATEST(qty_terpakai - GREATEST(? - qty_dirty, 0), 0),
+         qty_dirty = GREATEST(qty_dirty - ?, 0)
+     WHERE hospital_linen_id = ? AND room_id = ?`,
+    [qty, qty, hospitalLinenId, roomId]
+  );
 
 /** Never expose admin kg weighing to LMS clients */
 const stripAdminKg = (row) => {
@@ -307,12 +324,15 @@ export const getTransactionDetail = async (req, res) => {
       });
     }
 
+    const roomSign = await getRoomSignState(ikmPool, id);
+
     return res.status(200).json({
       success: true,
       data: {
         transaction,
         details,
-        audits: audits.map(sanitizeAuditRow)
+        audits: audits.map(sanitizeAuditRow),
+        roomSign
       }
     });
   } catch (error) {
@@ -331,6 +351,7 @@ export const getTransactionDetail = async (req, res) => {
 export const createTransaction = async (req, res) => {
   const connection = await ikmPool.getConnection();
   let oldSigs = null, savedSigs = null;
+  let prevKotorFingerprints = null;
   try {
     await connection.beginTransaction();
 
@@ -417,6 +438,8 @@ export const createTransaction = async (req, res) => {
         `SELECT hospital_linen_id, room_id, qty_kotor FROM tr_linen_transaction_detail WHERE transaction_id = ?`,
         [transactionId]
       );
+      // Isi kotor per ruangan sebelum disimpan ulang (untuk mereset TTD unit yang angkanya berubah)
+      prevKotorFingerprints = roomFingerprints(prevDetails, 'qty_kotor');
       for (const prev of prevDetails) {
         if (!prev.room_id || !(prev.qty_kotor > 0)) continue;
         await connection.query(
@@ -454,11 +477,14 @@ export const createTransaction = async (req, res) => {
       const hospitalCode = hospitalRows?.[0]?.hospital_id || hospitalId;
       formNumber = `${hospitalCode}-${ddmmyy}-${String(nextSeq).padStart(3, '0')}`;
 
+      // Aturan TTD per unit dikunci saat transaksi dibuat (transaksi lama tidak terdampak)
+      const unitSignRequired = (await hospitalRequiresUnitSign(connection, hospitalId)) ? 1 : 0;
+
       const [result] = await connection.query(
-        `INSERT INTO tr_linen_transaction 
-         (form_number, hospital_id, user_pickup, hospital_staff_pickup, hospital_assistant_pickup, pickup_date, status, notes_pickup, total_kg_valet, is_express)
-         VALUES (?, ?, ?, ?, ?, ?, 'PROSES', ?, ?, ?)`,
-        [formNumber, hospitalId, userPickup, hospitalStaffPickup ? toTitleCase(hospitalStaffPickup) : null, hospitalAssistantPickup ? toTitleCase(hospitalAssistantPickup) : null, formatMySQLDateTime(pickupDate), notes || null, total_kg_valet, is_express]
+        `INSERT INTO tr_linen_transaction
+         (form_number, hospital_id, user_pickup, hospital_staff_pickup, hospital_assistant_pickup, pickup_date, status, notes_pickup, total_kg_valet, is_express, unit_sign_required)
+         VALUES (?, ?, ?, ?, ?, ?, 'PROSES', ?, ?, ?, ?)`,
+        [formNumber, hospitalId, userPickup, hospitalStaffPickup ? toTitleCase(hospitalStaffPickup) : null, hospitalAssistantPickup ? toTitleCase(hospitalAssistantPickup) : null, formatMySQLDateTime(pickupDate), notes || null, total_kg_valet, is_express, unitSignRequired]
       );
 
       transactionId = result.insertId;
@@ -491,14 +517,42 @@ export const createTransaction = async (req, res) => {
       // Linen kotor diambil IKM: keluar dari Dirty Utility ruangan, tercatat sebagai Cuci IKM
       const qtyKotor = parseInt(item.qtyKotor || 0);
       if (item.roomId && qtyKotor > 0) {
-        await connection.query(
-          `UPDATE mst_hospital_linen_rooms SET qty_dirty = GREATEST(qty_dirty - ?, 0) WHERE hospital_linen_id = ? AND room_id = ?`,
-          [qtyKotor, item.hospitalLinenId, item.roomId]
-        );
+        await takeKotorFromRoom(connection, item.hospitalLinenId, item.roomId, qtyKotor);
       }
     }
 
+    // TTD per unit: ruangan yang sudah TTD Valet + Perawat Unit terkunci, jumlah kotornya tidak boleh berubah
+    if (prevKotorFingerprints) {
+      const [savedDetails] = await connection.query(
+        `SELECT hospital_linen_id, room_id, qty_kotor FROM tr_linen_transaction_detail WHERE transaction_id = ?`,
+        [transactionId]
+      );
+      const lockedRooms = await findLockedChangedRooms(
+        connection, transactionId, prevKotorFingerprints, roomFingerprints(savedDetails, 'qty_kotor'), 'pickup');
+      if (lockedRooms.length) {
+        await connection.rollback();
+        cleanupSignatures(savedSigs, oldSigs);
+        return res.status(400).json({
+          success: false,
+          message: `Ruangan ${lockedRooms.join(', ')} sudah TTD unit dan terkunci; jumlah kotornya tidak dapat diubah.`,
+          lockedRooms
+        });
+      }
+    }
 
+    // TTD akhir Tim Linen RS + Valet hanya boleh setelah semua unit yang menurunkan kotor sudah TTD
+    if (!isTemporary) {
+      const roomState = await getRoomSignState(connection, transactionId);
+      if (roomState.required && roomState.pending_pickup.length) {
+        await connection.rollback();
+        cleanupSignatures(savedSigs, oldSigs);
+        return res.status(400).json({
+          success: false,
+          message: `Masih ada unit yang belum TTD pengambilan: ${roomState.pending_pickup.join(', ')}.`,
+          pendingRooms: roomState.pending_pickup
+        });
+      }
+    }
 
     // Capture created state for audit logging
     const [newHeaderRows] = await connection.query(
@@ -778,10 +832,52 @@ export const updateTransactionDelivery = async (req, res) => {
       );
       // Koreksi kotor oleh admin: samakan Dirty Utility dengan selisihnya
       if (prev?.room_id && prev.qty_kotor !== newKotor) {
-        await connection.query(
-          `UPDATE mst_hospital_linen_rooms SET qty_dirty = GREATEST(qty_dirty + ?, 0) WHERE hospital_linen_id = ? AND room_id = ?`,
-          [prev.qty_kotor - newKotor, prev.hospital_linen_id, prev.room_id]
-        );
+        const selisih = prev.qty_kotor - newKotor;
+        if (selisih > 0) {
+          // Kotor dikurangi: selisihnya kembali ke Dirty Utility
+          await connection.query(
+            `UPDATE mst_hospital_linen_rooms SET qty_dirty = qty_dirty + ? WHERE hospital_linen_id = ? AND room_id = ?`,
+            [selisih, prev.hospital_linen_id, prev.room_id]
+          );
+        } else {
+          // Kotor ditambah: ambil dari Dirty Utility dulu, sisanya dari Terpakai
+          await takeKotorFromRoom(connection, prev.hospital_linen_id, prev.room_id, -selisih);
+        }
+      }
+    }
+
+    // TTD per unit (pengiriman bersih) selama transaksi masih PROSES
+    if (oldHeader.status === 'PROSES') {
+      const [savedDetails] = await connection.query(
+        `SELECT hospital_linen_id, room_id, qty_kotor, qty_bersih FROM tr_linen_transaction_detail WHERE transaction_id = ?`,
+        [id]
+      );
+      // Ruangan yang sudah TTD unit terkunci: bersih (tahap delivery) dan kotor (tahap pickup) tidak boleh berubah
+      const lockedRooms = [...new Set([
+        ...await findLockedChangedRooms(connection, id, roomFingerprints(oldDetails, 'qty_bersih'), roomFingerprints(savedDetails, 'qty_bersih'), 'delivery'),
+        ...await findLockedChangedRooms(connection, id, roomFingerprints(oldDetails, 'qty_kotor'), roomFingerprints(savedDetails, 'qty_kotor'), 'pickup')
+      ])];
+      if (lockedRooms.length) {
+        await connection.rollback();
+        cleanupSignatures(savedSigs, oldHeader);
+        return res.status(400).json({
+          success: false,
+          message: `Ruangan ${lockedRooms.join(', ')} sudah TTD unit dan terkunci; jumlahnya tidak dapat diubah.`,
+          lockedRooms
+        });
+      }
+
+      if (!isTemporary) {
+        const roomState = await getRoomSignState(connection, id);
+        if (roomState.required && roomState.pending_delivery.length) {
+          await connection.rollback();
+          cleanupSignatures(savedSigs, oldHeader);
+          return res.status(400).json({
+            success: false,
+            message: `Masih ada unit yang belum TTD pengiriman bersih: ${roomState.pending_delivery.join(', ')}.`,
+            pendingRooms: roomState.pending_delivery
+          });
+        }
       }
     }
 

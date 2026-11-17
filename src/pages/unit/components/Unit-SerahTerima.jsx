@@ -1,0 +1,1566 @@
+import { useEffect, useState, useRef, Fragment } from 'react';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import RoomStatusSelect from '../../ikm/components/RoomStatusSelect';
+import axios from 'axios';
+import {
+    FileText, Search, Calendar, CheckCircle2,
+    AlertTriangle, ArrowLeft, RefreshCw, ChevronRight,
+    User, Clock, AlertCircle, Warehouse, Building,
+    Shirt, Info, X, Printer, ListCollapse
+} from 'lucide-react';
+import exportSuratJalanKurangKirim from '../../ikm/utils/exportSuratJalanKurangKirim.js';
+import kopSuratIkm from '../../../assets/images/kop_surat_ikm.png';
+import exportSerahTerimaLinen from '../utils/exportSerahTerimaLinen.js';
+import exportSerahTerimaLinenPDF from '../utils/exportSerahTerimaLinenPDF.js';
+import { socket } from '../../../utils/socket';
+import Pagination from '../../../components/Pagination';
+import usePaging from '../../../utils/usePaging';
+
+// Helper to convert string to Title Case
+const toTitleCase = (str) => {
+    if (!str) return '';
+    return str
+        .toLowerCase()
+        .split(' ')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+};
+
+export default function UnitSerahTerima() {
+    // Detail transaksi tampil sebagai halaman: <daftar>/:txId
+    const { txId } = useParams();
+    const navigate = useNavigate();
+    const location = useLocation();
+    const basePath = location.pathname.replace(/\/\d+\/?$/, '');
+    const openDetailPage = (id) => navigate(`${basePath}/${id}`);
+    const closeDetailPage = () => navigate(basePath);
+
+    // Perawat unit hanya melihat ruangannya sendiri, jadi filter ruangan tidak diperlukan
+    const isUnitNurse = !!localStorage.getItem('nurseName');
+    const [transactions, setTransactions] = useState([]);
+    const [loadingHistory, setLoadingHistory] = useState(true);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [filterStatus, setFilterStatus] = useState('all');
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
+    const pg = usePaging();
+    // Nilai filter/halaman terbaru; dibaca fetchHistory agar pemanggil lama (socket, setelah edit) tidak memakai state basi
+    const queryRef = useRef({});
+    queryRef.current = { searchQuery, filterStatus, startDate, endDate, page: pg.page, pageSize: pg.pageSize };
+    const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
+
+    // Details Modal States
+    const [editingTransaction, setEditingTransaction] = useState(null); // stores active transaction detail
+    const [detailTab, setDetailTab] = useState('detail'); // 'detail' | 'surat_jalan'
+    const [showAuditLogs, setShowAuditLogs] = useState(false);
+    const [loadingDetails, setLoadingDetails] = useState(false);
+    const [selectedRoomId, setSelectedRoomId] = useState('');
+    const [roomsList, setRoomsList] = useState([]);
+
+    const getLinenNameById = (hospitalLinenId) => {
+        const detail = editingTransaction?.details?.find(d => d.hospital_linen_id === hospitalLinenId);
+        return detail ? getLinenDisplayName(detail) : `Linen #${hospitalLinenId}`;
+    };
+
+    const generateAuditLogDescriptions = (audit) => {
+        const descriptions = [];
+        if (!audit.old_values || !audit.new_values) {
+            if (audit.action === 'CREATE' || audit.action === 'PICKUP_KOTOR') {
+                descriptions.push("Membuat transaksi kotor");
+            } else if (audit.action === 'ADMIN') {
+                descriptions.push("Melakukan perubahan admin");
+            } else if (audit.action === 'RUMAH_SAKIT') {
+                descriptions.push("Rumah Sakit memperbarui data transaksi");
+            }
+            return descriptions;
+        }
+
+        let oldSnap, newSnap;
+        try {
+            oldSnap = typeof audit.old_values === 'string' ? JSON.parse(audit.old_values) : audit.old_values;
+            newSnap = typeof audit.new_values === 'string' ? JSON.parse(audit.new_values) : audit.new_values;
+        } catch (e) {
+            return ["Gagal memuat detail log"];
+        }
+
+        const oldTx = oldSnap.transaction || oldSnap.header || {};
+        const newTx = newSnap.transaction || newSnap.header || {};
+
+        if (oldTx.notes_pickup !== newTx.notes_pickup) {
+            descriptions.push(`Catatan pickup: "${oldTx.notes_pickup || '—'}" menjadi "${newTx.notes_pickup || '—'}"`);
+        }
+        if (oldTx.notes_delivery !== newTx.notes_delivery) {
+            descriptions.push(`Catatan delivery: "${oldTx.notes_delivery || '—'}" menjadi "${newTx.notes_delivery || '—'}"`);
+        }
+        if (oldTx.notes !== newTx.notes) {
+            descriptions.push(`Catatan umum: "${oldTx.notes || '—'}" menjadi "${newTx.notes || '—'}"`);
+        }
+
+        if (oldTx.user_pickup !== newTx.user_pickup) {
+            descriptions.push(`Petugas Pickup diubah`);
+        }
+        if (oldTx.user_delivery !== newTx.user_delivery) {
+            descriptions.push(`Petugas Delivery diubah`);
+        }
+        if (oldTx.hospital_staff_pickup !== newTx.hospital_staff_pickup) {
+            descriptions.push(`Petugas RS Pickup: "${oldTx.hospital_staff_pickup || '—'}" menjadi "${newTx.hospital_staff_pickup || '—'}"`);
+        }
+        if (oldTx.hospital_staff_delivery !== newTx.hospital_staff_delivery) {
+            descriptions.push(`Petugas RS Delivery: "${oldTx.hospital_staff_delivery || '—'}" menjadi "${newTx.hospital_staff_delivery || '—'}"`);
+        }
+        if (oldTx.pickup_date !== newTx.pickup_date) {
+            descriptions.push(`Tanggal Pickup diubah`);
+        }
+        if (oldTx.delivery_date !== newTx.delivery_date) {
+            descriptions.push(`Tanggal Pengantaran diubah`);
+        }
+        if (oldTx.status !== newTx.status) {
+            descriptions.push(`Status Transaksi: "${oldTx.status || '—'}" menjadi "${newTx.status || '—'}"`);
+        }
+
+        const oldDetails = oldSnap.details || [];
+        const newDetails = newSnap.details || [];
+
+        // Check for updated details
+        newDetails.forEach(newItem => {
+            const oldItem = oldDetails.find(o => o.id === newItem.id);
+            if (oldItem) {
+                const name = getLinenNameById(newItem.hospital_linen_id);
+                if (parseInt(oldItem.qty_kotor || 0) !== parseInt(newItem.qty_kotor || 0)) {
+                    descriptions.push(`Linen Kotor ${name} ${oldItem.qty_kotor || 0} menjadi ${newItem.qty_kotor || 0}`);
+                }
+                const oldBersih = oldItem.qty_bersih;
+                const newBersih = newItem.qty_bersih;
+                if (oldBersih !== newBersih) {
+                    descriptions.push(`Linen Bersih ${name} ${oldBersih === null ? '—' : oldBersih} menjadi ${newBersih === null ? '—' : newBersih}`);
+                }
+                if (oldItem.notes !== newItem.notes) {
+                    descriptions.push(`Catatan ${name}: "${oldItem.notes || '—'}" menjadi "${newItem.notes || '—'}"`);
+                }
+            }
+        });
+
+        // Check for deleted details
+        oldDetails.forEach(oldItem => {
+            const newItem = newDetails.find(n => n.id === oldItem.id);
+            if (!newItem) {
+                const name = getLinenNameById(oldItem.hospital_linen_id);
+                descriptions.push(`Menghapus linen ${name} (sebelumnya ${oldItem.qty_kotor || 0} Pcs kotor)`);
+            }
+        });
+
+        if (descriptions.length === 0) {
+            descriptions.push("Melakukan pembaruan data transaksi");
+        }
+
+        return descriptions;
+    };
+
+    const formatAuditTime = (dateStr) => {
+        if (!dateStr) return '';
+        const d = new Date(dateStr);
+        const dayName = d.toLocaleDateString('id-ID', { weekday: 'long' });
+        const dateFormatted = d.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+        const hours = String(d.getHours()).padStart(2, '0');
+        const minutes = String(d.getMinutes()).padStart(2, '0');
+        return `${dayName}, ${dateFormatted}, ${hours}:${minutes} WIB`;
+    };
+
+    // Selected Surat Jalan details inside "Surat Jalan" tab
+    const [selectedSj, setSelectedSj] = useState(null);
+    const [sjDetails, setSjDetails] = useState([]);
+    const [loadingSjDetails, setLoadingSjDetails] = useState(false);
+    const [hospitalName, setHospitalName] = useState('');
+    const [downloadingTxId, setDownloadingTxId] = useState(null);
+    const [downloadingPdfTxId, setDownloadingPdfTxId] = useState(null);
+
+    const prevFiltersRef = useRef({ startDate, endDate, filterStatus, page: pg.page, pageSize: pg.pageSize });
+
+    const showToast = (message, type = 'success') => {
+        setToast({ show: true, message, type });
+        setTimeout(() => {
+            setToast(prev => ({ ...prev, show: false }));
+        }, 3000);
+    };
+
+    const formatDate = (dateStr) => {
+        if (!dateStr) return '—';
+        return new Date(dateStr).toLocaleString('id-ID', {
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    };
+
+    const getLinenDisplayName = (item) => {
+        if (item.hospital_linen_name && item.hospital_linen_name.trim() !== '') {
+            return item.hospital_linen_name;
+        }
+        const parts = [item.linen_name || ''];
+        if (item.size_name) parts.push(item.size_name);
+        if (item.color_name) parts.push(item.color_name);
+        if (item.material_name) parts.push(item.material_name);
+        return parts.filter(Boolean).join(' ');
+    };
+
+    // Fetch RS transactions
+    const fetchHistory = async () => {
+        setLoadingHistory(true);
+        try {
+            const token = localStorage.getItem('token');
+            const f = queryRef.current;
+            const params = { page: f.page, limit: f.pageSize };
+            if (f.startDate) params.startDate = f.startDate;
+            if (f.endDate) params.endDate = f.endDate;
+            if (f.filterStatus !== 'all') params.status = f.filterStatus;
+            if (f.searchQuery.trim()) params.search = f.searchQuery;
+
+            const { data } = await axios.get('/api/unit/serah-terima/transactions', {
+                headers: { Authorization: `Bearer ${token}` },
+                params
+            });
+
+            if (data?.success) {
+                setTransactions(data.data || []);
+                pg.accept(data.pagination);
+            }
+        } catch (err) {
+            console.error('Error fetching transactions:', err);
+            showToast('Gagal memuat riwayat transaksi', 'error');
+        } finally {
+            setLoadingHistory(false);
+        }
+    };
+
+    const fetchHospitalInfo = async () => {
+        try {
+            const token = localStorage.getItem('token');
+            const { data } = await axios.get('/api/unit/dashboard-data', {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (data?.success) {
+                setHospitalName(data.data.hospital?.hospital_name || '');
+            }
+        } catch (err) {
+            console.error('Error fetching hospital info:', err);
+        }
+    };
+
+    // Fetch single transaction details, audits, and deliveries
+    const handleOpenDetail = async (txId) => {
+        setLoadingDetails(true);
+        setDetailTab('detail');
+        setSelectedSj(null);
+        setSjDetails([]);
+        setSelectedRoomId('');
+        try {
+            const token = localStorage.getItem('token');
+            const { data } = await axios.get(`/api/unit/serah-terima/transactions/${txId}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (data?.success) {
+                setEditingTransaction(data.data);
+                // Filter ruangan hanya dari baris yang boleh dilihat unit ini
+                const seenRooms = new Map();
+                (data.data.details || []).forEach(d => { if (d.room_id && !seenRooms.has(d.room_id)) seenRooms.set(d.room_id, d.room_name); });
+                setRoomsList([...seenRooms].map(([id, name]) => ({ id, name })));
+            }
+        } catch (err) {
+            console.error('Error fetching transaction detail:', err);
+            showToast('Gagal memuat rincian transaksi', 'error');
+        } finally {
+            setLoadingDetails(false);
+        }
+    };
+
+    // Fetch a single Surat Jalan (shortage delivery) detail
+    const handleViewSj = async (sj) => {
+        setLoadingSjDetails(true);
+        try {
+            const token = localStorage.getItem('token');
+            const { data } = await axios.get(`/api/unit/serah-terima/kurang-kirim/delivery/${sj.id}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (data?.success) {
+                setSelectedSj(data.data.delivery);
+                setSjDetails(data.data.details || []);
+            }
+        } catch (err) {
+            console.error('Error fetching SJ details:', err);
+            showToast('Gagal memuat rincian Surat Jalan', 'error');
+        } finally {
+            setLoadingSjDetails(false);
+        }
+    };
+
+    const handlePrintSj = () => {
+        if (selectedSj) {
+            exportSuratJalanKurangKirim(selectedSj, sjDetails);
+        }
+    };
+
+    const handleDownloadExcel = async (e, tx) => {
+        e.stopPropagation();
+        setDownloadingTxId(tx.id);
+        try {
+            const token = localStorage.getItem('token');
+            const { data } = await axios.get(`/api/unit/serah-terima/transactions/${tx.id}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (data?.success) {
+                await exportSerahTerimaLinen(data.data.transaction, data.data.details, data.data.roomSign);
+                showToast('Berhasil mengunduh dokumen Excel', 'success');
+            } else {
+                showToast('Gagal memuat rincian transaksi untuk Excel', 'error');
+            }
+        } catch (err) {
+            console.error('Error exporting transaction to Excel:', err);
+            showToast('Gagal mengunduh dokumen Excel', 'error');
+        } finally {
+            setDownloadingTxId(null);
+        }
+    };
+
+    const handleDownloadPdf = async (e, tx) => {
+        e.stopPropagation();
+        setDownloadingPdfTxId(tx.id);
+        try {
+            const token = localStorage.getItem('token');
+            const { data } = await axios.get(`/api/unit/serah-terima/transactions/${tx.id}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (data?.success) {
+                await exportSerahTerimaLinenPDF(data.data.transaction, data.data.details, data.data.roomSign);
+                showToast('Berhasil mengunduh dokumen PDF', 'success');
+            } else {
+                showToast('Gagal memuat rincian transaksi untuk PDF', 'error');
+            }
+        } catch (err) {
+            console.error('Error exporting transaction to PDF:', err);
+            showToast('Gagal mengunduh dokumen PDF', 'error');
+        } finally {
+            setDownloadingPdfTxId(null);
+        }
+    };
+
+    const activeDetailTxIdRef = useRef(null);
+    useEffect(() => {
+        activeDetailTxIdRef.current = editingTransaction?.transaction?.id || null;
+    }, [editingTransaction]);
+
+    // Fetch initial history
+    useEffect(() => {
+        fetchHistory();
+        fetchHospitalInfo();
+
+        const hospitalId = localStorage.getItem('employeeId');
+        if (hospitalId) {
+            socket.connect();
+            socket.emit('join_hospital', hospitalId);
+
+            const handleDataChanged = (event) => {
+                console.log('Realtime socket update in RS-SerahTerima:', event);
+                fetchHistory();
+                if (activeDetailTxIdRef.current) {
+                    axios.get(`/api/unit/serah-terima/transactions/${activeDetailTxIdRef.current}`, {
+                        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+                    }).then(({ data }) => {
+                        if (data?.success) {
+                            setEditingTransaction(data.data);
+                        }
+                    }).catch(err => {
+                        console.error('Error auto-refreshing detail:', err);
+                    });
+                }
+            };
+
+            socket.on('data_changed', handleDataChanged);
+
+            return () => {
+                socket.off('data_changed', handleDataChanged);
+                socket.disconnect();
+            };
+        }
+    }, []);
+
+    // Fetch history when filters change
+    useEffect(() => {
+        const prev = prevFiltersRef.current;
+        const hasChanged = prev.startDate !== startDate ||
+            prev.endDate !== endDate ||
+            prev.filterStatus !== filterStatus ||
+            prev.page !== pg.page ||
+            prev.pageSize !== pg.pageSize;
+
+        prevFiltersRef.current = { startDate, endDate, filterStatus, page: pg.page, pageSize: pg.pageSize };
+
+        if (hasChanged) {
+            fetchHistory();
+        }
+    }, [startDate, endDate, filterStatus, pg.page, pg.pageSize]);
+
+    // Debounced search query
+    useEffect(() => {
+        const delayDebounceFn = setTimeout(() => {
+            fetchHistory();
+        }, 500);
+
+        return () => clearTimeout(delayDebounceFn);
+    }, [searchQuery]);
+
+    const handleResetFilters = () => {
+        setSearchQuery('');
+        setFilterStatus('all');
+        setStartDate('');
+        setEndDate('');
+        pg.resetPage();
+    };
+
+    useEffect(() => {
+        if (txId) {
+            handleOpenDetail(txId);
+        } else {
+            setEditingTransaction(null);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [txId]);
+
+    return (
+        <main className="min-h-screen bg-slate-50 py-6 sm:py-10">
+            {!txId && (
+            <div className="mx-auto max-w-screen-2xl px-4 sm:px-6 lg:px-8">
+                <div className="space-y-6">
+
+                    {/* Header */}
+                    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                            <div className="space-y-2">
+                                <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">
+                                    {hospitalName || 'Memuat nama rumah sakit...'}
+                                </h2>
+                                <p className="text-xs text-slate-400 font-medium">
+                                    Portal pencatatan sirkulasi harian linen kotor & pengembalian bersih.
+                                </p>
+                            </div>
+                            <button
+                                onClick={fetchHistory}
+                                disabled={loadingHistory}
+                                className="inline-flex h-10 px-4 items-center justify-center gap-2 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-600 font-bold text-xs shadow-sm transition active:scale-[0.98] cursor-pointer disabled:opacity-50 self-start md:self-center"
+                            >
+                                <RefreshCw className={`h-4 w-4 ${loadingHistory ? 'animate-spin' : ''}`} />
+                                Segarkan
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Filters section */}
+                    <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-4 sm:p-6 space-y-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+
+                            {/* Search */}
+                            <div className="space-y-1.5 col-span-1 sm:col-span-2 lg:col-span-1">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Cari Transaksi</label>
+                                <div className="relative">
+                                    <input
+                                        type="text"
+                                        value={searchQuery}
+                                        onChange={(e) => { setSearchQuery(e.target.value); pg.resetPage(); }}
+                                        placeholder="No. Form / Catatan / Nama..."
+                                        className="block w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-4 focus:ring-teal-500/5 focus:border-teal-500 transition-all text-slate-800"
+                                    />
+                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                                        <Search className="h-4 w-4" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Status */}
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Status</label>
+                                <select
+                                    value={filterStatus}
+                                    onChange={(e) => { setFilterStatus(e.target.value); pg.resetPage(); }}
+                                    className="block w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-4 focus:ring-teal-500/5 focus:border-teal-500 transition-all text-slate-700 cursor-pointer"
+                                >
+                                    <option value="all">Semua Status</option>
+                                    <option value="PROSES">Pengambilan Kotor (PROSES)</option>
+                                    <option value="SELESAI">Selesai (SELESAI)</option>
+                                </select>
+                            </div>
+
+                            {/* Start Date */}
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Mulai Tanggal</label>
+                                <div className="relative">
+                                    <input
+                                        type="date"
+                                        value={startDate}
+                                        onChange={(e) => { setStartDate(e.target.value); pg.resetPage(); }}
+                                        className="block w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-4 focus:ring-teal-500/5 focus:border-teal-500 transition-all text-slate-700 cursor-pointer"
+                                    />
+                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                                        <Calendar className="h-4 w-4" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* End Date */}
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Sampai Tanggal</label>
+                                <div className="relative">
+                                    <input
+                                        type="date"
+                                        value={endDate}
+                                        onChange={(e) => { setEndDate(e.target.value); pg.resetPage(); }}
+                                        className="block w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:ring-4 focus:ring-teal-500/5 focus:border-teal-500 transition-all text-slate-700 cursor-pointer"
+                                    />
+                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                                        <Calendar className="h-4 w-4" />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Reset filters link */}
+                        {(searchQuery || filterStatus !== 'all' || startDate || endDate) && (
+                            <div className="flex justify-end pt-1">
+                                <button
+                                    type="button"
+                                    onClick={handleResetFilters}
+                                    className="text-xs font-bold text-teal-600 hover:text-teal-700 transition flex items-center gap-1 cursor-pointer"
+                                >
+                                    <X className="h-3 w-3" /> Bersihkan Filter
+                                </button>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* History Transactions List */}
+                    {loadingHistory ? (
+                        <div className="py-24 text-center text-slate-400 font-semibold bg-white border border-slate-200 rounded-3xl shadow-sm">
+                            <RefreshCw className="h-8 w-8 animate-spin mx-auto text-teal-500 mb-3" />
+                            Memuat riwayat transaksi...
+                        </div>
+                    ) : transactions.length === 0 ? (
+                        <div className="py-20 text-center text-slate-400 bg-white border border-slate-200 rounded-3xl shadow-sm space-y-2">
+                            <FileText className="h-10 w-10 text-slate-300 mx-auto" />
+                            <h3 className="font-bold text-slate-800 text-sm">Tidak Ada Transaksi</h3>
+                            <p className="text-xs text-slate-500 max-w-xs mx-auto">
+                                Belum ada catatan transaksi serah terima yang tercatat untuk pencarian atau filter saat ini.
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden transition-all duration-300 hover:shadow-md">
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm border-collapse">
+                                    <colgroup>
+                                        <col className="w-14" />
+                                        <col />
+                                        <col />
+                                        <col />
+                                        <col className="w-24" />
+                                        <col className="w-24" />
+                                        <col className="w-36" />
+                                        <col className="w-48" />
+                                    </colgroup>
+                                    <thead>
+                                        <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                                            <th className="py-3.5 pl-6 pr-2 text-center">No</th>
+                                            <th className="py-3.5 px-4 text-left">No. Formulir</th>
+                                            <th className="py-3.5 px-4 text-left">Valet IKM</th>
+                                            <th className="py-3.5 px-4 text-left">Petugas RS</th>
+                                            <th className="py-3.5 px-4 text-center">Kotor</th>
+                                            <th className="py-3.5 px-4 text-center">Bersih</th>
+                                            <th className="py-3.5 px-4 text-center">Status</th>
+                                            <th className="py-3.5 pl-4 pr-6 text-center">Unduh</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100 text-slate-700">
+                                        {transactions.map((tx, index) => {
+                                            const totalShortage = Math.max(0, parseInt(tx.total_qty_kotor || 0) - parseInt(tx.total_qty_bersih || 0));
+                                            const isDone = tx.status === 'SELESAI';
+                                            const hasShortage = isDone && totalShortage > 0;
+                                            const pickupAt = tx.pickup_date ? new Date(tx.pickup_date) : null;
+                                            const pickupLabel = pickupAt
+                                                ? pickupAt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) + ' · ' +
+                                                  pickupAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace(':', '.')
+                                                : '—';
+                                            const status = !isDone
+                                                ? { label: 'Proses', dot: 'bg-amber-500', cls: 'bg-amber-50 text-amber-700 ring-amber-200' }
+                                                : hasShortage
+                                                    ? { label: `Kurang ${totalShortage}`, dot: 'bg-rose-500', cls: 'bg-rose-50 text-rose-700 ring-rose-200' }
+                                                    : { label: 'Selesai', dot: 'bg-emerald-500', cls: 'bg-emerald-50 text-emerald-700 ring-emerald-200' };
+                                            const initialsOf = (name) => (name ? name.split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() : '?');
+                                            const valetName = tx.user_pickup_name || '';
+                                            const staffName = tx.hospital_staff_pickup || '';
+                                
+                                            return (
+                                                <tr
+                                                    key={tx.id}
+                                                    onClick={() => openDetailPage(tx.id)}
+                                                    className="group hover:bg-teal-50/40 transition-colors cursor-pointer"
+                                                >
+                                                    <td className="py-4 pl-6 pr-2 text-center text-slate-400 font-medium tabular-nums">
+                                                        {(pg.pagination.page - 1) * pg.pagination.limit + index + 1}
+                                                    </td>
+                                                    <td className="py-4 px-4">
+                                                        <div className="font-bold text-slate-900 group-hover:text-teal-700 transition-colors">{tx.form_number}</div>
+                                                        <div className="mt-0.5 text-xs text-slate-400 whitespace-nowrap">{pickupLabel}</div>
+                                                        {(tx.total_kg_valet != null || Number(tx.is_express) === 1) && (
+                                                            <div className="mt-1 text-xs font-medium text-slate-500">
+                                                                {[
+                                                                    tx.total_kg_valet != null && `${Number(tx.total_kg_valet).toLocaleString('id-ID', { maximumFractionDigits: 2 })} Kg`,
+                                                                    tx.kg_total != null && tx.kg_agreement != null && `Ditagih ${Number(tx.kg_total).toLocaleString('id-ID', { maximumFractionDigits: 2 })} Kg`,
+                                                                    Number(tx.is_express) === 1 && 'Express'
+                                                                ].filter(Boolean).join(' · ')}
+                                                            </div>
+                                                        )}
+                                                    </td>
+                                                    <td className="py-4 px-4">
+                                                        <div className="flex items-center gap-3">
+                                                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-teal-100 text-[11px] font-bold text-teal-700">{initialsOf(valetName)}</span>
+                                                            <span className="font-semibold text-slate-800 truncate">{valetName || '—'}</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="py-4 px-4">
+                                                        <div className="flex items-center gap-3">
+                                                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sky-100 text-[11px] font-bold text-sky-700">{initialsOf(staffName)}</span>
+                                                            <span className="font-semibold text-slate-800 truncate">{staffName || '—'}</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="py-4 px-4 text-center">
+                                                        <span className="text-base font-bold text-slate-900 tabular-nums">{tx.total_qty_kotor}</span>
+                                                    </td>
+                                                    <td className="py-4 px-4 text-center">
+                                                        {isDone ? (
+                                                            <span className={`text-base font-bold tabular-nums ${hasShortage ? 'text-rose-600' : 'text-teal-700'}`}>{tx.total_qty_bersih}</span>
+                                                        ) : (
+                                                            <span className="text-slate-300 font-bold">—</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="py-4 px-4 text-center">
+                                                        <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ring-1 ring-inset whitespace-nowrap ${status.cls}`}>
+                                                            <span className={`h-1.5 w-1.5 rounded-full ${status.dot}`} />
+                                                            {status.label}
+                                                        </span>
+                                                    </td>
+                                                    <td className="py-4 pl-4 pr-6" onClick={(e) => e.stopPropagation()}>
+                                                        <div className="flex items-center justify-center gap-2">
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => handleDownloadExcel(e, tx)}
+                                                                disabled={downloadingTxId === tx.id}
+                                                                className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 transition active:scale-95 cursor-pointer disabled:opacity-50"
+                                                                title="Unduh Excel"
+                                                            >
+                                                                {downloadingTxId === tx.id ? (
+                                                                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                                                                ) : (
+                                                                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
+                                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                                                    </svg>
+                                                                )}
+                                                                Excel
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={(e) => handleDownloadPdf(e, tx)}
+                                                                disabled={downloadingPdfTxId === tx.id}
+                                                                className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 transition active:scale-95 cursor-pointer disabled:opacity-50"
+                                                                title="Unduh PDF"
+                                                            >
+                                                                {downloadingPdfTxId === tx.id ? (
+                                                                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                                                                ) : (
+                                                                    <FileText className="h-3.5 w-3.5" />
+                                                                )}
+                                                                PDF
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+                    {!loadingHistory && (
+                        <Pagination pagination={pg.pagination} shown={transactions.length} pageSize={pg.pageSize} onChange={pg.goTo} onPageSizeChange={pg.setPageSize} />
+                    )}
+
+                </div>
+            </div>
+            )}
+
+            {/* Halaman detail: memuat / tidak ditemukan */}
+            {txId && !editingTransaction && (
+                <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+                    <div className="py-24 text-center bg-white border border-slate-200 rounded-3xl shadow-sm space-y-3">
+                        {loadingDetails ? (
+                            <>
+                                <RefreshCw className="h-8 w-8 animate-spin mx-auto text-teal-500" />
+                                <p className="text-sm font-semibold text-slate-400">Memuat formulir...</p>
+                            </>
+                        ) : (
+                            <>
+                                <FileText className="h-10 w-10 text-slate-300 mx-auto" />
+                                <p className="text-sm font-bold text-slate-700">Transaksi tidak ditemukan</p>
+                                <button type="button" onClick={closeDetailPage} className="inline-flex items-center gap-2 text-sm font-semibold text-teal-700 hover:underline cursor-pointer">
+                                    <ArrowLeft className="h-4 w-4" /> Kembali ke Riwayat
+                                </button>
+                            </>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* Halaman Detail Formulir */}
+            {txId && editingTransaction && (() => {
+                const modalTotalKotor = (editingTransaction.details || []).reduce((sum, item) => sum + parseInt(item.qty_kotor || 0), 0);
+                const modalTotalBersih = (editingTransaction.details || []).reduce((sum, item) => sum + parseInt(item.qty_bersih || 0), 0);
+                const modalTotalShortage = Math.max(0, modalTotalKotor - modalTotalBersih);
+                const modalHasShortage = modalTotalShortage > 0 && editingTransaction.transaction.status === 'SELESAI';
+                // Badge dropdown ruangan: jumlah linen kotor per ruangan, dan sisa kurang kirim bila sudah selesai
+                const roomStatus = {};
+                (editingTransaction.details || []).forEach(d => {
+                    if (!d.room_id) return;
+                    const cur = roomStatus[d.room_id] || { kotor: 0, cuci: 0, kurang: 0 };
+                    const k = parseInt(d.qty_kotor || 0);
+                    cur.kotor += k;
+                    if (editingTransaction.transaction.status === 'SELESAI') cur.kurang += Math.max(0, k - parseInt(d.qty_bersih || 0));
+                    roomStatus[d.room_id] = cur;
+                });
+                // Badge TTD unit: belum lengkap bila pickup belum TTD, atau delivery belum TTD setelah pickup final
+                if (editingTransaction.roomSign?.required) {
+                    const pickupFinal = !!(editingTransaction.transaction.signature_valet_pickup && editingTransaction.transaction.signature_hospital_pickup);
+                    editingTransaction.roomSign.rooms.forEach(r => {
+                        if (!r.required) return;
+                        const cur = roomStatus[r.room_id] || { kotor: 0, cuci: 0, kurang: 0 };
+                        cur.ttd = r.pickup?.complete && (!pickupFinal || r.delivery?.complete) ? 'done' : 'pending';
+                        roomStatus[r.room_id] = cur;
+                    });
+                }
+                const roomOptions = [...roomsList];
+                (editingTransaction.details || []).forEach(d => {
+                    if (d.room_id && !roomOptions.some(r => r.id === d.room_id)) roomOptions.push({ id: d.room_id, name: d.room_name });
+                });
+                // Ruangan yang turun kotor ditaruh paling atas
+                roomOptions.sort((a, b) => ((roomStatus[b.id]?.kotor || 0) > 0) - ((roomStatus[a.id]?.kotor || 0) > 0));
+                const roomsWithKotor = roomOptions.filter(r => (roomStatus[r.id]?.kotor || 0) > 0).length;
+
+                return (
+                    <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 space-y-4">
+                        {/* Toolbar halaman */}
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                            <button type="button" onClick={closeDetailPage} className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-white hover:text-teal-700 transition cursor-pointer">
+                                <ArrowLeft className="h-4 w-4" />
+                                Kembali ke Riwayat
+                            </button>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={(e) => handleDownloadExcel(e, editingTransaction.transaction)}
+                                    disabled={downloadingTxId === editingTransaction.transaction.id}
+                                    className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 transition active:scale-95 cursor-pointer disabled:opacity-50"
+                                >
+                                    {downloadingTxId === editingTransaction.transaction.id ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : (
+                                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                        </svg>
+                                    )}
+                                    Unduh Excel
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={(e) => handleDownloadPdf(e, editingTransaction.transaction)}
+                                    disabled={downloadingPdfTxId === editingTransaction.transaction.id}
+                                    className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100 transition active:scale-95 cursor-pointer disabled:opacity-50"
+                                >
+                                    {downloadingPdfTxId === editingTransaction.transaction.id ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
+                                    Cetak PDF
+                                </button>
+                            </div>
+                        </div>
+                        <div className="bg-white rounded-3xl w-full shadow-sm overflow-hidden border border-slate-200 flex flex-col animate-[fadeIn_0.2s_ease-out]">
+
+                            {/* Kop Formulir */}
+                            <div className="px-6 sm:px-8 pt-7 pb-6 border-b border-slate-200 bg-gradient-to-b from-teal-50/70 to-white">
+                                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-5">
+                                    <div>
+                                        <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-teal-600">PT Intersolusi Karya Mandiri</p>
+                                        <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-slate-900">Form Serah Terima Linen</h1>
+                                        <p className="mt-1 text-sm font-medium text-slate-500">{editingTransaction.transaction.hospital_name || hospitalName}</p>
+                                    </div>
+                                    <div className="sm:text-right">
+                                        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">No. Formulir</p>
+                                        <p className="mt-0.5 text-lg font-bold text-slate-900">{editingTransaction.transaction.form_number}</p>
+                                        <span className={`mt-2 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ring-1 ring-inset ${editingTransaction.transaction.status !== 'SELESAI'
+                                            ? 'bg-amber-50 text-amber-700 ring-amber-200'
+                                            : modalHasShortage ? 'bg-rose-50 text-rose-700 ring-rose-200' : 'bg-emerald-50 text-emerald-700 ring-emerald-200'}`}>
+                                            <span className={`h-1.5 w-1.5 rounded-full ${editingTransaction.transaction.status !== 'SELESAI' ? 'bg-amber-500' : modalHasShortage ? 'bg-rose-500' : 'bg-emerald-500'}`} />
+                                            {editingTransaction.transaction.status !== 'SELESAI' ? 'Proses' : modalHasShortage ? 'Kurang Kirim' : 'Selesai'}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {/* Ringkasan */}
+                                <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3">
+                                    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                                        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Tanggal Pengambilan</p>
+                                        <p className="mt-1 text-sm font-bold text-slate-800">{formatDate(editingTransaction.transaction.pickup_date)}</p>
+                                    </div>
+                                    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                                        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Total Kotor</p>
+                                        <p className="mt-1 text-2xl font-extrabold text-slate-900 tabular-nums">{modalTotalKotor}</p>
+                                    </div>
+                                    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                                        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Total Bersih</p>
+                                        <p className="mt-1 text-2xl font-extrabold text-teal-700 tabular-nums">{editingTransaction.transaction.status === 'SELESAI' ? modalTotalBersih : '—'}</p>
+                                    </div>
+                                    <div className={`rounded-2xl border px-4 py-3 ${modalHasShortage ? 'border-rose-200 bg-rose-50' : 'border-slate-200 bg-white'}`}>
+                                        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Selisih</p>
+                                        <p className={`mt-1 text-2xl font-extrabold tabular-nums ${modalHasShortage ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                            {editingTransaction.transaction.status !== 'SELESAI' ? <span className="text-slate-300">—</span> : modalHasShortage ? modalTotalShortage : 'Lengkap'}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Modal Navigation Tabs */}
+                            <div className="border-b border-slate-200 bg-slate-50 px-6 py-2 flex items-center justify-between shrink-0">
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={() => { setDetailTab('detail'); setSelectedSj(null); }}
+                                        className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${detailTab === 'detail'
+                                            ? 'bg-white text-teal-700 shadow-sm border border-slate-200'
+                                            : 'text-slate-500 hover:text-slate-800'
+                                            }`}
+                                    >
+                                        <FileText className="h-4 w-4 inline mr-1" />
+                                        Detail Transaksi
+                                    </button>
+                                    <button
+                                        onClick={() => { setDetailTab('surat_jalan'); setSelectedSj(null); }}
+                                        className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${detailTab === 'surat_jalan'
+                                            ? 'bg-white text-teal-700 shadow-sm border border-slate-200'
+                                            : 'text-slate-500 hover:text-slate-800'
+                                            }`}
+                                    >
+                                        <Warehouse className="h-4 w-4 inline mr-1" />
+                                        Surat Jalan
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Modal Body Container */}
+                            <div className="p-6 sm:p-8 space-y-6">
+
+                                {/* ======================= TAB 1: DETAIL TRANSAKSI ======================= */}
+                                {detailTab === 'detail' && (
+                                    <div className="space-y-6">
+
+                                        {/* Info Metadata Block */}
+                                        <div className={`grid grid-cols-1 ${editingTransaction.transaction.status === 'SELESAI' ? 'md:grid-cols-2' : ''} gap-6 bg-slate-50 p-5 rounded-2xl border border-slate-150 text-xs`}>
+
+                                            {/* Left Column (Day 1 - Kotor) */}
+                                            <div className="space-y-3">
+                                                <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider border-b border-slate-200 pb-1 flex items-center gap-1.5">
+                                                    <span className="w-2.5 h-2.5 rounded-full bg-slate-400" />
+                                                    Tahap 1: Pengambilan Kotor (Pickup)
+                                                </h4>
+                                                <div className="grid grid-cols-2 gap-2 text-slate-600">
+                                                    <div>
+                                                        <p className="font-semibold text-slate-400 uppercase text-[9px] tracking-wider">Valet IKM</p>
+                                                        <p className="font-bold text-slate-800 mt-0.5">{toTitleCase(editingTransaction.transaction.user_pickup_name)}</p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="font-semibold text-slate-400 uppercase text-[9px] tracking-wider">Tanggal Pengambilan</p>
+                                                        <p className="font-semibold text-slate-700 mt-0.5">{formatDate(editingTransaction.transaction.pickup_date)}</p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="font-semibold text-slate-400 uppercase text-[9px] tracking-wider">Petugas RS (Penyerah)</p>
+                                                        <p className="font-bold text-slate-800 mt-0.5">{editingTransaction.transaction.hospital_staff_pickup || '—'}</p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="font-semibold text-slate-400 uppercase text-[9px] tracking-wider">Perawat RS</p>
+                                                        <p className="font-bold text-slate-850 mt-0.5">{editingTransaction.transaction.hospital_assistant_pickup || '—'}</p>
+                                                    </div>
+                                                </div>
+                                                <div className="p-2 bg-white rounded-lg border border-slate-200">
+                                                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Catatan Pengambilan</p>
+                                                    <p className="text-slate-600 mt-0.5 italic">{editingTransaction.transaction.notes_pickup || '—'}</p>
+                                                </div>
+                                                {(editingTransaction.transaction.total_kg_valet != null || Number(editingTransaction.transaction.is_express) === 1) && (
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        <div className="p-2 bg-white rounded-lg border border-slate-200">
+                                                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Total Kg Valet</p>
+                                                            <p className="font-bold text-slate-800 mt-0.5">
+                                                                {editingTransaction.transaction.total_kg_valet != null
+                                                                    ? `${Number(editingTransaction.transaction.total_kg_valet).toLocaleString('id-ID', { maximumFractionDigits: 2 })} Kg`
+                                                                    : '—'}
+                                                            </p>
+                                                        </div>
+                                                        <div className="p-2 bg-white rounded-lg border border-slate-200">
+                                                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Express</p>
+                                                            <p className="mt-0.5">
+                                                                {Number(editingTransaction.transaction.is_express) === 1 ? (
+                                                                    <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold uppercase">Ya</span>
+                                                                ) : (
+                                                                    <span className="text-slate-600 font-semibold">Tidak</span>
+                                                                )}
+                                                            </p>
+                                                        </div>
+                                                        {Number(editingTransaction.transaction.billing_by_kg) === 1 && (
+                                                            <>
+                                                                <div className="p-2 bg-white rounded-lg border border-slate-200">
+                                                                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Kg Perjanjian</p>
+                                                                    <p className="font-bold text-slate-800 mt-0.5">
+                                                                        {editingTransaction.transaction.kg_agreement != null
+                                                                            ? `${Number(editingTransaction.transaction.kg_agreement).toLocaleString('id-ID', { maximumFractionDigits: 2 })} Kg`
+                                                                            : 'Tidak ada'}
+                                                                    </p>
+                                                                </div>
+                                                                <div className="p-2 bg-white rounded-lg border border-teal-200">
+                                                                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Total Kg Ditagihkan</p>
+                                                                    <p className="font-bold text-teal-700 mt-0.5">
+                                                                        {editingTransaction.transaction.kg_total != null
+                                                                            ? `${Number(editingTransaction.transaction.kg_total).toLocaleString('id-ID', { maximumFractionDigits: 2 })} Kg`
+                                                                            : '—'}
+                                                                    </p>
+                                                                </div>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Right Column (Day 2 - Bersih) */}
+                                            {editingTransaction.transaction.status === 'SELESAI' && (
+                                                <div className="space-y-3 border-t md:border-t-0 md:border-l border-slate-200 md:pl-6">
+                                                    <h4 className="font-bold text-teal-700 text-xs uppercase tracking-wider border-b border-slate-200 pb-1 flex items-center gap-1.5">
+                                                        <span className="w-2.5 h-2.5 rounded-full bg-teal-500" />
+                                                        Tahap 2: Penerimaan Bersih (Delivery)
+                                                    </h4>
+                                                    <div className="grid grid-cols-2 gap-2 text-slate-600">
+                                                        <div>
+                                                            <p className="font-semibold text-slate-400 uppercase text-[9px] tracking-wider">Valet IKM</p>
+                                                            <p className="font-bold text-slate-800 mt-0.5">{toTitleCase(editingTransaction.transaction.user_delivery_name || '')}</p>
+                                                        </div>
+                                                        <div>
+                                                            <p className="font-semibold text-slate-400 uppercase text-[9px] tracking-wider">Tanggal Penerimaan</p>
+                                                            <p className="font-semibold text-slate-700 mt-0.5">{formatDate(editingTransaction.transaction.delivery_date)}</p>
+                                                        </div>
+                                                        <div>
+                                                            <p className="font-semibold text-slate-400 uppercase text-[9px] tracking-wider">Petugas RS (Penerima)</p>
+                                                            <p className="font-bold text-slate-800 mt-0.5">{editingTransaction.transaction.hospital_staff_delivery || '—'}</p>
+                                                        </div>
+                                                        <div>
+                                                            <p className="font-semibold text-slate-400 uppercase text-[9px] tracking-wider">Perawat RS</p>
+                                                            <p className="font-bold text-slate-850 mt-0.5">{editingTransaction.transaction.hospital_assistant_delivery || '—'}</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="p-2 bg-white rounded-lg border border-slate-200">
+                                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Catatan Penerimaan</p>
+                                                        <p className="text-slate-600 mt-0.5 italic">{editingTransaction.transaction.notes_delivery || '—'}</p>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Room Filter Dropdown */}
+                                        {(!isUnitNurse || roomOptions.length > 1) && (
+                                        <div className="flex items-center gap-2 mb-3">
+                                            <div className="flex flex-wrap items-center gap-3">
+                                                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Ruangan</span>
+                                                <RoomStatusSelect value={selectedRoomId} onChange={setSelectedRoomId} rooms={roomOptions} roomStatus={roomStatus} />
+                                                {roomsWithKotor > 0 && (
+                                                    <span className="text-xs text-slate-500">
+                                                        <span className="font-bold text-amber-700">{roomsWithKotor} ruangan</span> menurunkan linen kotor pada formulir ini
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                        )}
+
+                                        {/* Items list Table */}
+                                        <div className="border border-slate-200 rounded-3xl shadow-sm overflow-x-auto bg-white">
+                                            <table className="w-full min-w-[560px] text-left text-xs border-collapse">
+                                                <thead>
+                                                    <tr className="bg-slate-50 text-slate-400 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200">
+                                                        <th className="py-3 px-4 text-center">No</th>
+                                                        <th className="py-3 px-4">Nama Linen</th>
+                                                        <th className="py-3 px-4 text-center">Ruangan</th>
+                                                        <th className="py-3 px-4 text-center">Unit</th>
+                                                        <th className="py-3 px-4 text-center bg-slate-100/50">Qty Kotor (Pickup)</th>
+                                                        <th className="py-3 px-4 text-center bg-teal-50/50">Qty Bersih (Received)</th>
+                                                        <th className="py-3 px-4 text-center">Selisih</th>
+                                                        <th className="py-3 px-4">Keterangan</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-150 text-slate-700 font-semibold">
+                                                    {(() => {
+                                                        const filteredDetails = (() => {
+                                                            if (selectedRoomId) {
+                                                                return editingTransaction.details.filter(item => item.room_id === parseInt(selectedRoomId));
+                                                            } else {
+                                                                const grouped = {};
+                                                                editingTransaction.details.forEach(item => {
+                                                                    const lid = item.hospital_linen_id;
+                                                                    if (!grouped[lid]) {
+                                                                        grouped[lid] = {
+                                                                            ...item,
+                                                                            id: `grouped_${lid}`,
+                                                                            qty_kotor: 0,
+                                                                            qty_bersih: 0,
+                                                                            room_id: null,
+                                                                            room_name: null,
+                                                                            roomNames: [],
+                                                                            notes: [],
+                                                                            isGrouped: true,
+                                                                            originalItemIds: []
+                                                                        };
+                                                                    }
+                                                                    grouped[lid].qty_kotor += parseInt(item.qty_kotor || 0);
+                                                                    if (item.qty_bersih !== null && item.qty_bersih !== undefined) {
+                                                                        grouped[lid].qty_bersih += parseInt(item.qty_bersih || 0);
+                                                                    }
+                                                                    if (item.notes && item.notes.trim() !== '') {
+                                                                        grouped[lid].notes.push(item.notes.trim());
+                                                                    }
+                                                                    if (item.room_name && !grouped[lid].roomNames.includes(item.room_name)) grouped[lid].roomNames.push(item.room_name);
+                                                                    grouped[lid].originalItemIds.push(item.id);
+                                                                });
+                                                                return Object.values(grouped).map(group => ({
+                                                                    ...group,
+                                                                    room_name: isUnitNurse ? (group.roomNames.join(', ') || null) : null,
+                                                                    notes: group.notes.join('; ')
+                                                                }));
+                                                            }
+                                                        })();
+
+                                                        if (filteredDetails.length === 0) {
+                                                            return (
+                                                                <tr>
+                                                                    <td colSpan={8} className="py-8 text-center text-slate-400 font-semibold text-xs">
+                                                                        Tidak ada data linen untuk ruangan ini.
+                                                                    </td>
+                                                                </tr>
+                                                            );
+                                                        }
+
+                                                        return filteredDetails.map((item, idx) => {
+                                                            const kotor = parseInt(item.qty_kotor || 0);
+                                                            const bersih = parseInt(item.qty_bersih || 0);
+                                                            const selisih = Math.max(0, kotor - bersih);
+                                                            const isShort = selisih > 0 && editingTransaction.transaction.status === 'SELESAI';
+
+                                                            return (
+                                                                <Fragment key={item.id}>
+                                                                    <tr className="hover:bg-slate-50/50 transition-colors">
+                                                                        <td className="py-3 px-4 text-center text-slate-400">{idx + 1}</td>
+                                                                        <td className="py-3 px-4 text-slate-800 font-bold">
+                                                                            <div>{getLinenDisplayName(item)}</div>
+                                                                        </td>
+                                                                        <td className="py-3 px-4 text-center">
+                                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                                                                                {item.room_name || 'Semua Ruangan'}
+                                                                            </span>
+                                                                        </td>
+                                                                        <td className="py-3 px-4 text-center text-slate-500">{item.unit || 'Pcs'}</td>
+                                                                        <td className="py-3 px-4 text-center bg-slate-100/30 text-slate-800 font-bold">
+                                                                            {kotor}
+                                                                        </td>
+                                                                        <td className="py-3 px-4 text-center bg-teal-50/30 text-teal-700 font-bold">
+                                                                            {editingTransaction.transaction.status === 'SELESAI' ? bersih : '—'}
+                                                                        </td>
+                                                                        <td className="py-3 px-4 text-center">
+                                                                            {editingTransaction.transaction.status === 'SELESAI' ? (
+                                                                                <span className={`inline-flex px-2 py-0.5 rounded font-bold ${isShort ? 'bg-rose-50 text-rose-600' : 'bg-slate-50 text-slate-400'}`}>
+                                                                                    {selisih}
+                                                                                </span>
+                                                                            ) : '—'}
+                                                                        </td>
+                                                                        <td className="py-3 px-4 font-normal text-slate-500 italic max-w-[150px] truncate" title={item.notes || ''}>
+                                                                            {item.notes || '—'}
+                                                                        </td>
+                                                                    </tr>
+                                                                </Fragment>
+                                                            );
+                                                        });
+                                                    })()}
+                                                </tbody>
+                                            </table>
+                                        </div>
+
+                                        {/* TTD Serah Terima per Unit (ruangan) */}
+                                        {editingTransaction.roomSign?.required && (editingTransaction.roomSign.rooms || []).some(r => r.required) && (
+                                            <div className="space-y-3 pt-4 border-t border-slate-200">
+                                                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
+                                                    <Building className="h-4 w-4 text-slate-400" />
+                                                    TTD Serah Terima per Unit
+                                                </h4>
+                                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                                                    {editingTransaction.roomSign.rooms
+                                                        .filter(r => r.required && (!selectedRoomId || String(r.room_id) === String(selectedRoomId)))
+                                                        .map(r => (
+                                                            <div key={r.room_id} className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
+                                                                <div className="flex items-center justify-between gap-2">
+                                                                    <span className="text-sm font-bold text-slate-800">{r.room_name}</span>
+                                                                    <span className="text-[11px] font-semibold text-slate-400">Kotor {r.total_kotor}</span>
+                                                                </div>
+                                                                <div className="grid grid-cols-2 gap-3">
+                                                                    {[['pickup', 'Pickup (Kotor)'], ['delivery', 'Delivery (Bersih)']].map(([stage, label]) => {
+                                                                        const s = r[stage];
+                                                                        return (
+                                                                            <div key={stage} className={`rounded-xl border p-3 space-y-2 ${s?.complete ? 'border-emerald-200 bg-emerald-50/40' : 'border-slate-200 bg-slate-50'}`}>
+                                                                                <div className="flex items-center justify-between gap-1">
+                                                                                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{label}</span>
+                                                                                    {s?.complete
+                                                                                        ? <span className="text-[10px] font-bold text-emerald-700">✓ TTD</span>
+                                                                                        : <span className="text-[10px] font-bold text-rose-600">Belum TTD</span>}
+                                                                                </div>
+                                                                                {s?.complete ? (
+                                                                                    <>
+                                                                                        <div className="grid grid-cols-2 gap-2">
+                                                                                            {[['Valet', s.signature_valet], ['Perawat', s.signature_nurse]].map(([who, src]) => (
+                                                                                                <div key={who} className="flex flex-col items-center rounded-lg border border-slate-200 bg-white p-1.5">
+                                                                                                    <span className="text-[9px] font-bold uppercase text-slate-400">{who}</span>
+                                                                                                    {src ? <img src={src} alt={who} className="h-10 object-contain" /> : <span className="text-[10px] text-slate-300">—</span>}
+                                                                                                </div>
+                                                                                            ))}
+                                                                                        </div>
+                                                                                        <p className="text-[11px] font-semibold text-slate-700 truncate" title={s.nurse_name}>{s.nurse_name}</p>
+                                                                                        {s.signed_at && <p className="text-[10px] text-slate-400">{new Date(s.signed_at).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</p>}
+                                                                                    </>
+                                                                                ) : (
+                                                                                    <p className="text-[11px] italic text-slate-400">Perawat unit belum menandatangani.</p>
+                                                                                )}
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                        {/* Signatures block */}
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-slate-200">
+
+                                            {/* Pickup Signatures */}
+                                            <div className="space-y-4">
+                                                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1">
+                                                    <Warehouse className="h-4 w-4 text-slate-400" />
+                                                    Tanda Tangan Tahap 1 (Pickup)
+                                                </h4>
+                                                <div className="grid grid-cols-3 gap-3">
+                                                    <div className="border border-slate-200 rounded-xl p-3 bg-white text-center flex flex-col justify-between h-[180px]">
+                                                        <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider block">Valet</span>
+                                                        <div className="flex-1 flex items-center justify-center p-1 bg-slate-50 rounded border border-slate-100 my-2 overflow-hidden">
+                                                            {editingTransaction.transaction.signature_valet_pickup ? (
+                                                                <img src={editingTransaction.transaction.signature_valet_pickup} alt="Valet Signature" className="max-h-[80px] object-contain" />
+                                                            ) : (
+
+                                                                <span className="text-[9px] text-slate-350 italic">Tidak ada</span>
+                                                            )}
+                                                        </div>
+                                                        <span className="text-[10px] font-bold text-teal-700 truncate">({toTitleCase(editingTransaction.transaction.user_pickup_name || '')})</span>
+                                                    </div>
+
+                                                    <div className="border border-slate-200 rounded-xl p-3 bg-white text-center flex flex-col justify-between h-[180px]">
+                                                        <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider block">Petugas RS</span>
+                                                        <div className="flex-1 flex items-center justify-center p-1 bg-slate-50 rounded border border-slate-100 my-2 overflow-hidden">
+                                                            {editingTransaction.transaction.signature_hospital_pickup ? (
+                                                                <img src={editingTransaction.transaction.signature_hospital_pickup} alt="Hospital Signature" className="max-h-[80px] object-contain" />
+                                                            ) : (
+                                                                <span className="text-[9px] text-slate-350 italic">Tidak ada</span>
+                                                            )}
+                                                        </div>
+                                                        <span className="text-[10px] font-bold text-teal-700 truncate">({editingTransaction.transaction.hospital_staff_pickup ? toTitleCase(editingTransaction.transaction.hospital_staff_pickup) : '—'})</span>
+                                                    </div>
+
+                                                    <div className="border border-slate-200 rounded-xl p-3 bg-white text-center flex flex-col justify-between h-[180px]">
+                                                        <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider block">Perawat RS</span>
+                                                        <div className="flex-1 flex items-center justify-center p-1 bg-slate-50 rounded border border-slate-100 my-2 overflow-hidden">
+                                                            {editingTransaction.transaction.signature_assistant_pickup ? (
+                                                                <img src={editingTransaction.transaction.signature_assistant_pickup} alt="Assistant Signature" className="max-h-[80px] object-contain" />
+                                                            ) : (
+                                                                <span className="text-[9px] text-slate-350 italic">Tidak ada</span>
+                                                            )}
+                                                        </div>
+                                                        <span className="text-[10px] font-bold text-teal-700 truncate">({editingTransaction.transaction.hospital_assistant_pickup ? toTitleCase(editingTransaction.transaction.hospital_assistant_pickup) : '—'})</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Delivery Signatures */}
+                                            {editingTransaction.transaction.status === 'SELESAI' && (
+                                                <div className="space-y-4 border-t md:border-t-0 md:border-l border-slate-200 md:pl-6">
+                                                    <h4 className="text-xs font-bold text-teal-700 uppercase tracking-widest flex items-center gap-1">
+                                                        <Warehouse className="h-4 w-4 text-teal-600" />
+                                                        Tanda Tangan Tahap 2 (Delivery)
+                                                    </h4>
+                                                    <div className="grid grid-cols-3 gap-3">
+                                                        <div className="border border-slate-200 rounded-xl p-3 bg-white text-center flex flex-col justify-between h-[180px]">
+                                                            <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider block">Valet</span>
+                                                            <div className="flex-1 flex items-center justify-center p-1 bg-slate-50 rounded border border-slate-100 my-2 overflow-hidden">
+                                                                {editingTransaction.transaction.signature_valet_delivery ? (
+                                                                    <img src={editingTransaction.transaction.signature_valet_delivery} alt="Valet Signature" className="max-h-[80px] object-contain" />
+                                                                ) : (
+                                                                    <span className="text-[9px] text-slate-350 italic">Tidak ada</span>
+                                                                )}
+                                                            </div>
+                                                            <span className="text-[10px] font-bold text-teal-700 truncate">({toTitleCase(editingTransaction.transaction.user_delivery_name || '')})</span>
+                                                        </div>
+
+                                                        <div className="border border-slate-200 rounded-xl p-3 bg-white text-center flex flex-col justify-between h-[180px]">
+                                                            <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider block">Petugas RS</span>
+                                                            <div className="flex-1 flex items-center justify-center p-1 bg-slate-50 rounded border border-slate-100 my-2 overflow-hidden">
+                                                                {editingTransaction.transaction.signature_hospital_delivery ? (
+                                                                    <img src={editingTransaction.transaction.signature_hospital_delivery} alt="Hospital Signature" className="max-h-[80px] object-contain" />
+                                                                ) : (
+                                                                    <span className="text-[9px] text-slate-350 italic">Tidak ada</span>
+                                                                )}
+                                                            </div>
+                                                            <span className="text-[10px] font-bold text-teal-700 truncate">({editingTransaction.transaction.hospital_staff_delivery ? toTitleCase(editingTransaction.transaction.hospital_staff_delivery) : '—'})</span>
+                                                        </div>
+
+                                                        <div className="border border-slate-200 rounded-xl p-3 bg-white text-center flex flex-col justify-between h-[180px]">
+                                                            <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider block">Perawat RS</span>
+                                                            <div className="flex-1 flex items-center justify-center p-1 bg-slate-50 rounded border border-slate-100 my-2 overflow-hidden">
+                                                                {editingTransaction.transaction.signature_assistant_delivery ? (
+                                                                    <img src={editingTransaction.transaction.signature_assistant_delivery} alt="Assistant Signature" className="max-h-[80px] object-contain" />
+                                                                ) : (
+                                                                    <span className="text-[9px] text-slate-350 italic">Tidak ada</span>
+                                                                )}
+                                                            </div>
+                                                            <span className="text-[10px] font-bold text-teal-700 truncate">({editingTransaction.transaction.hospital_assistant_delivery ? toTitleCase(editingTransaction.transaction.hospital_assistant_delivery) : '—'})</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* ======================= TAB 2: SURAT JALAN ======================= */}
+                                {detailTab === 'surat_jalan' && (
+                                    <div className="space-y-6">
+
+                                        {(!editingTransaction.deliveries || editingTransaction.deliveries.length === 0) ? (
+                                            modalHasShortage ? (
+                                                <div className="py-16 text-center bg-amber-500/[0.04] border border-dashed border-amber-300 rounded-3xl flex flex-col justify-center items-center gap-3 p-6">
+                                                    <div className="p-3.5 bg-amber-100/80 rounded-2xl border border-amber-200">
+                                                        <Clock className="h-8 w-8 text-amber-600 animate-pulse" />
+                                                    </div>
+                                                    <div>
+                                                        <h3 className="font-bold text-amber-900 text-base">Dalam Proses Inputasi Surat Jalan</h3>
+                                                        <p className="text-xs text-amber-700 max-w-md mx-auto mt-1.5 leading-relaxed font-medium">
+                                                            Terdapat selisih kekurangan sebanyak <span className="font-extrabold text-amber-900 bg-amber-100 px-1.5 py-0.5 rounded">{modalTotalShortage} Pcs</span> yang wajib diselesaikan. Surat jalan pengiriman susulan saat ini dalam proses penginputan oleh petugas IKM.
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className="py-16 text-center bg-emerald-500/[0.03] border border-dashed border-emerald-200 rounded-3xl flex flex-col justify-center items-center gap-3 p-6">
+                                                    <div className="p-3.5 bg-emerald-100/80 rounded-2xl border border-emerald-200">
+                                                        <CheckCircle2 className="h-8 w-8 text-emerald-600" />
+                                                    </div>
+                                                    <div>
+                                                        <h3 className="font-bold text-emerald-800 text-base">Tidak Ada Proses Kurang Kirim</h3>
+                                                        <p className="text-xs text-emerald-600 max-w-md mx-auto mt-1.5 leading-relaxed font-medium">
+                                                            Seluruh linen kotor yang dikirimkan telah diterima dengan lengkap tanpa adanya selisih/kekurangan.
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            )
+                                        ) : (
+                                            <div>
+                                                {/* Left: list of Surat Jalan, Right: selected Surat Jalan preview */}
+                                                {!selectedSj ? (
+                                                    <div className="space-y-4">
+                                                        <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Daftar Surat Jalan Kurang Kirim</h4>
+                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                            {editingTransaction.deliveries.map((sj, index) => (
+                                                                <div
+                                                                    key={sj.id}
+                                                                    onClick={() => handleViewSj(sj)}
+                                                                    className="bg-white border border-slate-200 hover:border-teal-500/30 p-5 rounded-2xl shadow-sm hover:shadow transition-all duration-300 flex justify-between items-center cursor-pointer active:scale-[0.99]"
+                                                                >
+                                                                    <div className="space-y-1.5">
+                                                                        <div className="flex items-center gap-2">
+                                                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">No. Surat Jalan</span>
+                                                                            <span className="px-2 py-0.5 bg-teal-50 text-teal-700 text-[9px] font-extrabold rounded-full border border-teal-100">SJ KK</span>
+                                                                        </div>
+                                                                        <h4 className="text-sm font-bold text-slate-800">{sj.surat_jalan_number}</h4>
+                                                                        <p className="text-[10px] text-slate-500 font-semibold flex items-center gap-1"><Clock className="h-3 w-3" /> Tanggal: {formatDate(sj.delivery_date)}</p>
+                                                                    </div>
+                                                                    <div className="text-right space-y-1">
+                                                                        <span className="text-xs font-extrabold text-teal-600 block">{sj.total_qty_delivered} Pcs</span>
+                                                                        <button className="text-[10px] font-bold text-teal-600 group-hover:text-teal-700 flex items-center gap-0.5">
+                                                                            Lihat <ChevronRight className="h-3 w-3" />
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div className="space-y-5 bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 shadow-sm">
+
+                                                        {/* Inner Header with navigation controls */}
+                                                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-150 pb-4">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setSelectedSj(null)}
+                                                                className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 border border-slate-200 rounded-xl bg-white hover:bg-slate-50 text-slate-600 font-bold text-xs shadow-sm transition active:scale-[0.98] cursor-pointer"
+                                                            >
+                                                                <ArrowLeft className="h-3.5 w-3.5" />
+                                                                Kembali ke Daftar Surat Jalan
+                                                            </button>
+
+                                                            <button
+                                                                type="button"
+                                                                onClick={handlePrintSj}
+                                                                className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-[#126776] to-[#1ea59e] hover:from-[#0e5562] hover:to-[#188b85] text-white font-bold text-xs shadow-sm transition active:scale-[0.98] cursor-pointer"
+                                                            >
+                                                                <Printer className="h-4 w-4" />
+                                                                Cetak Surat Jalan
+                                                            </button>
+                                                        </div>
+
+                                                        {loadingSjDetails ? (
+                                                            <div className="py-12 text-center text-slate-400 font-semibold">
+                                                                <RefreshCw className="h-6 w-6 animate-spin mx-auto text-teal-500 mb-2" />
+                                                                Memuat rincian Surat Jalan...
+                                                            </div>
+                                                        ) : (
+                                                            <div className="space-y-6">
+                                                                <div id="print-document" className="max-w-[800px] mx-auto bg-white border border-slate-200 text-slate-850 shadow-sm overflow-hidden">
+                                                                    {/* Letterhead Image */}
+                                                                    <img src={kopSuratIkm} alt="Kop Surat IKM" className="w-full object-cover" />
+
+                                                                    <div className="px-8 pb-8 pt-0">
+                                                                        {/* Paper Header */}
+                                                                        <div className="text-center mt-[-65px] mb-4">
+                                                                            <h1 className="text-xl font-black tracking-widest text-slate-900 leading-none">SURAT JALAN</h1>
+                                                                            <p className="text-xs font-bold text-slate-500 mt-2 uppercase tracking-wider">No. {selectedSj.surat_jalan_number}</p>
+                                                                        </div>
+
+                                                                        {/* Metadata Block */}
+                                                                        <div className="grid grid-cols-2 gap-4 border-b border-slate-200 pb-4 text-xs font-semibold text-slate-650">
+                                                                            <div className="space-y-1.5">
+                                                                                <p className="flex"><span className="w-36 font-bold text-slate-400">Kepada Yth:</span> <span className="text-slate-800 font-bold">{selectedSj.hospital_name || hospitalName}</span></p>
+                                                                                <p className="flex"><span className="w-36 font-bold text-slate-400">Tanggal Pengambilan:</span> <span className="text-slate-800">{selectedSj.original_pickup_date ? new Date(selectedSj.original_pickup_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '—'}</span></p>
+                                                                                <p className="flex"><span className="w-36 font-bold text-slate-400">Form Transaksi Asal:</span> <span className="text-slate-800">{selectedSj.original_form_number || '—'}</span></p>
+                                                                            </div>
+                                                                            <div className="space-y-1.5 text-right sm:text-left sm:pl-10">
+                                                                                <p className="flex"><span className="w-36 font-bold text-slate-400">Tanggal Pengiriman:</span> <span className="text-slate-800">{new Date(selectedSj.delivery_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</span></p>
+                                                                                <p className="flex"><span className="w-36 font-bold text-slate-400">Jam:</span> <span className="text-slate-800">{new Date(selectedSj.delivery_date).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB</span></p>
+                                                                                <p className="flex"><span className="w-36 font-bold text-slate-400">No. Kendaraan:</span> <span className="text-slate-800">{selectedSj.vehicle_number || '—'}</span></p>
+                                                                            </div>
+                                                                        </div>
+
+                                                                        {/* Items Tables */}
+                                                                        <div className="py-6 space-y-8">
+                                                                            {/* Section 1: Ringkasan Global */}
+                                                                            <div className="space-y-3">
+                                                                                <h4 className="text-[10px] font-black text-[#126776] uppercase tracking-widest border-b border-slate-200 pb-1.5 flex items-center gap-1.5">
+                                                                                    <span className="h-2 w-2 rounded-full bg-[#126776]"></span>
+                                                                                    Ringkasan Utama (Halaman 1)
+                                                                                </h4>
+                                                                                <table className="w-full text-left border-collapse border border-slate-900 text-xs font-semibold">
+                                                                                    <thead>
+                                                                                        <tr className="bg-slate-100 text-slate-900 uppercase font-black border-b border-slate-900 text-[10px] tracking-wider">
+                                                                                            <th className="px-4 py-2.5 border-r border-slate-900 text-center w-12">No</th>
+                                                                                            <th className="px-4 py-2.5 border-r border-slate-900 text-center">Nama Barang</th>
+                                                                                            <th className="px-4 py-2.5 border-r border-slate-900 text-center w-28">Jumlah Barang</th>
+                                                                                            <th className="px-4 py-2.5 border-r border-slate-900 text-center w-28">Berat (Gram)</th>
+                                                                                            <th className="px-4 py-2.5 text-center">Keterangan</th>
+                                                                                        </tr>
+                                                                                    </thead>
+                                                                                    <tbody className="divide-y divide-slate-900 border-b border-slate-900">
+                                                                                        {(() => {
+                                                                                            const summary = {};
+                                                                                            sjDetails.forEach(item => {
+                                                                                                const qty = parseInt(item.qty_delivered || item.qtyDelivered || 0);
+                                                                                                if (qty <= 0) return;
+
+                                                                                                const key = item.hospital_linen_id || getLinenDisplayName(item);
+                                                                                                if (!summary[key]) {
+                                                                                                    summary[key] = {
+                                                                                                        ...item,
+                                                                                                        qty_delivered: 0,
+                                                                                                        notesList: []
+                                                                                                    };
+                                                                                                }
+                                                                                                summary[key].qty_delivered += qty;
+                                                                                                if (item.notes && item.notes.trim() !== '' && item.notes !== '—') {
+                                                                                                    summary[key].notesList.push(item.notes.trim());
+                                                                                                }
+                                                                                            });
+
+                                                                                            const globalDetailsList = Object.values(summary).map(item => ({
+                                                                                                ...item,
+                                                                                                notes: item.notesList.length > 0 ? item.notesList.join('; ') : '—'
+                                                                                            }));
+
+                                                                                            if (globalDetailsList.length === 0) {
+                                                                                                return (
+                                                                                                    <tr>
+                                                                                                        <td colSpan="5" className="px-4 py-8 text-center text-slate-400 italic">
+                                                                                                            Tidak ada data pengiriman.
+                                                                                                        </td>
+                                                                                                    </tr>
+                                                                                                );
+                                                                                            }
+
+                                                                                            return globalDetailsList.map((item, idx) => {
+                                                                                                const calculatedWeight = parseFloat(item.grammage || 0) * item.qty_delivered;
+                                                                                                return (
+                                                                                                    <tr key={item.id} className="text-slate-800">
+                                                                                                        <td className="px-4 py-3 border-r border-slate-900 text-center font-bold">{idx + 1}</td>
+                                                                                                        <td className="px-4 py-3 border-r border-slate-900">{getLinenDisplayName(item)}</td>
+                                                                                                        <td className="px-4 py-3 border-r border-slate-900 text-center font-bold">{item.qty_delivered}</td>
+                                                                                                        <td className="px-4 py-3 border-r border-slate-900 text-center font-bold">
+                                                                                                            {calculatedWeight ? calculatedWeight.toLocaleString('id-ID') : '—'}
+                                                                                                        </td>
+                                                                                                        <td className="px-4 py-3 text-slate-550 italic">{item.notes}</td>
+                                                                                                    </tr>
+                                                                                                );
+                                                                                            });
+                                                                                        })()}
+                                                                                    </tbody>
+                                                                                </table>
+                                                                            </div>
+
+                                                                            {/* Section 2: Rincian Unit / Ruangan */}
+                                                                            {(() => {
+                                                                                const roomGroups = {};
+                                                                                sjDetails.forEach(item => {
+                                                                                    const qty = parseInt(item.qty_delivered || item.qtyDelivered || 0);
+                                                                                    if (qty <= 0) return;
+
+                                                                                    const rName = item.room_name || 'Tanpa Ruangan';
+                                                                                    if (!roomGroups[rName]) {
+                                                                                        roomGroups[rName] = [];
+                                                                                    }
+                                                                                    roomGroups[rName].push(item);
+                                                                                });
+
+                                                                                if (Object.keys(roomGroups).length === 0) return null;
+
+                                                                                return Object.entries(roomGroups).map(([rName, roomItems]) => (
+                                                                                    <div key={rName} className="space-y-3 pt-4 border-t border-slate-100">
+                                                                                        <h4 className="text-[10px] font-black text-[#1ea59e] uppercase tracking-widest flex items-center gap-1.5">
+                                                                                            <span className="h-2 w-2 rounded-full bg-[#1ea59e]"></span>
+                                                                                            Rincian Unit: {rName} (Halaman Selanjutnya)
+                                                                                        </h4>
+                                                                                        <table className="w-full text-left border-collapse border border-slate-900 text-xs font-semibold">
+                                                                                            <thead>
+                                                                                                <tr className="bg-slate-100 text-slate-900 uppercase font-black tracking-wider border-b border-slate-900 text-[10px]">
+                                                                                                    <th className="px-4 py-2.5 border-r border-slate-900 text-center w-12">No</th>
+                                                                                                    <th className="px-4 py-2.5 border-r border-slate-900 text-center">Nama Barang</th>
+                                                                                                    <th className="px-4 py-2.5 border-r border-slate-900 text-center w-28">Jumlah Barang</th>
+                                                                                                    <th className="px-4 py-2.5 border-r border-slate-900 text-center w-28">Berat (Gram)</th>
+                                                                                                    <th className="px-4 py-2.5 text-center">Keterangan</th>
+                                                                                                </tr>
+                                                                                            </thead>
+                                                                                            <tbody className="divide-y divide-slate-900 border-b border-slate-900">
+                                                                                                {roomItems.map((item, idx) => {
+                                                                                                    const qty = parseInt(item.qty_delivered || item.qtyDelivered || 0);
+                                                                                                    const calculatedWeight = parseFloat(item.grammage || 0) * qty;
+                                                                                                    return (
+                                                                                                        <tr key={item.id} className="text-slate-800">
+                                                                                                            <td className="px-4 py-3 border-r border-slate-900 text-center font-bold">{idx + 1}</td>
+                                                                                                            <td className="px-4 py-3 border-r border-slate-900">{getLinenDisplayName(item)}</td>
+                                                                                                            <td className="px-4 py-3 border-r border-slate-900 text-center font-bold">{qty}</td>
+                                                                                                            <td className="px-4 py-3 border-r border-slate-900 text-center font-bold">
+                                                                                                                {calculatedWeight ? calculatedWeight.toLocaleString('id-ID') : '—'}
+                                                                                                            </td>
+                                                                                                            <td className="px-4 py-3 text-slate-550 italic">{item.notes || '—'}</td>
+                                                                                                        </tr>
+                                                                                                    );
+                                                                                                })}
+                                                                                            </tbody>
+                                                                                        </table>
+                                                                                    </div>
+                                                                                ));
+                                                                            })()}
+                                                                        </div>
+
+                                                                        {/* Signatures & Notes */}
+                                                                        <div className="grid grid-cols-2 gap-10 pt-10 text-center text-xs font-bold text-slate-900">
+                                                                            {/* Left signature block */}
+                                                                            <div className="space-y-4">
+                                                                                <p>Di Terima Oleh :</p>
+                                                                                <div className="h-28 flex items-center justify-center relative overflow-hidden bg-white">
+                                                                                    {selectedSj.signature_hospital ? (
+                                                                                        <img src={selectedSj.signature_hospital} alt="Hospital signature" className="h-full object-contain" />
+                                                                                    ) : (
+                                                                                        <span className="text-[10px] text-slate-400 italic font-semibold">Tanda Tangan Belum Ada</span>
+                                                                                    )}
+                                                                                </div>
+                                                                                <p className="border-t border-slate-950 pt-1.5 font-bold uppercase tracking-wide">
+                                                                                    {selectedSj.hospital_staff || selectedSj.recipient_name || '(Petugas RS)'}
+                                                                                </p>
+                                                                                <p className="text-[10px] text-slate-500 font-semibold mt-0.5">Tim Linen RS</p>
+                                                                            </div>
+
+                                                                            {/* Right signature block */}
+                                                                            <div className="space-y-4">
+                                                                                <p>Di Serahkan Oleh :</p>
+                                                                                <div className="h-28 flex items-center justify-center relative overflow-hidden bg-white">
+                                                                                    {selectedSj.signature_valet ? (
+                                                                                        <img src={selectedSj.signature_valet} alt="Valet signature" className="h-full object-contain" />
+                                                                                    ) : (
+                                                                                        <span className="text-[10px] text-slate-400 italic font-semibold">Tanda Tangan Belum Ada</span>
+                                                                                    )}
+                                                                                </div>
+                                                                                <p className="border-t border-slate-950 pt-1.5 font-bold uppercase tracking-wide">
+                                                                                    {selectedSj.valet_name}
+                                                                                </p>
+                                                                                <p className="text-[10px] text-slate-500 font-semibold mt-0.5">Tim Linen IKM</p>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Modal Footer */}
+                            <div className="px-6 sm:px-8 py-4 bg-slate-50 border-t border-slate-200 flex justify-start">
+                                <button
+                                    type="button"
+                                    onClick={closeDetailPage}
+                                    className="px-6 py-2.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-xl text-xs font-bold transition shadow-sm active:scale-95 cursor-pointer"
+                                >
+                                    <ArrowLeft className="h-4 w-4 inline mr-1.5 -mt-0.5" />Kembali ke Riwayat
+                                </button>
+                            </div>
+
+                        </div>
+                    </div>
+                );
+            })()}
+
+            {/* CSS keyframe animations */}
+            <style>{`
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(4px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
+        </main>
+    );
+}

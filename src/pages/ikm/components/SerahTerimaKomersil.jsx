@@ -1737,7 +1737,7 @@ export default function SerahTerimaKomersil() {
                       {/* Delivery Date */}
                       <div className="space-y-1.5">
                         <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                          Tanggal Pengembalian Bersih
+                          Pengiriman Bersih
                         </label>
                         <div className="relative">
                           <Calendar className="absolute inset-y-0 left-3.5 my-auto h-4 w-4 text-slate-400" />

@@ -17,6 +17,8 @@ import RSBastLinenSewa from './pages/rs/components/RS-BastLinenSewa.jsx';
 import ComplaintLinen from './pages/ikm/components/ComplaintLinen.jsx';
 import RSComplaintLinen from './pages/rs/components/RS-ComplaintLinen.jsx';
 import UnitComplaintLinen from './pages/unit/components/Unit-ComplaintLinen.jsx';
+import UnitSerahTerima from './pages/unit/components/Unit-SerahTerima.jsx';
+import UnitSerahTerimaKomersil from './pages/unit/components/Unit-SerahTerimaKomersil.jsx';
 import RSProfile from './pages/rs/components/RS-Profile.jsx';
 import UnitProfile from './pages/unit/components/Unit-Profile.jsx';
 import { ProtectedRoute, GuestRoute } from './components/RouteGuards.jsx';
@@ -53,7 +55,9 @@ function App() {
             <Route index element={<Navigate to="dashboard" replace />} />
             <Route path="dashboard" element={<RSDashboard />} />
             <Route path="serah-terima-linen" element={<RSSerahTerima />} />
+            <Route path="serah-terima-linen/:txId" element={<RSSerahTerima />} />
             <Route path="serah-terima-komersil" element={<RSSerahTerimaKomersil />} />
+            <Route path="serah-terima-komersil/:txId" element={<RSSerahTerimaKomersil />} />
             <Route path="bast-linen-sewa" element={<RSBastLinenSewa />} />
             <Route path="master-user-unit" element={<RSProfile />} />
             <Route path="complaint" element={<RSComplaintLinen />} />
@@ -67,6 +71,10 @@ function App() {
             <Route index element={<UnitDashboard />} />
             <Route path="profile" element={<UnitProfile />} />
             <Route path="complaint" element={<UnitComplaintLinen />} />
+            <Route path="serah-terima-linen" element={<UnitSerahTerima />} />
+            <Route path="serah-terima-linen/:txId" element={<UnitSerahTerima />} />
+            <Route path="serah-terima-komersil" element={<UnitSerahTerimaKomersil />} />
+            <Route path="serah-terima-komersil/:txId" element={<UnitSerahTerimaKomersil />} />
           </Route>
         </Route>
 

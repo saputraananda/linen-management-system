@@ -1,6 +1,7 @@
 import { ikmPool, mainPool } from '../../db/pool.js';
 import { getSignatureUrl } from '../../middleware/upload.js';
 import { parsePaging, buildPagination, offsetOf } from '../../utils/paging.js';
+import { getRoomSignState } from '../../utils/roomSign.js';
 
 // Helper to format string to Capital Each Word (Title Case)
 const toTitleCase = (str) => {
@@ -288,7 +289,8 @@ export const getTransactionDetail = async (req, res) => {
         transaction,
         details,
         audits: audits.map(sanitizeAuditRow),
-        deliveries: formattedDeliveries
+        deliveries: formattedDeliveries,
+        roomSign: await getRoomSignState(ikmPool, id)
       }
     });
   } catch (error) {
