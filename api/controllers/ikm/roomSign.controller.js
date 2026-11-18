@@ -8,12 +8,6 @@ const toTitleCase = (str) => {
     .map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
 };
 
-const nowSql = () => {
-  const d = new Date();
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-};
-
 /**
  * PUT /api/ikm/transactions/:id/rooms/:roomId/sign
  * Body: { stage: 'pickup' | 'delivery', nurseName, signatureNurse, signatureValet }
@@ -90,14 +84,14 @@ export const signRoom = async (req, res) => {
     await connection.query(
       `INSERT INTO tr_linen_transaction_room_sign
          (transaction_id, room_id, nurse_name_${stage}, signature_nurse_${stage}, signature_valet_${stage}, valet_${stage}_id, signed_${stage}_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)
+       VALUES (?, ?, ?, ?, ?, ?, NOW())
        ON DUPLICATE KEY UPDATE
          nurse_name_${stage} = VALUES(nurse_name_${stage}),
          signature_nurse_${stage} = VALUES(signature_nurse_${stage}),
          signature_valet_${stage} = VALUES(signature_valet_${stage}),
          valet_${stage}_id = VALUES(valet_${stage}_id),
          signed_${stage}_at = VALUES(signed_${stage}_at)`,
-      [id, roomId, toTitleCase(nurseName), nursePath, valetPath, valetId, nowSql()]);
+      [id, roomId, toTitleCase(nurseName), nursePath, valetPath, valetId]);
 
     await connection.commit();
     cleanupSignatures(oldRow, saved);
