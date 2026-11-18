@@ -8,6 +8,20 @@ import {
 import ConfirmDialog from '../../../components/ConfirmDialog';
 import { socket } from '../../../utils/socket';
 
+// Label riwayat perubahan Terpakai / Dirty Utility (tr_unit_activity_log)
+const LOG_ACTION_LABELS = {
+  UPDATE_TERPAKAI: 'Pakai Linen',
+  UPDATE_DIRTY: 'Dirty Utility',
+  RS_UPDATE_TERPAKAI: 'Terpakai · Tim Linen RS',
+  RS_UPDATE_DIRTY: 'Dirty · Tim Linen RS',
+  IKM_UPDATE_TERPAKAI: 'Terpakai · IKM',
+  IKM_UPDATE_DIRTY: 'Dirty · IKM',
+  PICKUP_TERPAKAI: 'Diambil IKM · Terpakai',
+  PICKUP_DIRTY: 'Diambil IKM · Dirty',
+  KOREKSI_TERPAKAI: 'Koreksi Kotor · Terpakai',
+  KOREKSI_DIRTY: 'Koreksi Kotor · Dirty',
+};
+
 export default function UnitDashboard() {
   const navigate = useNavigate();
   const [confirmLogout, setConfirmLogout] = useState(false);
@@ -1192,11 +1206,13 @@ export default function UnitDashboard() {
                                   {log.nurse_name}
                                 </td>
                                 <td className="py-2.5 px-3 text-center">
-                                  <span className={`inline-block px-1.5 py-0.5 rounded font-extrabold text-[9px] uppercase border ${log.action_type === 'UPDATE_DIRTY'
+                                  <span className={`inline-block px-1.5 py-0.5 rounded font-extrabold text-[9px] uppercase border ${log.action_type.startsWith('PICKUP_')
+                                      ? 'bg-amber-50 text-amber-700 border-amber-100'
+                                      : log.action_type.endsWith('_DIRTY') || log.action_type === 'UPDATE_DIRTY'
                                       ? 'bg-rose-50 text-rose-700 border-rose-100'
                                       : 'bg-teal-50 text-teal-700 border-teal-100'
                                     }`}>
-                                    {log.action_type === 'UPDATE_TERPAKAI' ? 'Pakai Linen' : log.action_type === 'UPDATE_DIRTY' ? 'Dirty Utility' : log.action_type}
+                                    {LOG_ACTION_LABELS[log.action_type] || log.action_type}
                                   </span>
                                 </td>
                                 <td className="py-2.5 px-3 text-center font-semibold text-slate-650">

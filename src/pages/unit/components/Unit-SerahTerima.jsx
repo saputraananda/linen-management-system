@@ -15,6 +15,7 @@ import exportSerahTerimaLinenPDF from '../utils/exportSerahTerimaLinenPDF.js';
 import { socket } from '../../../utils/socket';
 import Pagination from '../../../components/Pagination';
 import usePaging from '../../../utils/usePaging';
+import OwnershipBadge from '../../../components/OwnershipBadge';
 
 // Helper to convert string to Title Case
 const toTitleCase = (str) => {
@@ -993,6 +994,7 @@ export default function UnitSerahTerima() {
                                                     <tr className="bg-slate-50 text-slate-400 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200">
                                                         <th className="py-3 px-4 text-center">No</th>
                                                         <th className="py-3 px-4">Nama Linen</th>
+                                                        <th className="py-3 px-4 text-center">Kepemilikan</th>
                                                         <th className="py-3 px-4 text-center">Ruangan</th>
                                                         <th className="py-3 px-4 text-center">Unit</th>
                                                         <th className="py-3 px-4 text-center bg-slate-100/50">Qty Kotor (Pickup)</th>
@@ -1045,7 +1047,7 @@ export default function UnitSerahTerima() {
                                                         if (filteredDetails.length === 0) {
                                                             return (
                                                                 <tr>
-                                                                    <td colSpan={8} className="py-8 text-center text-slate-400 font-semibold text-xs">
+                                                                    <td colSpan={9} className="py-8 text-center text-slate-400 font-semibold text-xs">
                                                                         Tidak ada data linen untuk ruangan ini.
                                                                     </td>
                                                                 </tr>
@@ -1065,6 +1067,7 @@ export default function UnitSerahTerima() {
                                                                         <td className="py-3 px-4 text-slate-800 font-bold">
                                                                             <div>{getLinenDisplayName(item)}</div>
                                                                         </td>
+                                                                        <td className="py-3 px-4 text-center"><OwnershipBadge type={item.ownership_type} /></td>
                                                                         <td className="py-3 px-4 text-center">
                                                                             <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
                                                                                 {item.room_name || 'Semua Ruangan'}

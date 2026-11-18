@@ -192,7 +192,7 @@ export const getTransactionDetail = async (req, res) => {
     const [details] = await ikmPool.query(
       `SELECT td.*,
               l.linen_name, l.linen_code,
-              hl.unit, hl.hospital_linen_name,
+              hl.unit, hl.hospital_linen_name, hl.ownership_type,
               s.size_name, c.color_name, m.material_name,
               r.room_name
        FROM tr_linen_transaction_detail td

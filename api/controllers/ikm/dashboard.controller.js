@@ -1,5 +1,6 @@
 import { ikmPool, mainPool } from '../../db/pool.js';
 import { hideEmptyStock } from '../../utils/hideEmptyStock.js';
+import { snapshotRoomStock, logRoomStockChanges, actorName } from '../../utils/roomStockLog.js';
 
 /**
  * Get list of all active hospitals
@@ -341,6 +342,9 @@ export const updateTerpakai = async (req, res) => {
       });
     }
 
+    // Log: potret Terpakai/Dirty sebelum diubah dari portal IKM
+    const stockBefore = await snapshotRoomStock(ikmPool, [{ hospitalLinenId, roomId }]);
+
     // Check if record exists in mst_hospital_linen_rooms
     const [existing] = await ikmPool.query(
       "SELECT * FROM mst_hospital_linen_rooms WHERE hospital_linen_id = ? AND room_id = ?",
@@ -384,6 +388,10 @@ export const updateTerpakai = async (req, res) => {
         );
       }
     }
+
+    await logRoomStockChanges(ikmPool, stockBefore, await snapshotRoomStock(ikmPool, [{ hospitalLinenId, roomId }]), {
+      prefix: 'IKM_UPDATE', actor: `IKM · ${actorName(req.user, 'IKM')}`
+    });
 
     // Get hospital_id to emit socket event
     const [linens] = await ikmPool.query(

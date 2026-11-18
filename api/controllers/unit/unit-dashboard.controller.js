@@ -179,7 +179,7 @@ export const getDashboardData = async (req, res) => {
     let recentNurses = [];
     if (roomId) {
       const [nurses] = await ikmPool.query(
-        "SELECT nurse_name FROM tr_unit_activity_log WHERE room_id = ? GROUP BY nurse_name ORDER BY MAX(id) DESC LIMIT 5",
+        "SELECT nurse_name FROM tr_unit_activity_log WHERE room_id = ? AND action_type IN ('UPDATE_TERPAKAI', 'UPDATE_DIRTY') GROUP BY nurse_name ORDER BY MAX(id) DESC LIMIT 5",
         [roomId]
       );
       recentNurses = nurses.map(n => n.nurse_name);

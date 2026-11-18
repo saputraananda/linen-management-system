@@ -1,6 +1,7 @@
 import { ikmPool, mainPool } from '../../db/pool.js';
 import { getSignatureUrl, saveBase64Image, cleanupSignatures } from '../../middleware/upload.js';
 import { parsePaging, buildPagination, offsetOf } from '../../utils/paging.js';
+import { snapshotRoomStock, logRoomStockChanges, actorName } from '../../utils/roomStockLog.js';
 import {
   hospitalRequiresUnitSign, getRoomSignState, roomFingerprints, findLockedChangedRooms
 } from '../../utils/roomSign.js';
@@ -222,7 +223,7 @@ export const getTransactionDetail = async (req, res) => {
       `SELECT td.*,
               hl.stock_in_rs,
               l.linen_name, l.linen_code,
-              hl.unit, hl.hospital_linen_name,
+              hl.unit, hl.hospital_linen_name, hl.ownership_type,
               s.size_name, c.color_name, m.material_name,
               r.room_name
        FROM tr_linen_transaction_detail td
@@ -390,6 +391,17 @@ export const createTransaction = async (req, res) => {
       });
     }
 
+    // Log stok ruangan: potret Terpakai/Dirty semua linen-ruangan yang tersentuh (isian lama + baru) sebelum diubah
+    const [prevPairs] = id
+      ? await connection.query(
+          `SELECT hospital_linen_id, room_id FROM tr_linen_transaction_detail WHERE transaction_id = ? AND room_id IS NOT NULL`, [id])
+      : [[]];
+    const stockPairs = [
+      ...prevPairs.map(p => ({ hospitalLinenId: p.hospital_linen_id, roomId: p.room_id })),
+      ...details.filter(d => d.roomId).map(d => ({ hospitalLinenId: d.hospitalLinenId, roomId: d.roomId }))
+    ];
+    const stockBefore = await snapshotRoomStock(connection, stockPairs);
+
     let transactionId = id;
     let formNumber;
 
@@ -553,6 +565,11 @@ export const createTransaction = async (req, res) => {
         });
       }
     }
+
+    // Log stok ruangan: perubahan Terpakai/Dirty akibat pengambilan kotor (selisih bersih saja)
+    await logRoomStockChanges(connection, stockBefore, await snapshotRoomStock(connection, stockPairs), {
+      prefix: 'PICKUP', actor: `Valet ${actorName(req.user, 'IKM')} · ${formNumber}`
+    });
 
     // Capture created state for audit logging
     const [newHeaderRows] = await connection.query(
@@ -747,6 +764,9 @@ export const updateTransactionDelivery = async (req, res) => {
       `SELECT * FROM tr_linen_transaction_detail WHERE transaction_id = ?`,
       [id]
     );
+    // Log stok ruangan: potret sebelum koreksi kotor (koreksi mengubah Terpakai/Dirty ruangan)
+    const stockPairs = oldDetails.filter(d => d.room_id).map(d => ({ hospitalLinenId: d.hospital_linen_id, roomId: d.room_id }));
+    const stockBefore = await snapshotRoomStock(connection, stockPairs);
 
     // Determine completed_at (set to now if transitioning from PROSES to SELESAI, and is not temporary save)
     let completedAt = oldHeader.completed_at;
@@ -845,6 +865,11 @@ export const updateTransactionDelivery = async (req, res) => {
         }
       }
     }
+
+    // Log stok ruangan: perubahan Terpakai/Dirty akibat koreksi jumlah kotor
+    await logRoomStockChanges(connection, stockBefore, await snapshotRoomStock(connection, stockPairs), {
+      prefix: 'KOREKSI', actor: `${actorName(req.user, 'IKM')} · ${oldHeader.form_number}`
+    });
 
     // TTD per unit (pengiriman bersih) selama transaksi masih PROSES
     if (oldHeader.status === 'PROSES') {

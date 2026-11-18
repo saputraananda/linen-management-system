@@ -8,6 +8,8 @@ import {
   Scale, Zap
 } from 'lucide-react';
 import RoomStatusSelect from './RoomStatusSelect';
+import OwnershipBadge from '../../../components/OwnershipBadge';
+import ConfirmDialog from '../../../components/ConfirmDialog';
 import Pagination from '../../../components/Pagination';
 import usePaging from '../../../utils/usePaging';
 
@@ -2252,6 +2254,7 @@ export default function SerahTerima() {
                       <tr className="bg-slate-50 text-slate-400 font-semibold uppercase tracking-wider text-xs border-b border-slate-150 shadow-[0_1px_0_#e2e8f0]">
                         <th className="py-3.5 px-4 w-12 text-center">No</th>
                         <th className="py-3.5 px-4">Nama Linen</th>
+                        <th className="py-3.5 px-4 text-center">Kepemilikan</th>
                         <th className="py-3.5 px-4 text-center">Ruangan</th>
                         <th className="py-3.5 px-4 w-28 text-center">Kotor</th>
                         <th className="py-3.5 px-4 text-center">Keterangan</th>
@@ -2260,14 +2263,14 @@ export default function SerahTerima() {
                     <tbody className="divide-y divide-slate-100 text-slate-700">
                       {loadingLinens ? (
                         <tr>
-                          <td colSpan="5" className="py-16 text-center text-slate-400 font-bold">
+                          <td colSpan="6" className="py-16 text-center text-slate-400 font-bold">
                             <RefreshCw className="h-5 w-5 animate-spin mx-auto text-[#126776] mb-2" />
                             Memuat data linen...
                           </td>
                         </tr>
                       ) : filteredLinensList.length === 0 ? (
                         <tr>
-                          <td colSpan="5" className="py-16 text-center text-slate-400 font-semibold">
+                          <td colSpan="6" className="py-16 text-center text-slate-400 font-semibold">
                             {linenSearch ? `Tidak ada linen yang cocok dengan "${linenSearch}"` : 'Belum ada master linen terdaftar untuk rumah sakit ini.'}
                           </td>
                         </tr>
@@ -2287,6 +2290,9 @@ export default function SerahTerima() {
                               <td className="py-3 px-4 text-center font-medium text-slate-400 text-xs">{index + 1}</td>
                               <td className="py-3 px-4">
                                 <p className="font-semibold text-slate-800 text-sm">{getLinenDisplayName(item)}</p>
+                              </td>
+                              <td className="py-3 px-4 text-center">
+                                <OwnershipBadge type={item.ownership_type} />
                               </td>
                               <td className="py-3 px-4 text-center">
                                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-650 border border-slate-200">
@@ -2800,6 +2806,7 @@ export default function SerahTerima() {
                       <tr className="bg-slate-50 text-slate-400 font-semibold uppercase tracking-wider text-xs border-b border-slate-150 shadow-[0_1px_0_#e2e8f0]">
                         <th className="py-3 px-4 w-12 text-center">No</th>
                         <th className="py-3 px-4">Nama Linen</th>
+                        <th className="py-3 px-4 text-center">Kepemilikan</th>
                         <th className="py-3 px-4 text-center">Ruangan</th>
                         <th className="py-3 px-4 text-center w-24">Kotor</th>
                         <th className="py-3 px-4 text-center w-24">Bersih</th>
@@ -2809,7 +2816,7 @@ export default function SerahTerima() {
                     <tbody className="divide-y divide-slate-100 text-slate-700">
                       {filteredEditDetails.length === 0 ? (
                         <tr>
-                          <td colSpan="6" className="py-12 text-center text-slate-400 font-semibold text-xs">
+                          <td colSpan="7" className="py-12 text-center text-slate-400 font-semibold text-xs">
                             {editLinenSearch ? `Tidak ada linen yang cocok dengan "${editLinenSearch}"` : 'Tidak ada data linen.'}
                           </td>
                         </tr>
@@ -2857,6 +2864,9 @@ export default function SerahTerima() {
                             <td className="py-3 px-4 text-center font-medium text-slate-400 text-xs">{index + 1}</td>
                             <td className="py-3 px-4">
                                 <p className="font-semibold text-slate-800 text-sm">{getLinenDisplayName(item)}</p>
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                              <OwnershipBadge type={item.ownership_type} />
                             </td>
                             <td className="py-3 px-4 text-center">
                               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-650 border border-slate-200">
@@ -3426,43 +3436,15 @@ export default function SerahTerima() {
         </div>
       )}
 
-      {/* Custom Confirm Modal */}
-      {confirmConfig.show && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-[fadeIn_0.2s_ease-out]">
-          <div className="bg-white rounded-3xl border border-slate-100 shadow-2xl max-w-md w-full p-6 space-y-6 transform animate-[scaleIn_0.2s_ease-out] relative">
-            <div className="flex items-center gap-3">
-              <div className="p-3 bg-amber-50 text-amber-600 rounded-2xl border border-amber-100/50">
-                <Unlock className="h-6 w-6" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">{confirmConfig.title}</h3>
-                <p className="text-slate-500 text-xs font-semibold mt-1">Sistem Waschen Alora</p>
-              </div>
-            </div>
-
-            <p className="text-slate-600 text-sm font-semibold leading-relaxed">
-              {confirmConfig.message}
-            </p>
-
-            <div className="flex justify-end gap-3 pt-2">
-              <button
-                type="button"
-                onClick={closeConfirm}
-                className="px-6 py-2.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition active:scale-95 cursor-pointer"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                onClick={() => { const fn = confirmConfig.onConfirm; closeConfirm(); if (fn) fn(); }}
-                className="px-6 py-2.5 bg-gradient-to-r from-[#126776] to-[#1ea59e] hover:from-[#0e5562] hover:to-[#188b85] text-white rounded-xl text-xs font-semibold shadow-md shadow-[#126776]/10 active:scale-95 transition cursor-pointer"
-              >
-                {confirmConfig.confirmLabel}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Konfirmasi (komponen standar) */}
+      <ConfirmDialog
+        isOpen={confirmConfig.show}
+        onClose={closeConfirm}
+        onConfirm={() => confirmConfig.onConfirm?.()}
+        title={confirmConfig.title}
+        message={confirmConfig.message}
+        confirmText={confirmConfig.confirmLabel}
+      />
 
       {/* Custom Alert Modal */}
       {alertConfig.show && (
