@@ -440,7 +440,7 @@ export default function SerahTerima() {
       };
     } else {
       return {
-        roomName: 'Semua Ruangan',
+        roomName: 'All',
         roomStock: null,
         totalStock,
         isRoomSelected: false
@@ -2870,7 +2870,7 @@ export default function SerahTerima() {
                             </td>
                             <td className="py-3 px-4 text-center">
                               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-650 border border-slate-200">
-                                {item.room_name || 'Semua Ruangan'}
+                                {item.room_name || 'All'}
                               </span>
                             </td>
                             <td className="py-3 px-4">

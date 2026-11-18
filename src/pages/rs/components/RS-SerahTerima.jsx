@@ -1152,7 +1152,7 @@ export default function RSSerahTerima() {
                                                                         <td className="py-3 px-4 text-center"><OwnershipBadge type={item.ownership_type} /></td>
                                                                         <td className="py-3 px-4 text-center">
                                                                             <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
-                                                                                {item.room_name || 'Semua Ruangan'}
+                                                                                {item.room_name || 'All'}
                                                                             </span>
                                                                         </td>
                                                                         <td className="py-3 px-4 text-center text-slate-500">{item.unit || 'Pcs'}</td>
@@ -1266,7 +1266,7 @@ export default function RSSerahTerima() {
                                                                                         <td className="py-2.5 px-4 text-center"><OwnershipBadge type={subItem.ownership_type} /></td>
                                                                                         <td className="py-2.5 px-4 text-center">
                                                                                             <span className="inline-flex items-center px-2 py-0.5 rounded text-[9px] font-bold bg-white text-slate-600 border border-slate-200 shadow-sm">
-                                                                                                {subItem.room_name || 'Semua Ruangan'}
+                                                                                                {subItem.room_name || 'All'}
                                                                                             </span>
                                                                                         </td>
                                                                                         <td className="py-2.5 px-4 text-center text-slate-400">{subItem.unit || 'Pcs'}</td>
