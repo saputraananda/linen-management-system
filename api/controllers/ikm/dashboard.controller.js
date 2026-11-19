@@ -1,5 +1,6 @@
 import { ikmPool, mainPool } from '../../db/pool.js';
 import { hideEmptyStock } from '../../utils/hideEmptyStock.js';
+import { CUCI_QTY_SQL } from '../../utils/cuciSql.js';
 import { snapshotRoomStock, logRoomStockChanges, actorName } from '../../utils/roomStockLog.js';
 
 /**
@@ -127,7 +128,7 @@ export const getDashboardData = async (req, res) => {
                  AND td.qty_bersih < td.qty_kotor
              ), 0) AS total_kurang,
              COALESCE((
-               SELECT SUM(td.qty_kotor)
+               SELECT SUM(${CUCI_QTY_SQL})
                FROM tr_linen_transaction_detail td
                INNER JOIN tr_linen_transaction t ON td.transaction_id = t.id
                WHERE td.hospital_linen_id = hl.id 
@@ -152,7 +153,7 @@ export const getDashboardData = async (req, res) => {
              ), 0) AS total_dirty,
              COALESCE((
                SELECT SUM(GREATEST(0, hlr.stock_in_rs - hlr.qty_terpakai - hlr.qty_dirty
-                 - COALESCE((SELECT SUM(td.qty_kotor)
+                 - COALESCE((SELECT SUM(${CUCI_QTY_SQL})
                              FROM tr_linen_transaction_detail td
                              INNER JOIN tr_linen_transaction t ON td.transaction_id = t.id
                              WHERE td.hospital_linen_id = hlr.hospital_linen_id
@@ -189,7 +190,7 @@ export const getDashboardData = async (req, res) => {
     const roomsQuery = `
       SELECT hlr.*, hl.linen_id, l.linen_name, r.room_name, r.is_gudang_linen,
              COALESCE((
-               SELECT SUM(td.qty_kotor)
+               SELECT SUM(${CUCI_QTY_SQL})
                FROM tr_linen_transaction_detail td
                INNER JOIN tr_linen_transaction t ON td.transaction_id = t.id
                WHERE td.hospital_linen_id = hlr.hospital_linen_id 
@@ -550,7 +551,7 @@ export const updateRoomStock = async (req, res) => {
       // Stok Awal (Alokasi) = Lemari + Terpakai + Dirty + Cuci IKM + Kurang Kirim
       const [existing] = await ikmPool.query(
         `SELECT hlr.qty_terpakai, hlr.qty_dirty,
-                COALESCE((SELECT SUM(td.qty_kotor)
+                COALESCE((SELECT SUM(${CUCI_QTY_SQL})
                           FROM tr_linen_transaction_detail td
                           INNER JOIN tr_linen_transaction t ON td.transaction_id = t.id
                           WHERE td.hospital_linen_id = hlr.hospital_linen_id AND td.room_id = hlr.room_id
