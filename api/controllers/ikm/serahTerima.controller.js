@@ -56,6 +56,68 @@ const takeKotorFromRoom = (connection, hospitalLinenId, roomId, qty) =>
     [qty, qty, hospitalLinenId, roomId]
   );
 
+// ───────────── Satu formulir induk per hari (per RS, per jenis reguler/express) ─────────────
+const isPickupFinal = (tx) => !!(tx.signature_valet_pickup && tx.signature_hospital_pickup);
+
+/**
+ * Formulir pengambilan pada tanggal pickup tertentu untuk satu RS, beserta petugas IKM per ruangan.
+ * can_continue = masih PROSES dan pengambilan kotor belum di-TTD akhir Tim Linen RS (ruangan masih bisa ditambah).
+ */
+const listDayForms = async (conn, hospitalId, date) => {
+  const [rows] = await conn.query(
+    `SELECT t.id, t.form_number, t.status, t.is_express, t.pickup_date, t.user_pickup,
+            t.signature_valet_pickup, t.signature_hospital_pickup,
+            (SELECT COUNT(DISTINCT d.room_id) FROM tr_linen_transaction_detail d
+              WHERE d.transaction_id = t.id AND d.qty_kotor > 0) AS rooms,
+            (SELECT COALESCE(SUM(d.qty_kotor), 0) FROM tr_linen_transaction_detail d
+              WHERE d.transaction_id = t.id) AS total_kotor
+       FROM tr_linen_transaction t
+      WHERE t.hospital_id = ? AND DATE(t.pickup_date) = DATE(?)
+      ORDER BY t.id`, [hospitalId, date]);
+  if (!rows.length) return [];
+
+  const [signs] = await conn.query(
+    `SELECT transaction_id, valet_pickup_id FROM tr_linen_transaction_room_sign
+      WHERE transaction_id IN (?) AND valet_pickup_id IS NOT NULL`, [rows.map(r => r.id)]);
+  const empIds = [...new Set([...rows.map(r => r.user_pickup), ...signs.map(s => s.valet_pickup_id)].filter(Boolean).map(Number))];
+  let names = new Map();
+  if (empIds.length) {
+    const [emps] = await mainPool.query('SELECT employee_id, full_name FROM mst_employee WHERE employee_id IN (?)', [empIds]);
+    names = new Map(emps.map(e => [Number(e.employee_id), toTitleCase(e.full_name)]));
+  }
+  return rows.map(r => {
+    const valetIds = [r.user_pickup, ...signs.filter(s => s.transaction_id === r.id).map(s => s.valet_pickup_id)]
+      .filter(Boolean).map(Number);
+    return {
+      id: r.id,
+      form_number: r.form_number,
+      status: r.status,
+      is_express: Number(r.is_express) === 1 ? 1 : 0,
+      pickup_date: r.pickup_date,
+      rooms: Number(r.rooms) || 0,
+      total_kotor: Number(r.total_kotor) || 0,
+      pickup_final: isPickupFinal(r),
+      can_continue: r.status === 'PROSES' && !isPickupFinal(r),
+      valets: [...new Set(valetIds.map(v => names.get(v)).filter(Boolean))]
+    };
+  });
+};
+
+/**
+ * Ruang lingkup simpan per ruangan. scopeRoomIds (array) = ruangan yang diubah perangkat ini;
+ * 'all'/null = baris tanpa ruangan. Tanpa scopeRoomIds = perilaku lama (seluruh isi formulir diganti).
+ */
+const buildScope = (scopeRoomIds) => {
+  if (!Array.isArray(scopeRoomIds)) return null;
+  const keys = new Set(scopeRoomIds.map(k => (k === null || k === undefined || k === '' || k === 'all') ? 'all' : String(Number(k))));
+  return {
+    keys,
+    has: (roomId) => keys.has(roomId === null || roomId === undefined ? 'all' : String(Number(roomId))),
+    roomIds: [...keys].filter(k => k !== 'all').map(Number),
+    includeNoRoom: keys.has('all')
+  };
+};
+
 /** Never expose admin kg weighing to LMS clients */
 const stripAdminKg = (row) => {
   if (!row || typeof row !== 'object') return row;
@@ -347,6 +409,24 @@ export const getTransactionDetail = async (req, res) => {
 };
 
 /**
+ * GET /api/ikm/transactions-day?hospitalId=&date=YYYY-MM-DD
+ * Formulir pengambilan hari itu (untuk modal "Lanjutkan formulir / Formulir Baru").
+ */
+export const getDayForms = async (req, res) => {
+  try {
+    const { hospitalId, date } = req.query;
+    if (!hospitalId) return res.status(400).json({ success: false, message: 'hospitalId wajib' });
+    const [[now]] = await ikmPool.query('SELECT CURDATE() AS d');
+    const day = /^\d{4}-\d{2}-\d{2}$/.test(String(date || '')) ? date : now.d;
+    const forms = await listDayForms(ikmPool, hospitalId, day);
+    return res.status(200).json({ success: true, data: forms });
+  } catch (error) {
+    console.error('Error getting day forms:', error);
+    return res.status(500).json({ success: false, message: 'Gagal memuat formulir hari ini', error: error.message });
+  }
+};
+
+/**
  * Day 1: Create transaction (Pickup - Kotor)
  */
 export const createTransaction = async (req, res) => {
@@ -369,11 +449,15 @@ export const createTransaction = async (req, res) => {
       signatureHospitalPickup,
       signatureAssistantPickup,
       totalKgValet,
-      isExpress
+      isExpress,
+      scopeRoomIds,  // ruangan yang diubah perangkat ini (simpan per ruangan, aman untuk banyak valet)
+      roomOnly,      // simpan satu ruangan saja: kepala formulir tidak ikut diubah
+      forceNew       // valet sengaja memilih "Formulir Baru" walau masih ada formulir hari itu
     } = req.body;
 
     const total_kg_valet = parseTotalKg(totalKgValet);
     const is_express = parseIsExpress(isExpress);
+    const scope = id ? buildScope(scopeRoomIds) : null;
 
     const isTemporary = !signatureValetPickup || !signatureHospitalPickup;
 
@@ -422,28 +506,31 @@ export const createTransaction = async (req, res) => {
       }
       formNumber = oldTxRows[0].form_number;
 
-      // Update Header
-      await connection.query(
-        `UPDATE tr_linen_transaction 
-         SET user_pickup = ?, 
-             hospital_staff_pickup = ?, 
-             hospital_assistant_pickup = ?, 
-             pickup_date = ?, 
-             notes_pickup = ?,
-             total_kg_valet = ?,
-             is_express = ?
-         WHERE id = ?`,
-        [
-          userPickup, 
-          hospitalStaffPickup ? toTitleCase(hospitalStaffPickup) : null, 
-          hospitalAssistantPickup ? toTitleCase(hospitalAssistantPickup) : null, 
-          pickupDate, 
-          notes || null,
-          total_kg_valet,
-          is_express,
-          transactionId
-        ]
-      );
+      // Update Header. Simpan satu ruangan (roomOnly) tidak menyentuh kepala formulir supaya isian valet lain
+      // tidak tertimpa. Jenis express ditetapkan saat formulir dibuat (formulir express terpisah).
+      if (!(scope && roomOnly)) {
+        await connection.query(
+          `UPDATE tr_linen_transaction
+           SET user_pickup = ?,
+               hospital_staff_pickup = ?,
+               hospital_assistant_pickup = ?,
+               pickup_date = ?,
+               notes_pickup = ?,
+               total_kg_valet = ?,
+               is_express = COALESCE(?, is_express)
+           WHERE id = ?`,
+          [
+            userPickup,
+            hospitalStaffPickup ? toTitleCase(hospitalStaffPickup) : null,
+            hospitalAssistantPickup ? toTitleCase(hospitalAssistantPickup) : null,
+            pickupDate,
+            notes || null,
+            total_kg_valet,
+            scope ? null : is_express,
+            transactionId
+          ]
+        );
+      }
 
       // Kembalikan Dirty Utility dari rincian lama sebelum dihitung ulang
       const [prevDetails] = await connection.query(
@@ -453,6 +540,7 @@ export const createTransaction = async (req, res) => {
       // Isi kotor per ruangan sebelum disimpan ulang (untuk mereset TTD unit yang angkanya berubah)
       prevKotorFingerprints = roomFingerprints(prevDetails, 'qty_kotor');
       for (const prev of prevDetails) {
+        if (scope && !scope.has(prev.room_id)) continue; // ruangan di luar lingkup simpan tidak disentuh
         if (!prev.room_id || !(prev.qty_kotor > 0)) continue;
         await connection.query(
           `UPDATE mst_hospital_linen_rooms SET qty_dirty = qty_dirty + ? WHERE hospital_linen_id = ? AND room_id = ?`,
@@ -460,12 +548,45 @@ export const createTransaction = async (req, res) => {
         );
       }
 
-      // Delete existing details so we can re-insert
-      await connection.query(
-        `DELETE FROM tr_linen_transaction_detail WHERE transaction_id = ?`,
-        [transactionId]
-      );
+      // Delete existing details so we can re-insert (simpan per ruangan: hanya ruangan dalam lingkup)
+      if (scope) {
+        if (scope.roomIds.length) {
+          await connection.query(
+            `DELETE FROM tr_linen_transaction_detail WHERE transaction_id = ? AND room_id IN (?)`,
+            [transactionId, scope.roomIds]
+          );
+        }
+        if (scope.includeNoRoom) {
+          await connection.query(
+            `DELETE FROM tr_linen_transaction_detail WHERE transaction_id = ? AND room_id IS NULL`,
+            [transactionId]
+          );
+        }
+      } else {
+        await connection.query(
+          `DELETE FROM tr_linen_transaction_detail WHERE transaction_id = ?`,
+          [transactionId]
+        );
+      }
     } else {
+      // Satu formulir induk per hari: tolak formulir baru bila masih ada formulir hari itu (jenis sama,
+      // reguler/express) yang bisa dilanjutkan, kecuali valet sengaja memilih "Formulir Baru".
+      // Kunci baris RS supaya dua valet yang membuat bersamaan tidak sama-sama lolos.
+      await connection.query('SELECT id FROM mst_hospital WHERE id = ? FOR UPDATE', [hospitalId]);
+      if (!forceNew) {
+        const open = (await listDayForms(connection, hospitalId, formatMySQLDateTime(pickupDate)))
+          .filter(f => f.can_continue && f.is_express === is_express);
+        if (open.length) {
+          await connection.rollback();
+          return res.status(409).json({
+            success: false,
+            code: 'OPEN_FORM_EXISTS',
+            message: `Sudah ada formulir ${open.map(f => f.form_number).join(', ')} hari ini. Lanjutkan formulir tersebut atau pilih Formulir Baru.`,
+            forms: open
+          });
+        }
+      }
+
       // Generate form number: {hospitalCode}-{ddmmyy}-{001} (sequential per hospital+day)
       const d = new Date(pickupDate);
       const yyyy = d.getFullYear();
@@ -474,20 +595,28 @@ export const createTransaction = async (req, res) => {
       const dd = String(d.getDate()).padStart(2, '0');
       const ddmmyy = `${dd}${mm}${yy}`;
 
-      const [countResult] = await connection.query(
-        `SELECT COUNT(*) as cnt FROM tr_linen_transaction
-         WHERE hospital_id = ? AND DATE(pickup_date) = DATE(?)`,
-         [hospitalId, pickupDate]
-      );
-      const nextSeq = (countResult?.[0]?.cnt || 0) + 1;
-
       // Get the hospital_id code from mst_hospital
       const [hospitalRows] = await connection.query(
         `SELECT hospital_id FROM mst_hospital WHERE id = ?`,
         [hospitalId]
       );
       const hospitalCode = hospitalRows?.[0]?.hospital_id || hospitalId;
-      formNumber = `${hospitalCode}-${ddmmyy}-${String(nextSeq).padStart(3, '0')}`;
+
+      // Nomor urut = nomor terbesar hari itu + 1 (bukan jumlah formulir), supaya tidak bentrok
+      // bila ada formulir yang pernah dihapus/digabung.
+      const prefix = `${hospitalCode}-${ddmmyy}-`;
+      const [sameDay] = await connection.query(
+        `SELECT form_number FROM tr_linen_transaction
+         WHERE form_number LIKE ? OR (hospital_id = ? AND DATE(pickup_date) = DATE(?))`,
+        [`${prefix}%`, hospitalId, pickupDate]
+      );
+      const maxSeq = sameDay.reduce((m, r) => {
+        const s = String(r.form_number || '');
+        const n = s.startsWith(prefix) ? parseInt(s.slice(prefix.length), 10) : NaN;
+        return Number.isFinite(n) ? Math.max(m, n) : m;
+      }, 0);
+      const nextSeq = Math.max(maxSeq, 0) + 1;
+      formNumber = `${prefix}${String(nextSeq).padStart(3, '0')}`;
 
       // Aturan TTD per unit dikunci saat transaksi dibuat (transaksi lama tidak terdampak)
       const unitSignRequired = (await hospitalRequiresUnitSign(connection, hospitalId)) ? 1 : 0;
@@ -520,8 +649,10 @@ export const createTransaction = async (req, res) => {
     }
 
     for (const item of details) {
+      // Simpan per ruangan: isian ruangan lain dari perangkat ini (bisa sudah basi) diabaikan
+      if (scope && !scope.has(item.roomId || null)) continue;
       await connection.query(
-        `INSERT INTO tr_linen_transaction_detail 
+        `INSERT INTO tr_linen_transaction_detail
          (transaction_id, hospital_linen_id, room_id, qty_kotor, qty_bersih, notes)
          VALUES (?, ?, ?, ?, NULL, ?)`,
         [transactionId, item.hospitalLinenId, item.roomId || null, parseInt(item.qtyKotor || 0), item.notes || null]
@@ -619,6 +750,7 @@ export const createTransaction = async (req, res) => {
     if (io) {
       io.to(`hospital_${hospitalId}`).emit('data_changed', {
         type: 'TRANSACTION_PICKUP',
+        transactionId,
         message: 'Transaksi pengambilan linen kotor telah dicatat'
       });
     }
@@ -669,7 +801,9 @@ export const updateTransactionDelivery = async (req, res) => {
       signatureHospitalDelivery,
       signatureAssistantDelivery,
       totalKgValet,
-      isExpress
+      isExpress,
+      scopeRoomIds,  // ruangan yang diubah perangkat ini (simpan per ruangan, aman untuk banyak valet)
+      roomOnly       // simpan satu ruangan saja: kepala formulir tidak ikut diubah
     } = req.body;
 
     const isTemporary = !signatureValetDelivery || !signatureHospitalDelivery;
@@ -789,6 +923,19 @@ export const updateTransactionDelivery = async (req, res) => {
     const status = isTemporary ? 'PROSES' : 'SELESAI';
     const completedAtValue = isTemporary ? null : completedAt;
 
+    // Simpan per ruangan (hanya selama PROSES): ruangan di luar lingkup tidak disentuh
+    const scope = oldHeader.status === 'PROSES' ? buildScope(scopeRoomIds) : null;
+
+    if (scope && roomOnly) {
+      // Simpan satu ruangan: kepala formulir tidak ditimpa (isian valet lain aman); hanya isi yang masih kosong
+      await connection.query(
+        `UPDATE tr_linen_transaction
+            SET delivery_date = COALESCE(delivery_date, ?),
+                user_delivery = COALESCE(user_delivery, ?)
+          WHERE id = ?`,
+        [formatMySQLDateTime(deliveryDate), userDelivery || null, id]
+      );
+    } else {
     // Update Header
     await connection.query(
       `UPDATE tr_linen_transaction 
@@ -831,11 +978,14 @@ export const updateTransactionDelivery = async (req, res) => {
         id
       ]
     );
+    }
 
     // Update Details (support updating both qty_kotor and qty_bersih)
     for (const item of details) {
       const newKotor = parseInt(item.qtyKotor !== undefined ? item.qtyKotor : 0);
       const prev = oldDetails.find((row) => String(row.id) === String(item.id));
+      // Simpan per ruangan: baris ruangan lain dari perangkat ini (bisa sudah basi) diabaikan
+      if (scope && (!prev || !scope.has(prev.room_id))) continue;
       await connection.query(
         `UPDATE tr_linen_transaction_detail 
          SET qty_kotor = ?, 
@@ -961,6 +1111,7 @@ export const updateTransactionDelivery = async (req, res) => {
     if (io) {
       io.to(`hospital_${hospitalId}`).emit('data_changed', {
         type: 'TRANSACTION_DELIVERY',
+        transactionId: Number(id),
         message: 'Transaksi pengiriman linen bersih telah dicatat'
       });
     }

@@ -12,6 +12,13 @@ import OwnershipBadge from '../../../components/OwnershipBadge';
 import ConfirmDialog from '../../../components/ConfirmDialog';
 import Pagination from '../../../components/Pagination';
 import usePaging from '../../../utils/usePaging';
+import { socket } from '../../../utils/socket';
+
+// Hari ini (zona waktu perangkat) dalam format YYYY-MM-DD
+const todayLocal = () => {
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+};
 
 // Utility to convert string to Title Case
 const toTitleCase = (str) => {
@@ -220,6 +227,12 @@ export default function SerahTerima() {
   const closeConfirm = () => setConfirmConfig(c => ({ ...c, show: false, onConfirm: null }));
   const [savedRooms, setSavedRooms] = useState([]);
   const [temporaryTxId, setTemporaryTxId] = useState(null);
+
+  // Satu formulir induk per hari: isian yang terakhir dimuat dari server (dasar deteksi ruangan yang diubah
+  // perangkat ini) dan modal "Lanjutkan formulir / Formulir Baru".
+  const [pickupBaseline, setPickupBaseline] = useState({}); // { linenId: { roomKey: { q, n } } }
+  const [forceNewForm, setForceNewForm] = useState(false);
+  const [dayFormsModal, setDayFormsModal] = useState({ show: false, mode: 'start', forms: [], retry: null });
 
   // TTD Serah Terima per Unit (ruangan): Valet + Perawat Unit per ruangan, sebelum TTD akhir Tim Linen RS
   const [requireUnitSignature, setRequireUnitSignature] = useState(0);
@@ -691,6 +704,139 @@ export default function SerahTerima() {
     }
   };
 
+  // ───────── Simpan per ruangan (banyak valet mengisi satu formulir) ─────────
+  const asRoomObj = (v) => (v && typeof v === 'object')
+    ? v
+    : ((v !== undefined && v !== null && v !== '') ? { all: v } : {});
+
+  const buildPickupBaseline = (details) => {
+    const base = {};
+    (details || []).forEach(d => {
+      const rk = d.room_id ? String(d.room_id) : 'all';
+      if (!base[d.hospital_linen_id]) base[d.hospital_linen_id] = {};
+      base[d.hospital_linen_id][rk] = { q: parseInt(d.qty_kotor) || 0, n: d.notes || '' };
+    });
+    return base;
+  };
+
+  // Ruangan (pickup) yang isinya diubah perangkat ini dibanding data terakhir dari server
+  const pickupDirtyRooms = () => {
+    const dirty = new Set();
+    const lids = new Set([...Object.keys(kotorQuantities), ...Object.keys(itemNotes), ...Object.keys(pickupBaseline)]);
+    lids.forEach(lid => {
+      const qObj = asRoomObj(kotorQuantities[lid]);
+      const nObj = asRoomObj(itemNotes[lid]);
+      const bObj = pickupBaseline[lid] || {};
+      new Set([...Object.keys(qObj), ...Object.keys(nObj), ...Object.keys(bObj)]).forEach(rk => {
+        const q = parseInt(qObj[rk]) || 0;
+        const bq = bObj[rk]?.q || 0;
+        // Catatan hanya tersimpan bila jumlah kotornya > 0
+        const n = q > 0 ? String(nObj[rk] || '').trim() : '';
+        const bn = bq > 0 ? String(bObj[rk]?.n || '').trim() : '';
+        if (q !== bq || n !== bn) dirty.add(rk);
+      });
+    });
+    return [...dirty];
+  };
+
+  // Terapkan isi formulir pickup dari server; ruangan di keepRooms tetap memakai isian lokal (belum disimpan)
+  const applyPickupFromServer = (fullTx, keepRooms = new Set()) => {
+    const base = buildPickupBaseline(fullTx.details);
+    setPickupBaseline(base);
+    const merge = (prev, field) => {
+      const next = {};
+      const lids = new Set([...linensList.map(l => String(l.id)), ...Object.keys(base), ...Object.keys(prev || {})]);
+      lids.forEach(lid => {
+        const out = {};
+        Object.entries(asRoomObj(prev?.[lid])).forEach(([rk, v]) => { if (keepRooms.has(rk)) out[rk] = v; });
+        Object.entries(base[lid] || {}).forEach(([rk, v]) => { if (!keepRooms.has(rk)) out[rk] = v[field]; });
+        next[lid] = out;
+      });
+      return next;
+    };
+    setKotorQuantities(prev => merge(prev, 'q'));
+    setItemNotes(prev => merge(prev, 'n'));
+    setPickupRoomSign(fullTx.roomSign || null);
+    const filled = new Set();
+    (fullTx.details || []).forEach(d => {
+      if (d.room_id && (d.qty_kotor > 0 || (d.notes && d.notes.trim() !== ''))) filled.add(String(d.room_id));
+    });
+    setSavedRooms([...filled]);
+  };
+
+  const reloadPickup = async (txId, keepRooms = new Set()) => {
+    try {
+      const token = localStorage.getItem('token');
+      const { data } = await axios.get(`/api/ikm/transactions/${txId}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (data?.success) applyPickupFromServer(data.data, keepRooms);
+    } catch (err) {
+      console.error('Error reloading pickup form:', err);
+    }
+  };
+
+  // Ruangan (pengiriman) yang isinya diubah perangkat ini dibanding data terakhir dari server
+  const deliveryDirtyRooms = () => {
+    const dirty = new Set();
+    (editingTransaction?.details || []).forEach(d => {
+      const rk = d.room_id ? String(d.room_id) : 'all';
+      const b = bersihQuantities[d.id];
+      const k = editKotorQuantities[d.id];
+      const n = editItemNotes[d.id];
+      const bOld = d.qty_bersih === null || d.qty_bersih === undefined ? null : parseInt(d.qty_bersih);
+      const bChanged = b !== undefined && b !== null && b !== '' && parseInt(b) !== bOld;
+      const kChanged = k !== undefined && k !== null && k !== '' && parseInt(k) !== (parseInt(d.qty_kotor) || 0);
+      const nChanged = typeof n === 'string' && n.trim() !== String(d.notes || '').trim();
+      if (bChanged || kChanged || nChanged) dirty.add(rk);
+    });
+    return [...dirty];
+  };
+
+  // Terapkan isi formulir pengiriman dari server; ruangan di keepRooms tetap memakai isian lokal
+  const applyDeliveryFromServer = (fullTx, keepRooms = new Set()) => {
+    const keep = (d) => keepRooms.has(d.room_id ? String(d.room_id) : 'all');
+    setEditingTransaction(fullTx);
+    setEditKotorQuantities(prev => {
+      const next = {};
+      fullTx.details.forEach(d => { next[d.id] = keep(d) && prev[d.id] !== undefined ? prev[d.id] : (d.qty_kotor !== null ? d.qty_kotor : ''); });
+      return next;
+    });
+    setBersihQuantities(prev => {
+      const next = {};
+      fullTx.details.forEach(d => { next[d.id] = keep(d) && prev[d.id] !== undefined ? prev[d.id] : (d.qty_bersih !== null ? d.qty_bersih : ''); });
+      return next;
+    });
+    setEditItemNotes(prev => {
+      const next = {};
+      fullTx.details.forEach(d => { next[d.id] = keep(d) && prev[d.id] !== undefined ? prev[d.id] : (d.notes || ''); });
+      return next;
+    });
+  };
+
+  const reloadDelivery = async (txId, keepRooms = new Set()) => {
+    try {
+      const token = localStorage.getItem('token');
+      const { data } = await axios.get(`/api/ikm/transactions/${txId}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (data?.success) applyDeliveryFromServer(data.data, keepRooms);
+    } catch (err) {
+      console.error('Error reloading delivery form:', err);
+    }
+  };
+
+  // Formulir hari ini: saat membuka Form Serah Terima, tawarkan lanjutkan formulir yang ada atau Formulir Baru
+  const checkDayForms = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const { data } = await axios.get(`/api/ikm/transactions-day?hospitalId=${hospitalId}&date=${todayLocal()}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (data?.success && data.data.length) {
+        setDayFormsModal({ show: true, mode: 'start', forms: data.data, retry: null });
+      }
+    } catch (err) {
+      console.error('Error loading day forms:', err);
+    }
+  };
+
   const fetchHistory = async () => {
     setLoadingHistory(true);
     try {
@@ -754,9 +900,11 @@ export default function SerahTerima() {
 
   // Submit Day 1 Kotor form
   // roomOnly: simpan isian ruangan saja (selalu sementara, TTD akhir tidak dikirim). Mengembalikan id transaksi.
-  const handleCreatePickup = async (e = null, { roomOnly = false } = {}) => {
+  // overrideTxId/overrideScope: dipakai saat isian formulir baru digabung ke formulir hari itu yang sudah ada.
+  const handleCreatePickup = async (e = null, { roomOnly = false, overrideTxId = null, overrideScope = null, forceNew = false } = {}) => {
     if (e?.preventDefault) e.preventDefault();
     setErrorMsg('');
+    const txIdToSave = overrideTxId || temporaryTxId;
 
     const isTemp = roomOnly || !signatureValetPickup || !signatureHospitalPickup;
     if (!isTemp) {
@@ -811,11 +959,20 @@ export default function SerahTerima() {
       return null;
     }
 
+    // Simpan per ruangan: pada formulir yang sudah ada, hanya ruangan yang diubah perangkat ini yang dikirim
+    // sebagai lingkup simpan, supaya isian valet lain di formulir yang sama tidak tertimpa.
+    const dirtyBefore = pickupDirtyRooms();
+    const scopeRoomIds = !txIdToSave ? null
+      : overrideScope || (roomOnly ? [selectedRoomId ? String(selectedRoomId) : 'all'] : dirtyBefore);
+
     setSubmittingNew(true);
     try {
       const token = localStorage.getItem('token');
       const { data } = await axios.post('/api/ikm/transactions', {
-        id: temporaryTxId,
+        id: txIdToSave,
+        scopeRoomIds,
+        roomOnly: !!(txIdToSave && roomOnly),
+        forceNew: !txIdToSave && (forceNew || forceNewForm),
         hospitalId: parseInt(hospitalId),
         pickupDate: pickupDate.replace('T', ' ') + ':00',
         userPickup: parseInt(userPickup),
@@ -834,15 +991,20 @@ export default function SerahTerima() {
 
       if (data?.success) {
         setSavedRooms([]);
+        setForceNewForm(false);
         if (data.isTemporary) {
           setTemporaryTxId(data.data.transactionId);
           if (!roomOnly) showToast("Berhasil Tersimpan Sementara");
           fetchHistory();
-          await refreshRoomSign(data.data.transactionId, 'pickup');
+          // Muat ulang isi formulir dari server (termasuk ruangan valet lain); ruangan yang diubah
+          // perangkat ini tapi belum ikut tersimpan tetap dipertahankan.
+          const saved = new Set((scopeRoomIds || dirtyBefore).map(String));
+          await reloadPickup(data.data.transactionId, new Set(dirtyBefore.filter(r => !saved.has(String(r)))));
           return data.data.transactionId;
         } else {
           setTemporaryTxId(null);
           setPickupRoomSign(null);
+          setPickupBaseline({});
           setUserPickup(localStorage.getItem('employeeId') || '');
           setUserPickupName(localStorage.getItem('fullName') || localStorage.getItem('username') || '');
           setNotes('');
@@ -871,6 +1033,11 @@ export default function SerahTerima() {
       }
       return null;
     } catch (err) {
+      // Sudah ada formulir hari itu yang bisa dilanjutkan: tawarkan gabung ke formulir itu atau buat Formulir Baru
+      if (err.response?.status === 409 && err.response?.data?.code === 'OPEN_FORM_EXISTS') {
+        setDayFormsModal({ show: true, mode: 'conflict', forms: err.response.data.forms || [], retry: { roomOnly } });
+        return null;
+      }
       const msg = err.response?.data?.message || 'Gagal menyimpan transaksi.';
       setErrorMsg(msg);
       if (roomOnly) showAlert(msg);
@@ -878,6 +1045,38 @@ export default function SerahTerima() {
     } finally {
       setSubmittingNew(false);
     }
+  };
+
+  // Ruangan yang punya isian di formulir ini (dipakai saat isian formulir baru digabung ke formulir yang ada)
+  const pickupFilledRooms = () => {
+    const rooms = new Set();
+    Object.entries(kotorQuantities).forEach(([, q]) => {
+      Object.entries(asRoomObj(q)).forEach(([rk, v]) => { if (parseInt(v) > 0) rooms.add(rk); });
+    });
+    return [...rooms];
+  };
+
+  // Pilihan di modal formulir hari ini
+  const continueDayForm = async (form) => {
+    const retry = dayFormsModal.mode === 'conflict' ? dayFormsModal.retry : null;
+    setDayFormsModal(m => ({ ...m, show: false }));
+    if (retry) {
+      // Isian yang sudah diketik digabung ke formulir yang dipilih (hanya ruangan yang diisi perangkat ini)
+      const txId = await handleCreatePickup(null, { roomOnly: retry.roomOnly, overrideTxId: form.id, overrideScope: pickupFilledRooms() });
+      if (txId) {
+        showToast(`Isian digabung ke formulir ${form.form_number}`);
+        await handleOpenEdit({ id: txId });
+      }
+      return;
+    }
+    await handleOpenEdit({ id: form.id });
+  };
+
+  const startNewDayForm = async () => {
+    const retry = dayFormsModal.mode === 'conflict' ? dayFormsModal.retry : null;
+    setDayFormsModal(m => ({ ...m, show: false }));
+    setForceNewForm(true);
+    if (retry) await handleCreatePickup(null, { roomOnly: retry.roomOnly, forceNew: true });
   };
 
   // Click card to edit / complete delivery
@@ -897,6 +1096,8 @@ export default function SerahTerima() {
         if (!hasPickupSignatures) {
           setTemporaryTxId(fullTx.transaction.id);
           setPickupRoomSign(fullTx.roomSign || null);
+          setPickupBaseline(buildPickupBaseline(fullTx.details));
+          setForceNewForm(false);
           setHospitalStaffPickup(fullTx.transaction.hospital_staff_pickup || '');
           setHospitalAssistantPickup(fullTx.transaction.hospital_assistant_pickup || '');
           setNotes(fullTx.transaction.notes_pickup || '');
@@ -1063,7 +1264,13 @@ export default function SerahTerima() {
 
     try {
       const token = localStorage.getItem('token');
+      // Simpan per ruangan selama PROSES: hanya ruangan yang diubah perangkat ini yang dikirim sebagai lingkup
+      const isProses = editingTransaction.transaction.status === 'PROSES';
+      const scopeRoomIds = !isProses ? undefined
+        : (roomOnly ? [selectedRoomId ? String(selectedRoomId) : 'all'] : deliveryDirtyRooms());
       const { data } = await axios.put(`/api/ikm/transactions/${editingTransaction.transaction.id}`, {
+        scopeRoomIds,
+        roomOnly: isProses && roomOnly,
         deliveryDate: deliveryDate.replace('T', ' ') + ':00',
         userDelivery: parseInt(userDelivery),
         hospitalStaffPickup,
@@ -1180,7 +1387,9 @@ export default function SerahTerima() {
         stage,
         nurseName: unitNurseName,
         signatureNurse: unitSigNurse,
-        signatureValet: unitSigValet
+        signatureValet: unitSigValet,
+        // Petugas IKM ruangan ini (bisa berbeda per ruangan)
+        valetId: parseInt(stage === 'pickup' ? userPickup : userDelivery) || null
       }, { headers: { Authorization: `Bearer ${token}` } });
       if (data?.success) {
         showToast(data.message || 'TTD unit tersimpan');
@@ -1477,6 +1686,22 @@ export default function SerahTerima() {
   // ── TTD per unit ──
   const gudangRoomIds = new Set(roomLinensList.filter(rl => Number(rl.is_gudang_linen) === 1).map(rl => String(rl.room_id)));
   const roomSignOf = (state, roomId) => state?.rooms?.find(r => String(r.room_id) === String(roomId));
+  // TTD unit ruangan terpilih yang sudah lengkap (terkunci) → isian petugas menampilkan valet ruangan itu
+  const lockedRoomSign = (stage) => {
+    const state = stage === 'pickup' ? pickupRoomSign : editingTransaction?.roomSign;
+    const s = selectedRoomId ? roomSignOf(state, selectedRoomId)?.[stage] : null;
+    return s?.complete ? s : null;
+  };
+  const renderLockedValetField = (sign) => (
+    <div>
+      <div className="w-full min-h-[38px] pl-10 pr-4 py-2.5 bg-slate-100 border border-slate-200 text-slate-600 rounded-xl text-xs font-semibold flex items-center gap-2 cursor-not-allowed relative">
+        <User className="absolute inset-y-0 left-3.5 my-auto h-4 w-4 text-slate-400" />
+        <span className="flex-1">{toTitleCase(sign.valet_name || '') || '—'}</span>
+        <Lock className="h-3.5 w-3.5 text-slate-400" />
+      </div>
+      <p className="text-[10px] text-slate-400 mt-1">Petugas yang TTD ruangan ini. Untuk mengganti, tekan Edit Ruangan Ini.</p>
+    </div>
+  );
   // Formulir baru mengikuti saklar RS; formulir yang sudah tersimpan mengikuti penanda di transaksinya
   const pickupUnitSignMode = pickupRoomSign
     ? !!pickupRoomSign.required
@@ -1574,24 +1799,52 @@ export default function SerahTerima() {
               : `Semua unit sudah TTD ${stage === 'pickup' ? 'pengambilan' : 'pengiriman'}. Lanjutkan TTD Tim Linen RS dan Valet di bawah.`}
           </p>
         </div>
-        <div className="flex flex-wrap gap-1.5">
-          {rooms.map(r => {
-            const s = r[stage];
-            return (
-              <span key={r.room_id} title={s?.complete ? `TTD: ${s.nurse_name}` : 'Belum TTD'}
-                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${s?.complete
-                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                  : 'bg-rose-50 text-rose-700 border-rose-200'}`}>
-                {s?.complete ? '✓' : '•'} {r.room_name}{s?.complete && s.nurse_name ? ` · ${s.nurse_name}` : ''}
-              </span>
-            );
-          })}
-          {localPending.map(n => (
-            <span key={n} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border bg-rose-50 text-rose-700 border-rose-200">
-              • {n} (belum disimpan)
-            </span>
-          ))}
-        </div>
+        {(() => {
+          // Kelompokkan per Petugas IKM (valet) yang TTD ruangan itu; urut sesuai waktu TTD pertama
+          const signed = rooms.filter(r => r[stage]?.complete)
+            .sort((a, b) => String(a[stage].signed_at || '').localeCompare(String(b[stage].signed_at || '')));
+          const groups = new Map();
+          signed.forEach(r => {
+            const key = r[stage].valet_name || 'Petugas IKM tidak tercatat';
+            if (!groups.has(key)) groups.set(key, []);
+            groups.get(key).push(r);
+          });
+          const pendingRooms = rooms.filter(r => !r[stage]?.complete);
+          const chipDone = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border bg-emerald-50 text-emerald-700 border-emerald-200';
+          const chipPending = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border bg-rose-50 text-rose-700 border-rose-200';
+          return (
+            <div className="space-y-2.5">
+              {[...groups.entries()].map(([valet, list]) => (
+                <div key={valet} className="space-y-1">
+                  <p className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600">
+                    <User className="h-3.5 w-3.5 text-slate-400" /> {toTitleCase(valet)}
+                    <span className="font-semibold text-slate-400">· {list.length} unit</span>
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {list.map(r => (
+                      <span key={r.room_id} title={`TTD: ${r[stage].nurse_name}`} className={chipDone}>
+                        ✓ {r.room_name}{r[stage].nurse_name ? ` · ${r[stage].nurse_name}` : ''}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              {(pendingRooms.length > 0 || localPending.length > 0) && (
+                <div className="space-y-1">
+                  <p className="text-[11px] font-bold text-rose-700">Belum TTD</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {pendingRooms.map(r => (
+                      <span key={r.room_id} title="Belum TTD" className={chipPending}>• {r.room_name}</span>
+                    ))}
+                    {localPending.map(n => (
+                      <span key={n} className={chipPending}>• {n} (belum disimpan)</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </div>
     );
   };
@@ -1628,7 +1881,7 @@ export default function SerahTerima() {
 
         {existing?.complete && (
           <div className="grid grid-cols-2 gap-3">
-            {[['Valet', existing.signature_valet, null], ['Perawat Unit', existing.signature_nurse, existing.nurse_name]].map(([label, src, nm]) => (
+            {[['Valet', existing.signature_valet, existing.valet_name], ['Perawat Unit', existing.signature_nurse, existing.nurse_name]].map(([label, src, nm]) => (
               <div key={label} className="flex flex-col items-center p-3 bg-white border border-slate-200 rounded-xl">
                 <span className="text-[10px] font-bold text-slate-400 uppercase mb-1">{label}</span>
                 {src ? <img src={src} alt={label} className="max-h-[60px] object-contain" /> : <span className="text-xs text-slate-400">—</span>}
@@ -1739,6 +1992,43 @@ export default function SerahTerima() {
     }
   };
 
+  // Real-time: valet lain menyimpan ruangan di formulir yang sedang dibuka → muat ulang ruangan lain,
+  // isian yang sedang diubah di perangkat ini tidak ditimpa.
+  const liveRef = useRef({});
+  liveRef.current = {
+    activeTab,
+    temporaryTxId,
+    editingTxId: editingTransaction?.transaction?.id,
+    editingStatus: editingTransaction?.transaction?.status,
+    pickupDirtyRooms, deliveryDirtyRooms, reloadPickup, reloadDelivery, fetchHistory
+  };
+  useEffect(() => {
+    if (!hospitalId) return undefined;
+    socket.connect();
+    socket.emit('join_hospital', hospitalId);
+    let timer = null;
+    const onChange = (evt) => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        const L = liveRef.current;
+        const txId = Number(evt?.transactionId);
+        if (L.activeTab === 'form' && !L.editingTxId && L.temporaryTxId && txId === Number(L.temporaryTxId)) {
+          L.reloadPickup(L.temporaryTxId, new Set(L.pickupDirtyRooms()));
+        } else if (L.editingTxId && txId === Number(L.editingTxId) && L.editingStatus === 'PROSES') {
+          L.reloadDelivery(L.editingTxId, new Set(L.deliveryDirtyRooms()));
+        } else if (L.activeTab === 'history' && !L.editingTxId) {
+          L.fetchHistory();
+        }
+      }, 700);
+    };
+    socket.on('data_changed', onChange);
+    return () => {
+      clearTimeout(timer);
+      socket.off('data_changed', onChange);
+      socket.disconnect();
+    };
+  }, [hospitalId]);
+
   return (
     <div className="min-h-screen bg-slate-50 py-6 sm:py-10">
       <div className="mx-auto max-w-screen-2xl px-4 sm:px-6 lg:px-8 space-y-6">
@@ -1772,6 +2062,9 @@ export default function SerahTerima() {
                 setEditingTransaction(null);
                 setTemporaryTxId(null);
                 setPickupRoomSign(null);
+                setPickupBaseline({});
+                setForceNewForm(false);
+                checkDayForms();
                 setSavedRooms([]);
                 setNotes('');
                 setHospitalStaffPickup('');
@@ -2075,6 +2368,7 @@ export default function SerahTerima() {
                       <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest">
                         Pengisi (Petugas IKM)
                       </label>
+                      {lockedRoomSign('pickup') ? renderLockedValetField(lockedRoomSign('pickup')) : (
                       <div className="relative">
                         <div
                           onClick={() => setIsEmployeeDropdownOpen(!isEmployeeDropdownOpen)}
@@ -2135,6 +2429,7 @@ export default function SerahTerima() {
                           </div>
                         )}
                       </div>
+                      )}
                     </div>
 
                     {/* Date pickup */}
@@ -2394,10 +2689,16 @@ export default function SerahTerima() {
                           <p className="text-[10px] text-slate-400 mt-0.5">Terpisah dari pencatatan kilogram</p>
                         </div>
                       </div>
+                      {temporaryTxId && (
+                        <p className="text-[10px] text-slate-500">
+                          Jenis express ditetapkan saat formulir dibuat. Untuk linen express, buat <b>Formulir Baru</b> khusus express.
+                        </p>
+                      )}
                       <button
                         type="button"
-                        onClick={() => setIsExpress(prev => !prev)}
-                        className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl border text-left transition active:scale-[0.99] cursor-pointer ${
+                        disabled={!!temporaryTxId}
+                        onClick={() => !temporaryTxId && setIsExpress(prev => !prev)}
+                        className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl border text-left transition active:scale-[0.99] cursor-pointer disabled:cursor-not-allowed disabled:opacity-70 ${
                           isExpress
                             ? 'bg-amber-50 border-amber-300 text-amber-900'
                             : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
@@ -2590,7 +2891,7 @@ export default function SerahTerima() {
                       Petugas
                     </label>
                     <div className="relative">
-                      {!isEditable ? (
+                      {isEditable && lockedRoomSign('delivery') ? renderLockedValetField(lockedRoomSign('delivery')) : !isEditable ? (
                         <div className="w-full h-10 pl-10 pr-4 bg-slate-100 border border-slate-200 text-slate-400 rounded-xl text-xs font-semibold flex items-center gap-2 cursor-not-allowed">
                           <User className="h-4 w-4 text-slate-400" />
                           <span>
@@ -3411,6 +3712,68 @@ export default function SerahTerima() {
         )}
 
       </div>
+
+      {/* Modal formulir hari ini: Lanjutkan formulir induk atau Formulir Baru */}
+      {dayFormsModal.show && (
+        <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
+          <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-100 flex items-start gap-3">
+              <div className="p-2 rounded-xl bg-[#126776]/10 text-[#126776] shrink-0"><FileText className="h-5 w-5" /></div>
+              <div className="flex-1">
+                <h3 className="text-sm font-bold text-slate-800">Formulir Serah Terima Hari Ini</h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  {dayFormsModal.mode === 'conflict'
+                    ? 'Sudah ada formulir hari ini. Isian Anda akan digabung ke formulir yang dipilih (per ruangan), atau buat Formulir Baru bila ini proses serah terima terpisah.'
+                    : 'Satu hari satu formulir induk. Lanjutkan formulir yang ada agar semua ruangan terekap di satu formulir. Pilih Formulir Baru hanya untuk proses serah terima kedua atau linen express.'}
+                </p>
+              </div>
+              <button type="button" onClick={() => setDayFormsModal(m => ({ ...m, show: false }))}
+                className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"><X className="h-4 w-4" /></button>
+            </div>
+            <div className="p-4 space-y-2 max-h-[55vh] overflow-y-auto">
+              {dayFormsModal.forms.map(f => (
+                <div key={f.id} className={`p-3 rounded-xl border ${f.can_continue ? 'border-slate-200 bg-white' : 'border-slate-150 bg-slate-50'}`}>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-xs font-bold text-slate-800">{f.form_number}</span>
+                      {f.is_express === 1 && (
+                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                          <Zap className="h-3 w-3" /> Express
+                        </span>
+                      )}
+                      {!f.can_continue && (
+                        <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-slate-100 text-slate-500 border border-slate-200">
+                          {f.status === 'SELESAI' ? 'Selesai' : 'Pengambilan sudah final'}
+                        </span>
+                      )}
+                    </div>
+                    {f.can_continue && (
+                      <button type="button" onClick={() => continueDayForm(f)}
+                        className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-[#126776] to-[#1ea59e] text-white text-[11px] font-semibold cursor-pointer hover:opacity-90">
+                        {dayFormsModal.mode === 'conflict' ? 'Gabungkan ke formulir ini' : 'Lanjutkan'}
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    {f.rooms} ruangan · {f.total_kotor} pcs kotor
+                    {f.valets?.length ? ` · Petugas IKM: ${f.valets.join(', ')}` : ''}
+                  </p>
+                </div>
+              ))}
+            </div>
+            <div className="px-4 py-3 border-t border-slate-100 flex flex-wrap justify-end gap-2">
+              <button type="button" onClick={() => setDayFormsModal(m => ({ ...m, show: false }))}
+                className="px-3.5 py-2 rounded-lg border border-slate-200 text-slate-600 text-xs font-semibold cursor-pointer hover:bg-slate-50">
+                Batal
+              </button>
+              <button type="button" onClick={startNewDayForm}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-amber-300 bg-amber-50 text-amber-800 text-xs font-semibold cursor-pointer hover:bg-amber-100">
+                <PlusCircle className="h-3.5 w-3.5" /> Formulir Baru
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Toast Notification */}
       {toast.show && (

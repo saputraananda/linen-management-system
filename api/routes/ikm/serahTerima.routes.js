@@ -4,7 +4,8 @@ import {
   getTransactionDetail,
   createTransaction,
   updateTransactionDelivery,
-  getIkmEmployees
+  getIkmEmployees,
+  getDayForms
 } from '../../controllers/ikm/serahTerima.controller.js';
 import { signRoom, unsignRoom, getRoomNurses } from '../../controllers/ikm/roomSign.controller.js';
 import { authenticateToken } from '../../middleware/auth.js';
@@ -16,6 +17,9 @@ router.use(authenticateToken);
 
 // GET /api/ikm/transactions - List all transactions for a hospital
 router.get('/transactions', getTransactions);
+
+// GET /api/ikm/transactions-day?hospitalId=&date= - Formulir hari itu (modal Lanjutkan / Formulir Baru)
+router.get('/transactions-day', getDayForms);
 
 // GET /api/ikm/transactions/:id - Get detail of a specific transaction
 router.get('/transactions/:id', getTransactionDetail);

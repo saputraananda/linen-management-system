@@ -1,4 +1,4 @@
-import { ikmPool } from '../db/pool.js';
+import { ikmPool, mainPool } from '../db/pool.js';
 import { getSignatureUrl } from '../middleware/upload.js';
 
 // ───────────────────────── TTD Serah Terima per Unit (ruangan) ─────────────────────────
@@ -61,16 +61,35 @@ export const hospitalRequiresUnitSign = async (conn, hospitalId) => {
   return !!row && Number(row.flag) === 1 && Number(row.rooms) > 0;
 };
 
-const stageOf = (row, stage) => {
+const toTitleCase = (str) => (str || '').trim().toLowerCase().split(/\s+/)
+  .map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
+/** Nama petugas IKM (mst_employee di database utama) untuk daftar employee_id */
+const employeeNames = async (ids) => {
+  const uniq = [...new Set(ids.filter(Boolean).map(Number))];
+  if (!uniq.length) return new Map();
+  try {
+    const [rows] = await mainPool.query(
+      'SELECT employee_id, full_name FROM mst_employee WHERE employee_id IN (?)', [uniq]);
+    return new Map(rows.map(r => [Number(r.employee_id), toTitleCase(r.full_name)]));
+  } catch (e) {
+    console.error('employeeNames:', e.message);
+    return new Map();
+  }
+};
+
+const stageOf = (row, stage, names = new Map()) => {
   if (!row) return null;
   const nurseSig = row[`signature_nurse_${stage}`];
   const valetSig = row[`signature_valet_${stage}`];
   if (!nurseSig && !valetSig && !row[`nurse_name_${stage}`]) return null;
+  const valetId = row[`valet_${stage}_id`] || null;
   return {
     nurse_name: row[`nurse_name_${stage}`] || null,
     signature_nurse: getSignatureUrl(nurseSig),
     signature_valet: getSignatureUrl(valetSig),
-    valet_id: row[`valet_${stage}_id`] || null,
+    valet_id: valetId,
+    valet_name: valetId ? (names.get(Number(valetId)) || null) : null,
     signed_at: row[`signed_${stage}_at`] || null,
     complete: !!(nurseSig && valetSig && row[`nurse_name_${stage}`])
   };
@@ -99,6 +118,8 @@ export const getRoomSignState = async (conn, transactionId, { roomIds = null } =
   const [signRows] = await conn.query(
     'SELECT * FROM tr_linen_transaction_room_sign WHERE transaction_id = ?', [transactionId]);
   const signByRoom = new Map(signRows.map(s => [Number(s.room_id), s]));
+  // Petugas IKM bisa berbeda per ruangan: nama diambil dari valet yang tercatat pada TTD ruangan itu
+  const names = await employeeNames(signRows.flatMap(s => [s.valet_pickup_id, s.valet_delivery_id]));
 
   const list = rooms.map(r => {
     const sign = signByRoom.get(Number(r.room_id));
@@ -108,8 +129,8 @@ export const getRoomSignState = async (conn, transactionId, { roomIds = null } =
       total_kotor: Number(r.total_kotor),
       total_bersih: Number(r.total_bersih),
       required: required && Number(r.is_gudang_linen) !== 1,
-      pickup: stageOf(sign, 'pickup'),
-      delivery: stageOf(sign, 'delivery')
+      pickup: stageOf(sign, 'pickup', names),
+      delivery: stageOf(sign, 'delivery', names)
     };
   });
   const pending = (stage) => list.filter(r => r.required && !r[stage]?.complete).map(r => r.room_name);

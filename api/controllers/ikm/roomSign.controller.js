@@ -1,4 +1,4 @@
-import { ikmPool } from '../../db/pool.js';
+import { ikmPool, mainPool } from '../../db/pool.js';
 import { saveBase64Image, cleanupSignatures } from '../../middleware/upload.js';
 import { getRoomSignState } from '../../utils/roomSign.js';
 
@@ -80,7 +80,14 @@ export const signRoom = async (req, res) => {
     const valetPath = saveBase64Image(signatureValet, `room${roomId}_valet_${stage}`, id);
     saved = { [`signature_nurse_${stage}`]: nursePath, [`signature_valet_${stage}`]: valetPath };
 
-    const valetId = req.user?.id || null;
+    // Petugas IKM ruangan ini = yang dipilih di isian Pengisi/Pengirim (satu akun bisa dipakai beberapa tim);
+    // bila tidak dikirim/tidak valid, pakai akun yang login.
+    let valetId = req.user?.id || null;
+    const chosen = Number(req.body.valetId);
+    if (chosen > 0) {
+      const [[emp]] = await mainPool.query('SELECT employee_id FROM mst_employee WHERE employee_id = ?', [chosen]);
+      if (emp) valetId = chosen;
+    }
     await connection.query(
       `INSERT INTO tr_linen_transaction_room_sign
          (transaction_id, room_id, nurse_name_${stage}, signature_nurse_${stage}, signature_valet_${stage}, valet_${stage}_id, signed_${stage}_at)
@@ -99,7 +106,7 @@ export const signRoom = async (req, res) => {
     const io = req.app.get('io');
     if (io) {
       io.to(`hospital_${tx.hospital_id}`).emit('data_changed', {
-        type: 'ROOM_SIGNED',
+        type: 'ROOM_SIGNED', transactionId: Number(id),
         message: `TTD unit ${room.room_name} tersimpan`
       });
     }
@@ -166,7 +173,7 @@ export const unsignRoom = async (req, res) => {
 
     const io = req.app.get('io');
     if (io) {
-      io.to(`hospital_${tx.hospital_id}`).emit('data_changed', { type: 'ROOM_UNSIGNED', message: 'TTD unit dibuka untuk diedit' });
+      io.to(`hospital_${tx.hospital_id}`).emit('data_changed', { type: 'ROOM_UNSIGNED', transactionId: Number(id), message: 'TTD unit dibuka untuk diedit' });
     }
 
     const state = await getRoomSignState(ikmPool, id);
