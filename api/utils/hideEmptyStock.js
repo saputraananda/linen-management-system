@@ -19,9 +19,12 @@ export const linenHasData = (hl) =>
   n(hl.total_kurang) > 0 ||
   n(hl.total_so) > 0;
 
+// Pengecualian: linen MILIK_RS stoknya tidak diketahui (milik RS, bukan stok IKM),
+// jadi selalu ditampilkan walau semua angkanya 0. Aturan sembunyi hanya berlaku untuk linen sewa.
 export function hideEmptyStock(allLinens, allRoomLinens) {
-  const roomLinens = allRoomLinens.filter(roomLinenHasData);
+  const milikRsIds = new Set(allLinens.filter((hl) => hl.ownership_type === 'MILIK_RS').map((hl) => hl.id));
+  const roomLinens = allRoomLinens.filter((rl) => milikRsIds.has(rl.hospital_linen_id) || roomLinenHasData(rl));
   const withRoomData = new Set(roomLinens.map((rl) => rl.hospital_linen_id));
-  const linens = allLinens.filter((hl) => linenHasData(hl) || withRoomData.has(hl.id));
+  const linens = allLinens.filter((hl) => milikRsIds.has(hl.id) || linenHasData(hl) || withRoomData.has(hl.id));
   return { linens, roomLinens };
 }

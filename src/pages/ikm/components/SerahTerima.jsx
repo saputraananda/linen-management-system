@@ -661,7 +661,7 @@ export default function SerahTerima() {
   const fetchHospitalInfo = async () => {
     try {
       const token = localStorage.getItem('token');
-      const { data } = await axios.get(`/api/ikm/dashboard-data?hospitalId=${hospitalId}`, {
+      const { data } = await axios.get(`/api/ikm/dashboard-data?hospitalId=${hospitalId}&all=1`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (data?.success) {
@@ -866,7 +866,7 @@ export default function SerahTerima() {
     setLoadingLinens(true);
     try {
       const token = localStorage.getItem('token');
-      const { data } = await axios.get(`/api/ikm/dashboard-data?hospitalId=${hospitalId}`, {
+      const { data } = await axios.get(`/api/ikm/dashboard-data?hospitalId=${hospitalId}&all=1`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (data?.success) {

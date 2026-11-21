@@ -238,7 +238,7 @@ export default function UnitSerahTerima() {
     const fetchHospitalInfo = async () => {
         try {
             const token = localStorage.getItem('token');
-            const { data } = await axios.get('/api/unit/dashboard-data', {
+            const { data } = await axios.get('/api/unit/dashboard-data?all=1', {
                 headers: { Authorization: `Bearer ${token}` }
             });
             if (data?.success) {

@@ -1,4 +1,5 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useLayoutEffect, useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronDown } from 'lucide-react';
 
 // Dropdown ruangan dengan badge penanda ruangan yang masih ada pekerjaan untuk Valet IKM:
@@ -9,13 +10,42 @@ import { ChevronDown } from 'lucide-react';
 // <select> bawaan browser tidak bisa menampilkan badge, jadi dibuat dropdown sendiri.
 const RoomStatusSelect = ({ value, onChange, rooms, roomStatus }) => {
   const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState(null);
   const ref = useRef(null);
+  const menuRef = useRef(null);
 
   useEffect(() => {
-    const onDown = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const onDown = (e) => {
+      if (ref.current?.contains(e.target) || menuRef.current?.contains(e.target)) return;
+      setOpen(false);
+    };
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
   }, []);
+
+  // Menu dirender lewat portal (position: fixed) supaya tidak terpotong kontainer ber-overflow;
+  // posisinya mengikuti tombol saat scroll/resize, dan membuka ke atas bila ruang di bawah kurang.
+  useLayoutEffect(() => {
+    if (!open) return undefined;
+    const MENU_MAX = 288; // = max-h-72
+    const place = () => {
+      const r = ref.current?.getBoundingClientRect();
+      if (!r) return;
+      const below = window.innerHeight - r.bottom - 8;
+      const above = r.top - 8;
+      const up = below < Math.min(MENU_MAX, 200) && above > below;
+      const width = Math.max(r.width, 320);
+      const left = Math.max(8, Math.min(r.left, window.innerWidth - width - 8));
+      setPos({ left, width, maxHeight: Math.min(MENU_MAX, up ? above : below), ...(up ? { bottom: window.innerHeight - r.top + 4 } : { top: r.bottom + 4 }) });
+    };
+    place();
+    window.addEventListener('scroll', place, true);
+    window.addEventListener('resize', place);
+    return () => {
+      window.removeEventListener('scroll', place, true);
+      window.removeEventListener('resize', place);
+    };
+  }, [open]);
 
   const statusOf = (id) => roomStatus[id] || { kotor: 0, cuci: 0, kurang: 0 };
   const selected = rooms.find(r => String(r.id) === String(value));
@@ -76,8 +106,8 @@ const RoomStatusSelect = ({ value, onChange, rooms, roomStatus }) => {
       <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-slate-400">
         <ChevronDown className="w-4 h-4" />
       </div>
-      {open && (
-        <div className="absolute z-30 mt-1 w-full min-w-[320px] max-h-72 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-xl py-1">
+      {open && pos && createPortal(
+        <div ref={menuRef} style={{ position: 'fixed', ...pos }} className="z-[10000] overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-xl py-1">
           <button type="button" onClick={() => pick('')} className={optCls(!value)}>
             <span>Semua Ruangan</span>
             {pending > 0 && <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200 text-[10px] font-bold">{pending} ruangan</span>}
@@ -88,7 +118,8 @@ const RoomStatusSelect = ({ value, onChange, rooms, roomStatus }) => {
               <Badges id={room.id} />
             </button>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

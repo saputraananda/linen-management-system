@@ -128,7 +128,10 @@ export const getDashboardData = async (req, res) => {
     `;
     const [allRoomLinens] = await ikmPool.query(roomsQuery, [hospitalId]);
     // Linen dengan stok awal ruangan 0 (belum ada aktivitas) tidak ditampilkan
-    const { linens, roomLinens } = hideEmptyStock(allLinens, allRoomLinens);
+    // Form serah terima (?all=1) butuh semua linen termasuk yang stoknya masih 0 (mis. Milik RS)
+    const { linens, roomLinens } = req.query.all === '1'
+      ? { linens: allLinens, roomLinens: allRoomLinens }
+      : hideEmptyStock(allLinens, allRoomLinens);
 
     // 4. Fetch All Rooms (even those without registered linens)
     const allRoomsQuery = `
