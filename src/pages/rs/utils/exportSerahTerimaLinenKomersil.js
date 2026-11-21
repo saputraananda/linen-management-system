@@ -185,7 +185,7 @@ export default async function exportSerahTerimaLinenKomersil(transaction, detail
     month: 'long',
     year: 'numeric'
   });
-  dateCell.value = formattedPickupDate;
+  dateCell.value = [transaction.form_number ? `No. Form: ${transaction.form_number}` : '', transaction.parent_form_number ? `Induk: ${transaction.parent_form_number}` : '', formattedPickupDate].filter(Boolean).join('  |  ');
   dateCell.font = { name: 'Plus Jakarta Sans', size: 10, italic: false };
   dateCell.alignment = { horizontal: 'center', vertical: 'middle' };
   worksheet.getRow(3).height = 24;
@@ -206,7 +206,7 @@ export default async function exportSerahTerimaLinenKomersil(transaction, detail
 
   // Row 5: Table Header (Height: 36px)
   const headerRow = worksheet.getRow(5);
-  headerRow.values = ['No', 'Jenis Linen Komersil', 'P (m)', 'L (m)', 'Luas (m²)', 'Kotor', 'Bersih', 'Keterangan'];
+  headerRow.values = ['No', 'Jenis Linen Komersil / Ruangan', 'P (m)', 'L (m)', 'Hasil Hitung', 'Kotor', 'Bersih', 'Keterangan'];
   headerRow.height = 36;
 
   headerRow.eachCell((cell) => {
@@ -227,13 +227,13 @@ export default async function exportSerahTerimaLinenKomersil(transaction, detail
     const bersih = parseInt(item.qty_bersih || 0);
     const len = item.length_cm !== null ? parseFloat(item.length_cm).toFixed(1) : '—';
     const wid = item.width_cm !== null ? parseFloat(item.width_cm).toFixed(1) : '—';
-    const area = item.area_m2 !== null ? parseFloat(item.area_m2).toFixed(2) : '—';
+    const area = (item.measure_unit ? `${Number(item.measure_value || 0).toLocaleString('id-ID', { maximumFractionDigits: 2 })} ${item.measure_unit}` : (item.area_m2 !== null ? `${parseFloat(item.area_m2).toFixed(2)} m²` : '—'));
     const notes = item.notes || '';
 
     const row = worksheet.getRow(currentRow);
     row.values = [
       index + 1,
-      getLinenDisplayName(item),
+      (item.room_name ? `${getLinenDisplayName(item)} — ${item.room_name}` : getLinenDisplayName(item)),
       len,
       wid,
       area,

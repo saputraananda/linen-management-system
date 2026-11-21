@@ -1,4 +1,5 @@
 import { ikmPool, mainPool } from '../../db/pool.js';
+import { syncKomersilChild } from '../../utils/komersilChild.js';
 import { getSignatureUrl } from '../../middleware/upload.js';
 import { parsePaging, buildPagination, offsetOf } from '../../utils/paging.js';
 import { getRoomSignState } from '../../utils/roomSign.js';
@@ -450,6 +451,9 @@ export const updateTransactionDetail = async (req, res) => {
       details: newDetails
     };
 
+    // Formulir komersil anak ikut koreksi RS
+    await syncKomersilChild(connection, id);
+
     // 6. Log to audit trail
     await connection.query(
       `INSERT INTO tr_linen_transaction_audit 
@@ -547,6 +551,9 @@ export const deleteTransactionDetail = async (req, res) => {
       transaction: stripAdminKg(transaction),
       details: newDetails
     };
+
+    // Formulir komersil anak ikut koreksi RS
+    await syncKomersilChild(connection, id);
 
     // 6. Log to audit trail
     await connection.query(

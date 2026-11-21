@@ -1,4 +1,5 @@
 import { ikmPool, mainPool } from '../../db/pool.js';
+import { overlayParentInfo, komersilMeasure } from '../../utils/komersilChild.js';
 import { getSignatureUrl } from '../../middleware/upload.js';
 
 // Helper to format string to Capital Each Word (Title Case)
@@ -77,6 +78,7 @@ export const getRSKomersilTransactions = async (req, res) => {
     query += ` ORDER BY t.pickup_date DESC, t.id DESC`;
 
     const [transactions] = await ikmPool.query(query, params);
+    await overlayParentInfo(ikmPool, transactions);
 
     // Fetch employee name lookup
     const [employees] = await mainPool.query(
@@ -142,23 +144,27 @@ export const getRSKomersilTransactionDetail = async (req, res) => {
     }
 
     const transaction = transactions[0];
+    await overlayParentInfo(ikmPool, transaction);
 
     const [details] = await ikmPool.query(
       `SELECT td.*,
               COALESCE(td.item_name, hl.hospital_linen_name, l.linen_name) as linen_name,
               l.linen_code,
-              hl.unit, hl.hospital_linen_name,
-              s.size_name, c.color_name, m.material_name
+              hl.unit, hl.hospital_linen_name, hl.grammage,
+              COALESCE(hl.washing_price_type, 'PCS') AS washing_price_type,
+              s.size_name, c.color_name, m.material_name, r.room_name
        FROM tr_komersil_linen_transaction_detail td
        LEFT JOIN mst_hospital_linen hl ON td.hospital_linen_id = hl.id
        LEFT JOIN mst_linen l ON hl.linen_id = l.id
        LEFT JOIN mst_size s ON l.size_id = s.id
        LEFT JOIN mst_color c ON l.color_id = c.id
        LEFT JOIN mst_material m ON l.material_id = m.id
+       LEFT JOIN mst_rooms_rs r ON td.room_id = r.id
        WHERE td.transaction_id = ?
-       ORDER BY td.id ASC`,
+       ORDER BY r.room_name ASC, td.hospital_linen_id ASC, td.id ASC`,
       [id]
     );
+    details.forEach(d => { const m = komersilMeasure(d); d.measure_value = m.value; d.measure_unit = m.unit; });
 
     // Fetch employee names
     const [employees] = await mainPool.query(

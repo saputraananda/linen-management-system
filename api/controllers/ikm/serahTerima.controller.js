@@ -5,6 +5,7 @@ import { snapshotRoomStock, logRoomStockChanges, actorName } from '../../utils/r
 import {
   hospitalRequiresUnitSign, getRoomSignState, roomFingerprints, findLockedChangedRooms
 } from '../../utils/roomSign.js';
+import { commercialLinenIds, syncKomersilChild } from '../../utils/komersilChild.js';
 
 // Helper to format string to Capital Each Word (Title Case)
 const toTitleCase = (str) => {
@@ -183,7 +184,9 @@ export const getTransactions = async (req, res) => {
         CASE WHEN t.total_kg_valet IS NULL THEN NULL ELSE t.total_kg_valet + COALESCE(h.kg_agreement, 0) END AS kg_total,
         (SELECT COUNT(*) FROM tr_linen_transaction_detail d WHERE d.transaction_id = t.id) as total_items,
         (SELECT COALESCE(SUM(qty_kotor), 0) FROM tr_linen_transaction_detail d WHERE d.transaction_id = t.id) as total_qty_kotor,
-        (SELECT COALESCE(SUM(qty_bersih), 0) FROM tr_linen_transaction_detail d WHERE d.transaction_id = t.id) as total_qty_bersih`;
+        (SELECT COALESCE(SUM(qty_bersih), 0) FROM tr_linen_transaction_detail d WHERE d.transaction_id = t.id) as total_qty_bersih,
+        (SELECT k.id FROM tr_komersil_linen_transaction k WHERE k.parent_transaction_id = t.id) as komersil_id,
+        (SELECT k.form_number FROM tr_komersil_linen_transaction k WHERE k.parent_transaction_id = t.id) as komersil_form_number`;
     // Bagian FROM ... WHERE dipakai bersama oleh COUNT(*) dan query data
     let query = `
       FROM tr_linen_transaction t
@@ -285,7 +288,7 @@ export const getTransactionDetail = async (req, res) => {
       `SELECT td.*,
               hl.stock_in_rs,
               l.linen_name, l.linen_code,
-              hl.unit, hl.hospital_linen_name, hl.ownership_type,
+              hl.unit, hl.hospital_linen_name, hl.ownership_type, hl.washing_price_type,
               s.size_name, c.color_name, m.material_name,
               r.room_name
        FROM tr_linen_transaction_detail td
@@ -388,6 +391,9 @@ export const getTransactionDetail = async (req, res) => {
     }
 
     const roomSign = await getRoomSignState(ikmPool, id);
+    const [[komersil]] = await ikmPool.query(
+      'SELECT id, form_number, status FROM tr_komersil_linen_transaction WHERE parent_transaction_id = ?', [id]);
+    if (transaction) transaction.komersil = komersil || null;
 
     return res.status(200).json({
       success: true,
@@ -534,7 +540,7 @@ export const createTransaction = async (req, res) => {
 
       // Kembalikan Dirty Utility dari rincian lama sebelum dihitung ulang
       const [prevDetails] = await connection.query(
-        `SELECT hospital_linen_id, room_id, qty_kotor FROM tr_linen_transaction_detail WHERE transaction_id = ?`,
+        `SELECT hospital_linen_id, room_id, qty_kotor, is_commercial FROM tr_linen_transaction_detail WHERE transaction_id = ?`,
         [transactionId]
       );
       // Isi kotor per ruangan sebelum disimpan ulang (untuk mereset TTD unit yang angkanya berubah)
@@ -542,6 +548,7 @@ export const createTransaction = async (req, res) => {
       for (const prev of prevDetails) {
         if (scope && !scope.has(prev.room_id)) continue; // ruangan di luar lingkup simpan tidak disentuh
         if (!prev.room_id || !(prev.qty_kotor > 0)) continue;
+        if (Number(prev.is_commercial) === 1) continue; // linen komersil tidak memengaruhi stok ruangan
         await connection.query(
           `UPDATE mst_hospital_linen_rooms SET qty_dirty = qty_dirty + ? WHERE hospital_linen_id = ? AND room_id = ?`,
           [prev.qty_kotor, prev.hospital_linen_id, prev.room_id]
@@ -648,18 +655,21 @@ export const createTransaction = async (req, res) => {
       );
     }
 
+    // Linen komersil (is_commercial) dicatat di induk tetapi stoknya tidak disentuh; disalin ke formulir komersil anak
+    const commercialIds = await commercialLinenIds(connection, details.map(d => d.hospitalLinenId));
     for (const item of details) {
       // Simpan per ruangan: isian ruangan lain dari perangkat ini (bisa sudah basi) diabaikan
       if (scope && !scope.has(item.roomId || null)) continue;
+      const isCommercial = commercialIds.has(Number(item.hospitalLinenId)) ? 1 : 0;
       await connection.query(
         `INSERT INTO tr_linen_transaction_detail
-         (transaction_id, hospital_linen_id, room_id, qty_kotor, qty_bersih, notes)
-         VALUES (?, ?, ?, ?, NULL, ?)`,
-        [transactionId, item.hospitalLinenId, item.roomId || null, parseInt(item.qtyKotor || 0), item.notes || null]
+         (transaction_id, hospital_linen_id, room_id, qty_kotor, qty_bersih, notes, is_commercial)
+         VALUES (?, ?, ?, ?, NULL, ?, ?)`,
+        [transactionId, item.hospitalLinenId, item.roomId || null, parseInt(item.qtyKotor || 0), item.notes || null, isCommercial]
       );
       // Linen kotor diambil IKM: keluar dari Dirty Utility ruangan, tercatat sebagai Cuci IKM
       const qtyKotor = parseInt(item.qtyKotor || 0);
-      if (item.roomId && qtyKotor > 0) {
+      if (item.roomId && qtyKotor > 0 && !isCommercial) {
         await takeKotorFromRoom(connection, item.hospitalLinenId, item.roomId, qtyKotor);
       }
     }
@@ -696,6 +706,9 @@ export const createTransaction = async (req, res) => {
         });
       }
     }
+
+    // Formulir komersil anak mengikuti isi linen komersil induk
+    await syncKomersilChild(connection, transactionId);
 
     // Log stok ruangan: perubahan Terpakai/Dirty akibat pengambilan kotor (selisih bersih saja)
     await logRoomStockChanges(connection, stockBefore, await snapshotRoomStock(connection, stockPairs), {
@@ -1001,7 +1014,7 @@ export const updateTransactionDelivery = async (req, res) => {
         ]
       );
       // Koreksi kotor oleh admin: samakan Dirty Utility dengan selisihnya
-      if (prev?.room_id && prev.qty_kotor !== newKotor) {
+      if (prev?.room_id && prev.qty_kotor !== newKotor && Number(prev.is_commercial) !== 1) {
         const selisih = prev.qty_kotor - newKotor;
         if (selisih > 0) {
           // Kotor dikurangi: selisihnya kembali ke Dirty Utility
@@ -1055,6 +1068,9 @@ export const updateTransactionDelivery = async (req, res) => {
         }
       }
     }
+
+    // Formulir komersil anak: kepala, qty dan bersih mengikuti induk
+    await syncKomersilChild(connection, id, { syncBersih: true });
 
     // Fetch new values for the audit log
     const [newHeaderRows] = await connection.query(

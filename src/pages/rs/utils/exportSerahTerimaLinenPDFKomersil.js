@@ -208,7 +208,9 @@ export default async function exportSerahTerimaLinenPDFKomersil(transaction, det
     month: 'long',
     year: 'numeric'
   });
-  const formNum = transaction.form_number ? `No. Form: ${transaction.form_number}` : '';
+  const formNum = transaction.form_number
+    ? `No. Form: ${transaction.form_number}${transaction.parent_form_number ? ` (Induk ${transaction.parent_form_number})` : ''}`
+    : '';
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8.5);
@@ -220,10 +222,10 @@ export default async function exportSerahTerimaLinenPDFKomersil(transaction, det
   // 2. Table of Items
   const tableData = details.map((item, index) => [
     index + 1,
-    getLinenDisplayName(item),
+    (item.room_name ? `${getLinenDisplayName(item)} — ${item.room_name}` : getLinenDisplayName(item)),
     item.length_cm !== null ? `${parseFloat(item.length_cm).toFixed(1)}m` : '—',
     item.width_cm !== null ? `${parseFloat(item.width_cm).toFixed(1)}m` : '—',
-    item.area_m2 !== null ? `${parseFloat(item.area_m2).toFixed(2)} m²` : '—',
+    (item.measure_unit ? `${Number(item.measure_value || 0).toLocaleString('id-ID', { maximumFractionDigits: 2 })} ${item.measure_unit}` : (item.area_m2 !== null ? `${parseFloat(item.area_m2).toFixed(2)} m²` : '—')),
     parseInt(item.qty_kotor || 0),
     transaction.status === 'SELESAI' ? parseInt(item.qty_bersih || 0) : '—',
     item.notes || '-'
@@ -232,7 +234,7 @@ export default async function exportSerahTerimaLinenPDFKomersil(transaction, det
   autoTable(doc, {
     startY: currentY,
     margin: { left: margin, right: margin },
-    head: [['No', 'Jenis Linen Komersil', 'P', 'L', 'Luas', 'Kotor', 'Bersih', 'Keterangan']],
+    head: [['No', 'Jenis Linen Komersil / Ruangan', 'P', 'L', 'Hasil', 'Kotor', 'Bersih', 'Keterangan']],
     body: tableData,
     theme: 'grid',
     headStyles: {

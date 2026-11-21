@@ -7,6 +7,7 @@ import {
   Warehouse, Building, Shirt, HelpCircle, Info, X, Trash2
 } from 'lucide-react';
 import { socket } from '../../../utils/socket';
+import KomersilChildForm from './KomersilChildForm';
 
 // Utility to convert string to Title Case
 const toTitleCase = (str) => {
@@ -256,6 +257,8 @@ export default function SerahTerimaKomersil() {
 
   // Edit/Completion view state (Day 2 Bersih)
   const [editingTransaction, setEditingTransaction] = useState(null);
+  // Formulir komersil berinduk (otomatis dari Serah Terima Linen) memakai tampilan sendiri
+  const [childTx, setChildTx] = useState(null);
   const [userDelivery, setUserDelivery] = useState('');
   const [userDeliveryName, setUserDeliveryName] = useState('');
   const [hospitalStaffDelivery, setHospitalStaffDelivery] = useState('');
@@ -649,6 +652,13 @@ export default function SerahTerimaKomersil() {
       if (data?.success) {
         const fullTx = data.data;
 
+        if (fullTx.transaction.parent_transaction_id) {
+          setEditingTransaction(null);
+          setChildTx(fullTx);
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+          return;
+        }
+
         const hasPickupSignatures = fullTx.transaction.signature_valet_pickup && fullTx.transaction.signature_hospital_pickup;
 
         if (!hasPickupSignatures) {
@@ -940,14 +950,14 @@ export default function SerahTerimaKomersil() {
               {hospitalName || 'Rumah Sakit'}
             </h2>
             <p className="text-xs text-slate-400 mt-1 font-medium">
-              Portal pencatatan sirkulasi harian linen komersil (flag is_commercial).
+              Serah terima linen komersil.
             </p>
           </div>
 
           {/* Tab Selector System */}
           <div className="flex bg-slate-100 p-1.5 rounded-xl shrink-0 h-fit self-start md:self-center border border-slate-200">
             <button
-              onClick={() => { setActiveTab('history'); setEditingTransaction(null); }}
+              onClick={() => { setActiveTab('history'); setEditingTransaction(null); setChildTx(null); }}
               className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${activeTab === 'history' && !editingTransaction
                 ? 'bg-gradient-to-r from-[#126776] to-[#1ea59e] text-white shadow-md shadow-[#126776]/10'
                 : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/55'
@@ -956,34 +966,10 @@ export default function SerahTerimaKomersil() {
               <Clock className="h-4 w-4" />
               Riwayat Transaksi
             </button>
-            <button
-              onClick={() => {
-                setActiveTab('form');
-                setEditingTransaction(null);
-                setTemporaryTxId(null);
-                setNotes('');
-                setHospitalStaffPickup('');
-                setHospitalAssistantPickup('');
-                setSignatureValetPickup('');
-                setSignatureHospitalPickup('');
-                setSignatureAssistantPickup('');
-                if (linensList.length > 0) {
-                  setKomersilRows(linensList.map((item, idx) => ({
-                    rowId: `row-${Date.now()}-${idx}`,
-                    hospitalLinenId: item.id,
-                    qtyKotor: '',
-                    notes: ''
-                  })));
-                }
-              }}
-              className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${activeTab === 'form' && !editingTransaction
-                ? 'bg-gradient-to-r from-[#126776] to-[#1ea59e] text-white shadow-md shadow-[#126776]/10'
-                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/55'
-                }`}
-            >
-              <PlusCircle className="h-4 w-4" />
-              Form Serah Terima
-            </button>
+            <span className="hidden items-center gap-1.5 px-3 text-[11px] font-semibold text-slate-500 md:flex">
+              <Info className="h-3.5 w-3.5 text-[#1ea59e]" />
+              Formulir dibuat otomatis dari Serah Terima Linen
+            </span>
           </div>
         </div>
 
@@ -1000,7 +986,17 @@ export default function SerahTerimaKomersil() {
         ) : (
           <>
             {/* ══════════════════════ TAB 1: HISTORY ══════════════════════ */}
-            {activeTab === 'history' && !editingTransaction && (
+            {childTx && (
+              <KomersilChildForm
+                key={childTx.transaction.id}
+                data={childTx}
+                onBack={() => { setChildTx(null); setActiveTab('history'); }}
+                onSaved={(msg) => { showToast(msg, 'success'); setChildTx(null); setActiveTab('history'); fetchHistory(); }}
+                onError={(msg) => showToast(msg, 'error')}
+              />
+            )}
+
+            {activeTab === 'history' && !editingTransaction && !childTx && (
               <div className="space-y-6 animate-[fadeIn_0.3s_ease-out]">
 
                 {/* Redesigned Filters Bar */}
@@ -1124,7 +1120,10 @@ export default function SerahTerimaKomersil() {
 
                           {/* Form number + recorder */}
                           <div className="min-w-0 flex-1">
-                            <p className="text-[10px] text-slate-400 font-semibold tracking-wider uppercase leading-none truncate">{tx.form_number}</p>
+                            <p className="text-[10px] text-slate-400 font-semibold tracking-wider uppercase leading-none truncate">
+                              {tx.form_number}
+                              {tx.parent_form_number && <span className="ml-1.5 normal-case tracking-normal text-[#1ea59e]">· Induk {tx.parent_form_number}</span>}
+                            </p>
                             <p className="text-sm font-semibold text-slate-800 mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 truncate">
                               <span className="flex items-center gap-1">
                                 <User className="h-3 w-3 text-slate-400 shrink-0" />
@@ -1198,7 +1197,7 @@ export default function SerahTerimaKomersil() {
             )}
 
             {/* ══════════════════════ TAB 2: CREATE NEW FORM (DAY 1 KOTOR) ══════════════════════ */}
-            {activeTab === 'form' && !editingTransaction && (
+            {activeTab === 'form' && !editingTransaction && !childTx && (
               <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden animate-[fadeIn_0.3s_ease-out]">
                 {/* Header info */}
                 <div className="p-6 bg-gradient-to-r from-[#126776] to-[#1ea59e] text-white">

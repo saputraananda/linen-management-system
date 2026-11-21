@@ -40,7 +40,7 @@ export const getShortageTransactions = async (req, res) => {
           SELECT COUNT(*) 
           FROM tr_linen_transaction_detail td
           WHERE td.transaction_id = t.id 
-            AND td.qty_kotor > COALESCE(td.qty_bersih, 0)
+            AND td.qty_kotor > COALESCE(td.qty_bersih, 0) AND td.is_commercial = 0
         ) AS shortage_items_count,
         (
           SELECT COALESCE(SUM(
@@ -48,7 +48,7 @@ export const getShortageTransactions = async (req, res) => {
           ), 0)
           FROM tr_linen_transaction_detail td
           WHERE td.transaction_id = t.id 
-            AND td.qty_kotor > COALESCE(td.qty_bersih, 0)
+            AND td.qty_kotor > COALESCE(td.qty_bersih, 0) AND td.is_commercial = 0
         ) AS total_shortage_qty
       FROM tr_linen_transaction t
       INNER JOIN mst_hospital h ON t.hospital_id = h.id
@@ -129,7 +129,7 @@ export const getShortageTransactionDetails = async (req, res) => {
        LEFT JOIN mst_material m ON l.material_id = m.id
        LEFT JOIN mst_rooms_rs r ON td.room_id = r.id
        WHERE td.transaction_id = ?
-         AND td.qty_kotor > COALESCE(td.qty_bersih, 0)
+         AND td.qty_kotor > COALESCE(td.qty_bersih, 0) AND td.is_commercial = 0
        ORDER BY l.linen_name ASC`,
             [id]
         );

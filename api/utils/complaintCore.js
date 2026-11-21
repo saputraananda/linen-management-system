@@ -459,6 +459,10 @@ export const createComplaint = async (req, res) => {
     if ([...grp.byIndex.values()].some((a) => a.length > PHOTOS_PER_ITEM)) {
       return res.status(400).json({ success: false, message: `Maksimal ${PHOTOS_PER_ITEM} foto per linen` });
     }
+    // Foto bukti wajib: minimal 1 foto per baris linen
+    if (v.items.some((_, idx) => !(grp.byIndex.get(idx) || []).length)) {
+      return res.status(400).json({ success: false, message: 'Setiap linen yang dikomplain wajib dilampiri minimal 1 foto bukti' });
+    }
 
     const actor = actorOf(u);
     const lg = legacyOf(v.items);
@@ -543,8 +547,13 @@ export const updateComplaint = async (req, res) => {
     for (let idx = 0; idx < v.items.length; idx++) {
       const it = v.items[idx];
       const kept = it.id ? docs.filter((d) => Number(d.item_id) === it.id && !removedIds.has(d.id)).length : 0;
-      if (kept + (grp.byIndex.get(idx) || []).length > PHOTOS_PER_ITEM) {
+      const total = kept + (grp.byIndex.get(idx) || []).length;
+      if (total > PHOTOS_PER_ITEM) {
         return res.status(400).json({ success: false, message: `Maksimal ${PHOTOS_PER_ITEM} foto per linen` });
+      }
+      // Foto bukti wajib: minimal 1 foto per baris linen
+      if (total < 1) {
+        return res.status(400).json({ success: false, message: 'Setiap linen yang dikomplain wajib dilampiri minimal 1 foto bukti' });
       }
     }
 

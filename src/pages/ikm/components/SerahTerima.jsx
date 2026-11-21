@@ -2231,7 +2231,10 @@ export default function SerahTerima() {
 
                       {/* Form number + recorder */}
                       <div className="min-w-0 flex-1">
-                        <p className="text-[10px] text-slate-400 font-semibold tracking-wider uppercase leading-none truncate">{tx.form_number}</p>
+                        <p className="text-[10px] text-slate-400 font-semibold tracking-wider uppercase leading-none truncate">
+                          {tx.form_number}
+                          {tx.komersil_form_number && <span className="ml-1.5 normal-case tracking-normal text-amber-600">· {tx.komersil_form_number}</span>}
+                        </p>
                         <p className="text-sm font-semibold text-slate-800 mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 truncate">
                           <span className="flex items-center gap-1">
                             <User className="h-3 w-3 text-slate-400 shrink-0" />
@@ -2587,7 +2590,9 @@ export default function SerahTerima() {
                                 <p className="font-semibold text-slate-800 text-sm">{getLinenDisplayName(item)}</p>
                               </td>
                               <td className="py-3 px-4 text-center">
-                                <OwnershipBadge type={item.ownership_type} />
+                                <OwnershipBadge type={item.ownership_type} /> {Number(item.is_commercial) === 1 && (
+                                  <span className="ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200" title="Linen komersil: masuk formulir komersil, tidak mengubah stok ruangan">Komersil</span>
+                                )}
                               </td>
                               <td className="py-3 px-4 text-center">
                                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-650 border border-slate-200">
@@ -2673,6 +2678,7 @@ export default function SerahTerima() {
                         />
                         <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 uppercase tracking-wider">Kg</span>
                       </div>
+                      <p className="text-[10px] text-amber-600">Linen komersil tidak ikut ditimbang; dihitung di formulir komersil.</p>
                       {kgSummary}
                     </div>
                   )}
@@ -2828,6 +2834,11 @@ export default function SerahTerima() {
                 <p className="text-xs text-white/80 mt-1 font-medium">
                   Catat pengembalian laundry bersih untuk {hospitalName || 'Rumah Sakit'}.
                 </p>
+                {editingTransaction.transaction.komersil && (
+                  <a href="/valet/serah-terima-komersil" className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-amber-200/60 bg-amber-400/20 px-2.5 py-0.5 text-[11px] font-bold text-amber-50 hover:bg-amber-400/30">
+                    Formulir komersil: {editingTransaction.transaction.komersil.form_number}
+                  </a>
+                )}
               </div>
 
               <button
@@ -3167,7 +3178,9 @@ export default function SerahTerima() {
                                 <p className="font-semibold text-slate-800 text-sm">{getLinenDisplayName(item)}</p>
                             </td>
                             <td className="py-3 px-4 text-center">
-                              <OwnershipBadge type={item.ownership_type} />
+                              <OwnershipBadge type={item.ownership_type} /> {Number(item.is_commercial) === 1 && (
+                                  <span className="ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200" title="Linen komersil: masuk formulir komersil, tidak mengubah stok ruangan">Komersil</span>
+                                )}
                             </td>
                             <td className="py-3 px-4 text-center">
                               <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-650 border border-slate-200">
@@ -3469,6 +3482,7 @@ export default function SerahTerima() {
                         />
                         <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 uppercase tracking-wider">Kg</span>
                       </div>
+                      <p className="text-[10px] text-amber-600">Linen komersil tidak ikut ditimbang; dihitung di formulir komersil.</p>
                       {kgSummary}
                     </div>
                   )}

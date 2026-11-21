@@ -730,10 +730,12 @@ export default function RSSerahTerimaKomersil() {
                                             <thead>
                                                 <tr className="bg-slate-50 text-slate-400 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200">
                                                     <th className="py-3 px-4 text-center">No</th>
+                                                    <th className="py-3 px-4">Ruangan</th>
                                                     <th className="py-3 px-4">Nama Linen Komersil</th>
                                                     <th className="py-3 px-4 text-center">P (m)</th>
                                                     <th className="py-3 px-4 text-center">L (m)</th>
                                                     <th className="py-3 px-4 text-center">Luas (m²)</th>
+                                                    <th className="py-3 px-4 text-center">Hasil Hitung</th>
                                                     <th className="py-3 px-4 text-center bg-slate-100/50">Qty Kotor (Pickup)</th>
                                                     <th className="py-3 px-4 text-center bg-teal-50/50">Qty Bersih (Received)</th>
                                                     <th className="py-3 px-4 text-center">Selisih</th>
@@ -750,10 +752,12 @@ export default function RSSerahTerimaKomersil() {
                                                     return (
                                                         <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
                                                             <td className="py-3 px-4 text-center text-slate-400">{idx + 1}</td>
+                                                            <td className="py-3 px-4 text-slate-600 font-semibold whitespace-nowrap">{item.room_name || '—'}</td>
                                                             <td className="py-3 px-4 text-slate-800 font-bold">{getLinenDisplayName(item)}</td>
                                                             <td className="py-3 px-4 text-center text-slate-700 font-semibold">{item.length_cm !== null ? `${parseFloat(item.length_cm).toFixed(1)}m` : '—'}</td>
                                                             <td className="py-3 px-4 text-center text-slate-700 font-semibold">{item.width_cm !== null ? `${parseFloat(item.width_cm).toFixed(1)}m` : '—'}</td>
                                                             <td className="py-3 px-4 text-center text-slate-700 font-bold">{item.area_m2 !== null ? `${parseFloat(item.area_m2).toFixed(2)} m²` : '—'}</td>
+                                                            <td className="py-3 px-4 text-center text-[#126776] font-bold whitespace-nowrap">{item.measure_unit ? `${Number(item.measure_value || 0).toLocaleString('id-ID', { maximumFractionDigits: 2 })} ${item.measure_unit}` : '—'}</td>
                                                             <td className="py-3 px-4 text-center bg-slate-100/30 text-slate-800 font-bold">{kotor}</td>
                                                             <td className="py-3 px-4 text-center bg-teal-50/30 text-teal-700 font-bold">
                                                                 {editingTransaction.transaction.status === 'SELESAI' ? bersih : '—'}

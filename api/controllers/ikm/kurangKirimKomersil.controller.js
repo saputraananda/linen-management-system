@@ -1,4 +1,5 @@
 import { ikmPool, mainPool } from '../../db/pool.js';
+import { pushKomersilBersihToParent } from '../../utils/komersilChild.js';
 import { getSignatureUrl, saveBase64Image, cleanupSignatures } from '../../middleware/upload.js';
 
 // Helper to format string to Capital Each Word (Title Case)
@@ -103,8 +104,8 @@ export const getShortageTransactionDetails = async (req, res) => {
             `SELECT td.*,
               COALESCE(td.item_name, hl.hospital_linen_name, l.linen_name) as linen_name,
               l.linen_code,
-              hl.unit, hl.hospital_linen_name, hl.grammage,
-              s.size_name, c.color_name, m.material_name,
+              hl.unit, hl.hospital_linen_name, hl.grammage, hl.washing_price_type,
+              s.size_name, c.color_name, m.material_name, r.room_name,
               COALESCE((
                 SELECT SUM(dd.qty_delivered) 
                 FROM tr_komersil_kurang_kirim_delivery_detail dd
@@ -117,6 +118,7 @@ export const getShortageTransactionDetails = async (req, res) => {
        LEFT JOIN mst_size s ON l.size_id = s.id
        LEFT JOIN mst_color c ON l.color_id = c.id
        LEFT JOIN mst_material m ON l.material_id = m.id
+       LEFT JOIN mst_rooms_rs r ON td.room_id = r.id
        WHERE td.transaction_id = ?
          AND td.qty_kotor > COALESCE(td.qty_bersih, 0)
        ORDER BY td.id ASC`,
@@ -214,13 +216,17 @@ export const createShortageDelivery = async (req, res) => {
         const dd = String(d.getDate()).padStart(2, '0');
         const ddmmyy = `${dd}${mm}${yy}`;
 
-        const [countResult] = await connection.query(
-            `SELECT COUNT(*) as cnt FROM tr_komersil_kurang_kirim_delivery
-             WHERE DATE(delivery_date) = DATE(?)`,
-            [deliveryDate]
+        // Nomor urut = nomor terbesar hari itu + 1 (bukan jumlah baris) supaya tidak bentrok
+        const sjPrefix = `SJKK-K/${ddmmyy}/`;
+        const [sameDay] = await connection.query(
+            `SELECT surat_jalan_number FROM tr_komersil_kurang_kirim_delivery WHERE surat_jalan_number LIKE ? FOR UPDATE`,
+            [`${sjPrefix}%`]
         );
-        const nextSeq = (countResult?.[0]?.cnt || 0) + 1;
-        const sjNumber = `SJKK-K/${ddmmyy}/${String(nextSeq).padStart(4, '0')}`;
+        const nextSeq = sameDay.reduce((m, r) => {
+            const n = parseInt(String(r.surat_jalan_number).slice(sjPrefix.length), 10);
+            return Number.isFinite(n) ? Math.max(m, n) : m;
+        }, 0) + 1;
+        const sjNumber = `${sjPrefix}${String(nextSeq).padStart(4, '0')}`;
 
         // Insert into tr_komersil_kurang_kirim_delivery
         const [result] = await connection.query(
@@ -273,6 +279,9 @@ export const createShortageDelivery = async (req, res) => {
                 ]
             );
         }
+
+        // Formulir komersil berinduk: bersih susulan ikut menutup kekurangan di formulir induk
+        await pushKomersilBersihToParent(connection, transactionId);
 
         // Capture new state for audit logging
         const [newHeaderRows] = await connection.query(

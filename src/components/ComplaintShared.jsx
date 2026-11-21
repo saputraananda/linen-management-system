@@ -6,6 +6,7 @@ import {
   MessageSquareWarning, Package, Camera, Clock, Calendar,
 } from 'lucide-react';
 import ConfirmDialog from './ConfirmDialog';
+import AlertDialog from './AlertDialog';
 import Pagination, { DEFAULT_PAGE_SIZE } from './Pagination';
 import useBodyScrollLock from '../utils/useBodyScrollLock';
 import { socket } from '../utils/socket';
@@ -482,7 +483,7 @@ function ItemPhotos({ item, removedIds, disabled, onAdd, onRemoveNew, onRemoveSa
   const delCls = 'absolute right-1 top-1 cursor-pointer rounded-full bg-slate-900/70 p-1 text-white transition hover:bg-rose-600';
   return (
     <div>
-      <label className={labelCls}>Foto Bukti ({total}/{PHOTOS_PER_ITEM})</label>
+      <label className={labelCls}>Foto Bukti <span className="text-rose-500">*</span> ({total}/{PHOTOS_PER_ITEM})</label>
       <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
         {kept.map((p) => (
           <div key={p.id} className={`${thumbCls} border-slate-200`}>
@@ -504,7 +505,7 @@ function ItemPhotos({ item, removedIds, disabled, onAdd, onRemoveNew, onRemoveSa
           </label>
         )}
       </div>
-      <p className="mt-1.5 text-[11px] font-medium text-slate-400">JPG, PNG, atau WEBP. Maksimal {PHOTOS_PER_ITEM} foto, 5 MB per foto. Pilih linen dulu untuk menambah foto.</p>
+      <p className="mt-1.5 text-[11px] font-medium text-slate-400">Wajib minimal 1 foto. JPG, PNG, atau WEBP. Maksimal {PHOTOS_PER_ITEM} foto, 5 MB per foto. Pilih linen dulu untuk menambah foto.</p>
     </div>
   );
 }
@@ -535,6 +536,9 @@ function ComplaintForm({ role, form, setForm, opts, roomName, error, setError, o
     if (!rows.length) { setError('Pilih minimal 1 linen yang dikomplain'); return; }
     if (rows.some((it) => !(Number(it.quantity) >= 1))) { setError('Quantity wajib diisi (minimal 1) pada setiap linen yang dipilih'); return; }
     if (rows.some((it) => !it.notes.trim())) { setError('Deskripsi komplain wajib diisi pada setiap linen yang dipilih'); return; }
+    if (rows.some((it) => it.photos.filter((ph) => !form.removeIds.includes(ph.id)).length + it.newFiles.length < 1)) {
+      setError('Foto bukti wajib dilampirkan (minimal 1 foto) pada setiap linen yang dipilih'); return;
+    }
     const fd = new FormData();
     ['reporter_name', 'complaint_date', 'room_id', 'complaint_type'].forEach((k) => fd.append(k, form[k]));
     fd.append('items', JSON.stringify(rows.map((it) => ({
@@ -564,7 +568,7 @@ function ComplaintForm({ role, form, setForm, opts, roomName, error, setError, o
         </>
       )}>
       <form id="complaint-form" onSubmit={submit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {error && <div className="rounded-xl border border-rose-100 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 sm:col-span-2">{error}</div>}
+        <AlertDialog message={error} onClose={() => setError('')} />
         <div>
           <label className={labelCls}>Nama Pelapor</label>
           <input className={inputCls} required value={form.reporter_name} onChange={set('reporter_name')} />
